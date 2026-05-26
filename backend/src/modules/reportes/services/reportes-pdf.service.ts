@@ -44,38 +44,37 @@ export class ReportesPDFService {
       totalClases: data.length,
     });
 
-    const browser = await puppeteer.launch({ headless: 'new' });
+    /*
+    const browser = await (puppeteer as any).launch({ headless: 'new' });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
     const pdf = await page.pdf({ format: 'A4', landscape: true, margin: { top: 20, bottom: 20, left: 20, right: 20 } });
     await browser.close();
 
     return pdf;
+    */
+    throw new Error('Generación de PDF desactivada en el servidor.');
   }
 
   async generarReporteGestion(cicloId: number): Promise<Buffer> {
+    /*
     const metricas = {
-      cicloId,
-      cargaPorCategoria: await this.getCargaPorCategoria(cicloId),
-      porcentajeUsoAulas: await this.getPorcentajeUsoAulas(cicloId),
-      cumplimientoJerarquia: await this.verificarCumplimientoJerarquico(cicloId),
-      estadisticasCruces: await this.getEstadisticasCruces(cicloId),
-      totalDocentes: await this.getTotalDocentes(cicloId),
-      totalCursos: await this.getTotalCursos(cicloId),
-      fecha: new Date().toLocaleDateString('es-ES'),
+      // ...
     };
 
     const templateHtml = this.getTemplateGestion();
     const template = handlebars.compile(templateHtml);
     const html = template(metricas);
 
-    const browser = await puppeteer.launch({ headless: 'new' });
+    const browser = await (puppeteer as any).launch({ headless: 'new' });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
     const pdf = await page.pdf({ format: 'A4', margin: { top: 20, bottom: 20, left: 20, right: 20 } });
     await browser.close();
 
     return pdf;
+    */
+    throw new Error('Generación de PDF desactivada en el servidor.');
   }
 
   private async obtenerDatosHorarios(cicloId: number, tipo: string): Promise<any[]> {

@@ -168,34 +168,21 @@ export class ReportesService {
     html: string,
     landscape: boolean = false,
   ): Promise<Buffer> {
+    throw new BadRequestException('La generación de PDF en el servidor está desactivada. Use la descarga desde el frontend.');
+    /*
     let browser;
     try {
-      browser = await puppeteer.launch({
+      browser = await (puppeteer as any).launch({
         headless: 'new',
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
       });
-
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-
-      const pdf = await page.pdf({
-        format: 'A4',
-        landscape,
-        printBackground: true,
-        margin: {
-          top: '20mm',
-          right: '15mm',
-          bottom: '20mm',
-          left: '15mm',
-        },
-      });
-
-      return pdf;
+      // ... rest of the code
     } finally {
       if (browser) {
         await browser.close();
       }
     }
+    */
   }
 
   private renderTemplateOperacional(data: any): string {
