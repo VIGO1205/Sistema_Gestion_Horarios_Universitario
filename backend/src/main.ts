@@ -39,6 +39,10 @@ async function bootstrap() {
 }
 
 bootstrap().catch((error) => {
-  console.error('Error al iniciar la aplicación:', error);
+  console.error('FATAL ERROR AL INICIAR LA APLICACIÓN:');
+  console.error(error);
+  if (error.stack) {
+    console.error('Stack trace:', error.stack);
+  }
   process.exit(1);
 });

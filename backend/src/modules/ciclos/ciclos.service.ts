@@ -13,8 +13,13 @@ export class CiclosService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    this.logger.log('Iniciando verificación automática de ciclos académicos...');
-    await this.asegurarCicloActual();
+    try {
+      this.logger.log('Iniciando verificación automática de ciclos académicos...');
+      await this.asegurarCicloActual();
+    } catch (error) {
+      this.logger.warn('No se pudo verificar el ciclo actual en el inicio. Es posible que las tablas aún no existan. Reintentando en el primer acceso...');
+      this.logger.error(error.message);
+    }
   }
 
   async asegurarCicloActual(): Promise<CicloAcademico> {

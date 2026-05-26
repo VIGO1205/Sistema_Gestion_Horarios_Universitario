@@ -10,6 +10,8 @@ import { ProgramacionCursoCiclo } from '../entities/programacion-curso-ciclo.ent
 import { GrupoDocenteAsignacion } from '../entities/grupo-docente-asignacion.entity';
 import { Carrera } from '../entities/carrera.entity';
 import { DocenteCarrera } from '../entities/docente-carrera.entity';
+import { VentanaAtencion } from '../entities/ventana-atencion.entity';
+import { Notificacion } from '../entities/notificacion.entity';
 
 export const dataSource = new DataSource({
   type: 'postgres',
@@ -19,7 +21,21 @@ export const dataSource = new DataSource({
   username: !process.env.DATABASE_URL ? (process.env.DB_USER || 'postgres') : undefined,
   password: !process.env.DATABASE_URL ? (process.env.DB_PASSWORD || 'password') : undefined,
   database: !process.env.DATABASE_URL ? (process.env.DB_NAME || 'horarios_unt') : undefined,
-  entities: [Usuario, Docente, Curso, Aula, CicloAcademico, Horario, AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, Carrera, DocenteCarrera],
+  entities: [
+    Usuario, 
+    Docente, 
+    Curso, 
+    Aula, 
+    CicloAcademico, 
+    Horario, 
+    AsignacionDocenteCurso, 
+    ProgramacionCursoCiclo, 
+    GrupoDocenteAsignacion, 
+    Carrera, 
+    DocenteCarrera,
+    VentanaAtencion,
+    Notificacion
+  ],
   synchronize: process.env.NODE_ENV !== 'production',
   logging: process.env.NODE_ENV === 'development',
   poolSize: 10,

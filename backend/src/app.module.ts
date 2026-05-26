@@ -42,14 +42,18 @@ import { Notificacion } from './entities/notificacion.entity';
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
         const databaseUrl = configService.get<string>('DATABASE_URL');
+        const nodeEnv = configService.get<string>('NODE_ENV') || 'development';
+        
+        console.log(`Iniciando App en modo: ${nodeEnv}`);
         
         // Si hay DATABASE_URL (Render), la usamos directamente con SSL
         if (databaseUrl) {
+          console.log('Usando DATABASE_URL para la conexión');
           return {
             type: 'postgres',
             url: databaseUrl,
             entities: [Usuario, Docente, Curso, Aula, CicloAcademico, Horario, AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, Carrera, DocenteCarrera, VentanaAtencion, Notificacion],
-            synchronize: false, // Nunca true en producción
+            synchronize: nodeEnv !== 'production', // True solo si no es producción
             ssl: { rejectUnauthorized: false },
           };
         }
