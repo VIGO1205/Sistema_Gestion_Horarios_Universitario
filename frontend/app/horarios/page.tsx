@@ -1121,30 +1121,6 @@ export default function HorariosPage() {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          {!esDocente && (
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => {
-                setSelectedHorario(null);
-                setIsDragAction(false);
-                setHorarioForm({
-                  docenteId: '',
-                  cursoId: '',
-                  aulaId: '',
-                  tipoClase: 'teoria',
-                  diaSemana: 1,
-                  horaInicio: '07:00',
-                  horaFin: '08:00',
-                  grupoId: '',
-                });
-                setOpenHorarioModal(true);
-              }}
-              sx={{ bgcolor: '#4cd137', '&:hover': { bgcolor: '#44bd32' }, borderRadius: 2, fontWeight: 600 }}
-            >
-              Nuevo Horario
-            </Button>
-          )}
           <Tooltip title="Actualizar">
             <IconButton onClick={() => fetchData(false)} sx={{ bgcolor: 'white', border: '1px solid #eef2f6' }}>
               <RefreshIcon />
@@ -1523,29 +1499,16 @@ export default function HorariosPage() {
             <col style={{ width: 100 }} />
           </colgroup>
           <TableBody>
-            {horarios.length === 0 && !fetching && !loading ? (
-              <TableRow>
-                <TableCell colSpan={8} sx={{ py: 10, textAlign: 'center', border: '1px solid #dfe1e5' }}>
-                  <Typography variant="h6" color="textSecondary" sx={{ fontWeight: 600 }}>
-                    No se encontraron horarios
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Intenta ajustar los filtros para ver otros resultados.
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            ) : (
-              <>
-                {/* Espacio inicial (40px) para separar del borde superior */}
-                <TableRow sx={{ height: HORA_SPACER_HEIGHT }}>
-                  <TableCell sx={{ border: 'none', bgcolor: 'white' }} />
-                  {DIAS.map(dia => (
-                    <TableCell key={dia.id} sx={{ border: 'none', bgcolor: 'transparent' }} />
-                  ))}
-                  <TableCell sx={{ border: 'none', bgcolor: 'white' }} />
-                </TableRow>
+            {/* Espacio inicial (40px) para separar del borde superior */}
+            <TableRow sx={{ height: HORA_SPACER_HEIGHT }}>
+              <TableCell sx={{ border: 'none', bgcolor: 'white' }} />
+              {DIAS.map(dia => (
+                <TableCell key={dia.id} sx={{ border: 'none', bgcolor: 'transparent' }} />
+              ))}
+              <TableCell sx={{ border: 'none', bgcolor: 'white' }} />
+            </TableRow>
 
-                {[...HORAS, '21:00'].map((hora, idx) => {
+            {[...HORAS, '21:00'].map((hora, idx) => {
                   const isLastLabel = idx === HORAS.length;
                   return (
                     <TableRow 
@@ -1736,8 +1699,6 @@ export default function HorariosPage() {
                     </TableRow>
                   );
                 })}
-              </>
-            )}
           </TableBody>
           </Table>
         </TableContainer>
