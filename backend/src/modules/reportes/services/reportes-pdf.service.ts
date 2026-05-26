@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager } from 'typeorm';
-import * as puppeteer from 'puppeteer';
+// import * as puppeteer from 'puppeteer';
 import * as fs from 'fs';
 import * as handlebars from 'handlebars';
 import { Horario } from '../../../entities/horario.entity';
