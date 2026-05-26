@@ -955,10 +955,12 @@ export default function ReportesPage() {
       // Ajustar columnas
       worksheet.columns.forEach(column => {
         let maxLen = 0;
-        column.eachCell({ includeEmpty: true }, (cell) => {
-          const len = cell.value ? cell.value.toString().length : 0;
-          if (len > maxLen) maxLen = len;
-        });
+        if (column && column.eachCell) {
+          column.eachCell({ includeEmpty: true }, (cell) => {
+            const len = cell.value ? cell.value.toString().length : 0;
+            if (len > maxLen) maxLen = len;
+          });
+        }
         column.width = maxLen < 10 ? 10 : maxLen + 2;
       });
 
