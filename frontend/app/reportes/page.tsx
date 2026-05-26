@@ -442,7 +442,7 @@ export default function ReportesPage() {
             return {
               ...item,
               numero: index + 1,
-              ciclosTexto: Array.from(item.ciclos).sort((a: string, b: string) => Number(a) - Number(b)).map((c: string) => `${c}°`).join(', ') || '-',
+              ciclosTexto: Array.from(item.ciclos as Set<string>).sort((a, b) => Number(a) - Number(b)).map(c => `${c}°`).join(', ') || '-',
               color: palette[index % palette.length],
               displayL: numGrupos > 0 ? (item.laboratorio / numGrupos) : item.laboratorio,
               displayG: numGrupos > 0 ? String(numGrupos) : '-',
