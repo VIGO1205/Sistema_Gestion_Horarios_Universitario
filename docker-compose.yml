@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: universidad-horarios-db
+    environment:
+      POSTGRES_USER: universidad_admin
+      POSTGRES_PASSWORD: S3cur3P@ssw0rd!
+      POSTGRES_DB: horarios_unt
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U universidad_admin -d horarios_unt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: universidad-horarios-backend
+    command: npm run start:dev
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      PORT: 3001  
+      API_URL: http://backend:3001
+      DATABASE_URL: postgresql://universidad_admin:S3cur3P@ssw0rd!@db:5432/horarios_unt
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: universidad_admin
+      DB_PASSWORD: S3cur3P@ssw0rd!
+      DB_NAME: horarios_unt
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/health >/dev/null || exit 1"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - default
+
+  frontend:
+    build: ./frontend
+    container_name: universidad-horarios-frontend
+    command: npm run dev
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      HOSTNAME: "0.0.0.0"
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: universidad-horarios-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@unt.edu.pe
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+  backend_node_modules:
+  frontend_node_modules:

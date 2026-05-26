@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Set Token</title>
+    <style>body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:2rem;background:#f6f8fa} .box{background:#fff;padding:2rem;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.08)}</style>
+  </head>
+  <body>
+    <div class="box">
+      <h1>Autenticando...</h1>
+      <p id="msg">Procesando token y redirigiendo a /horarios</p>
+      <p>Si no redirige, <a id="link" href="#">haz clic aquí</a>.</p>
+    </div>
+    <script>
+      function getParam(name) {
+        const params = new URLSearchParams(window.location.search);
+        return params.get(name);
+      }
+      const token = getParam('token');
+      const msg = document.getElementById('msg');
+      const link = document.getElementById('link');
+      if (token) {
+        try {
+          localStorage.setItem('token', token);
+          msg.textContent = 'Token guardado. Redirigiendo...';
+          link.href = '/horarios';
+          setTimeout(()=>{ window.location.href = '/horarios'; }, 700);
+        } catch (e) {
+          msg.textContent = 'No se pudo guardar token en localStorage: ' + e.message;
+          link.href = '/horarios';
+        }
+      } else {
+        msg.textContent = 'No se encontró token en la URL.';
+        link.href = '/login';
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,77 @@
+import { IsString, IsEnum, IsNumber, Min, Max, IsBoolean, IsOptional, IsArray, ValidateNested, Matches } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class AsignacionDocenteDto {
+  @IsNumber({}, { message: 'El curso seleccionado no es válido' })
+  cursoId: number;
+
+  @IsNumber({}, { message: 'El ciclo seleccionado no es válido' })
+  cicloId: number;
+
+  @IsEnum(['teoria', 'practica', 'laboratorio'], { message: 'El tipo de clase debe ser teoría, práctica o laboratorio' })
+  tipoClase: 'teoria' | 'practica' | 'laboratorio';
+
+  @IsNumber({}, { message: 'Las horas semanales deben ser un número válido' })
+  @Min(1, { message: 'Las horas semanales deben ser al menos 1' })
+  horasSemanales: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'El número de grupos debe ser un número válido' })
+  numeroGrupos?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'El índice de la asignación debe ser un número válido' })
+  clientAsignacionIndex?: number;
+}
+
+export class CreateDocenteDto {
+  @IsString({ message: 'El nombre completo debe ser un texto válido' })
+  @Matches(/^[\p{L}\s]+$/u, { message: 'El nombre solo puede contener letras y espacios' })
+  nombreCompleto: string;
+
+  @IsString({ message: 'El DNI debe ser un texto válido' })
+  @IsOptional()
+  dni?: string;
+
+  @IsEnum(['nombrado', 'contratado'], { message: 'El tipo de contrato debe ser nombrado o contratado' })
+  tipoContrato: 'nombrado' | 'contratado';
+
+  @IsEnum(['principal', 'asociado', 'auxiliar', 'jefe_practica'], { message: 'La categoría seleccionada no es válida' })
+  categoria: 'principal' | 'asociado' | 'auxiliar' | 'jefe_practica';
+
+  @IsOptional()
+  @IsString({ message: 'La fecha de ingreso debe ser un texto válido' })
+  fechaIngreso?: string;
+
+  @IsOptional()
+  @IsString({ message: 'El teléfono debe ser un texto válido' })
+  telefono?: string;
+
+  @IsOptional()
+  @IsString({ message: 'El email personal debe ser un texto válido' })
+  emailPersonal?: string;
+
+  @IsOptional()
+  @IsString({ message: 'El Telegram ID debe ser un texto válido' })
+  telegramId?: string;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'La antigüedad debe ser un número válido' })
+  @Min(0, { message: 'La antigüedad no puede ser menor que 0' })
+  @Max(50, { message: 'La antigüedad no puede ser mayor que 50' })
+  antiguedadAnios?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+
+  @IsArray()
+  @IsOptional()
+  carreraIds?: number[];
+
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => AsignacionDocenteDto)
+  asignaciones?: AsignacionDocenteDto[];
+}
