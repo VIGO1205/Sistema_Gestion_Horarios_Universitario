@@ -40,19 +40,33 @@ import { Notificacion } from './entities/notificacion.entity';
     ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        url: configService.get<string>('DATABASE_URL'),
-        host: !configService.get('DATABASE_URL') ? (configService.get<string>('DB_HOST') || 'localhost') : undefined,
-        port: !configService.get('DATABASE_URL') ? (configService.get<number>('DB_PORT') || 5432) : undefined,
-        username: !configService.get('DATABASE_URL') ? (configService.get<string>('DB_USER') || 'postgres') : undefined,
-        password: !configService.get('DATABASE_URL') ? (configService.get<string>('DB_PASSWORD') || 'password') : undefined,
-        database: !configService.get('DATABASE_URL') ? (configService.get<string>('DB_NAME') || 'horarios_unt') : undefined,
-        entities: [Usuario, Docente, Curso, Aula, CicloAcademico, Horario, AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, Carrera, DocenteCarrera, VentanaAtencion, Notificacion],
-        synchronize: configService.get<string>('NODE_ENV') !== 'production',
-        logging: configService.get<string>('NODE_ENV') === 'development',
-        ssl: configService.get<string>('DB_SSL') === 'true' || configService.get<string>('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
-      }),
+      useFactory: (configService: ConfigService) => {
+        const databaseUrl = configService.get<string>('DATABASE_URL');
+        
+        // Si hay DATABASE_URL (Render), la usamos directamente con SSL
+        if (databaseUrl) {
+          return {
+            type: 'postgres',
+            url: databaseUrl,
+            entities: [Usuario, Docente, Curso, Aula, CicloAcademico, Horario, AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, Carrera, DocenteCarrera, VentanaAtencion, Notificacion],
+            synchronize: false, // Nunca true en producción
+            ssl: { rejectUnauthorized: false },
+          };
+        }
+
+        // Si no hay DATABASE_URL, usamos los valores por separado (Local)
+        return {
+          type: 'postgres',
+          host: configService.get<string>('DB_HOST') || 'localhost',
+          port: configService.get<number>('DB_PORT') || 5432,
+          username: configService.get<string>('DB_USER') || 'postgres',
+          password: configService.get<string>('DB_PASSWORD') || 'password',
+          database: configService.get<string>('DB_NAME') || 'horarios_unt',
+          entities: [Usuario, Docente, Curso, Aula, CicloAcademico, Horario, AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, Carrera, DocenteCarrera, VentanaAtencion, Notificacion],
+          synchronize: true,
+          logging: false,
+        };
+      },
       inject: [ConfigService],
     }),
     AuthModule,
