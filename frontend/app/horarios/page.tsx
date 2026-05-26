@@ -1121,6 +1121,30 @@ export default function HorariosPage() {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
+          {!esDocente && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => {
+                setSelectedHorario(null);
+                setIsDragAction(false);
+                setHorarioForm({
+                  docenteId: '',
+                  cursoId: '',
+                  aulaId: '',
+                  tipoClase: 'teoria',
+                  diaSemana: 1,
+                  horaInicio: '07:00',
+                  horaFin: '08:00',
+                  grupoId: '',
+                });
+                setOpenHorarioModal(true);
+              }}
+              sx={{ bgcolor: '#4cd137', '&:hover': { bgcolor: '#44bd32' }, borderRadius: 2, fontWeight: 600 }}
+            >
+              Nuevo Horario
+            </Button>
+          )}
           <Tooltip title="Actualizar">
             <IconButton onClick={() => fetchData(false)} sx={{ bgcolor: 'white', border: '1px solid #eef2f6' }}>
               <RefreshIcon />
@@ -1598,65 +1622,65 @@ export default function HorariosPage() {
                                     startDragSelection(dia.id, idx, event);
                                   }}
                                 >
-                                  <Box sx={{ 
-                                    height: '100%', 
-                                    maxHeight: `${duration * HORA_ALTURA_FILA}px`,
-                                    width: '100%',
-                                    bgcolor: getColorByDocente(event.docenteId),
-                                    borderLeft: `4px solid ${getColorBorderByDocente(event.docenteId)}`,
-                                    border: isSelectedEvent ? '2px dashed #003366' : '1px solid transparent',
-                                    p: { xs: 1, sm: 1.5 },
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: { xs: 0.25, sm: 0.5 },
-                                    boxSizing: 'border-box',
-                                    position: 'relative',
-                                    group: 'edit',
-                                    overflow: 'hidden',
-                                  }}>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                      <Box sx={{ flex: 1 }}>
-                                        <Typography variant="caption" sx={{ 
-                                          fontWeight: 800, 
-                                          color: getColorBorderByDocente(event.docenteId),
-                                          textTransform: 'uppercase', 
-                                          fontSize: { xs: '0.58rem', sm: '0.65rem' },
-                                          lineHeight: 1.1,
-                                        }}>
-                                          {event.tipoClase}
-                                        </Typography>
-                                        <Typography
-                                          variant="body2"
-                                          sx={{
-                                            fontWeight: 700,
-                                            color: '#333',
+                                    <Box sx={{ 
+                                      height: '100%', 
+                                      maxHeight: `${duration * HORA_ALTURA_FILA}px`,
+                                      width: '100%',
+                                      bgcolor: getColorByDocente(event.docenteId),
+                                      borderLeft: `4px solid ${getColorBorderByDocente(event.docenteId)}`,
+                                      border: isSelectedEvent ? '2px dashed #003366' : '1px solid transparent',
+                                      p: { xs: 1, sm: 1.5 },
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: { xs: 0.25, sm: 0.5 },
+                                      boxSizing: 'border-box',
+                                      position: 'relative',
+                                      overflow: 'hidden',
+                                      '&:hover .action-buttons': { opacity: 1 },
+                                    }}>
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <Box sx={{ flex: 1 }}>
+                                          <Typography variant="caption" sx={{ 
+                                            fontWeight: 800, 
+                                            color: getColorBorderByDocente(event.docenteId),
+                                            textTransform: 'uppercase', 
+                                            fontSize: { xs: '0.58rem', sm: '0.65rem' },
                                             lineHeight: 1.1,
-                                            fontSize: { xs: '0.72rem', sm: '0.875rem' },
-                                            overflow: 'hidden',
-                                            display: '-webkit-box',
-                                            WebkitLineClamp: { xs: 2, sm: 3 },
-                                            WebkitBoxOrient: 'vertical',
-                                            wordBreak: 'break-word',
-                                          }}
-                                        >
-                                          {event.curso.nombre} {event.grupo ? `(G${event.grupo.numeroGrupo})` : ''}
-                                        </Typography>
-                                      </Box>
-                                      {(!esDocente || docentePuedeGestionar) && (!esDocente || event.docenteId === usuario?.docenteId) && (
-                                        <Box sx={{ display: 'flex', gap: 0.5, opacity: 0, _groupHover: { opacity: 1 }, flexShrink: 0 }}>
-                                          <Tooltip title="Editar">
-                                            <IconButton size="small" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleEditHorario(event); }}>
-                                              <EditIcon sx={{ fontSize: 14 }} />
-                                            </IconButton>
-                                          </Tooltip>
-                                          <Tooltip title="Eliminar">
-                                            <IconButton size="small" color="error" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleDeleteHorario(event); }}>
-                                              <DeleteIcon sx={{ fontSize: 14 }} />
-                                            </IconButton>
-                                          </Tooltip>
+                                          }}>
+                                            {event.tipoClase}
+                                          </Typography>
+                                          <Typography
+                                            variant="body2"
+                                            sx={{
+                                              fontWeight: 700,
+                                              color: '#333',
+                                              lineHeight: 1.1,
+                                              fontSize: { xs: '0.72rem', sm: '0.875rem' },
+                                              overflow: 'hidden',
+                                              display: '-webkit-box',
+                                              WebkitLineClamp: { xs: 2, sm: 3 },
+                                              WebkitBoxOrient: 'vertical',
+                                              wordBreak: 'break-word',
+                                            }}
+                                          >
+                                            {event.curso.nombre} {event.grupo ? `(G${event.grupo.numeroGrupo})` : ''}
+                                          </Typography>
                                         </Box>
-                                      )}
-                                    </Box>
+                                        {(!esDocente || docentePuedeGestionar) && (!esDocente || event.docenteId === usuario?.docenteId) && (
+                                          <Box className="action-buttons" sx={{ display: 'flex', gap: 0.5, opacity: 0, transition: 'opacity 0.2s', flexShrink: 0 }}>
+                                            <Tooltip title="Editar">
+                                              <IconButton size="small" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleEditHorario(event); }}>
+                                                <EditIcon sx={{ fontSize: 14 }} />
+                                              </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="Eliminar">
+                                              <IconButton size="small" color="error" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleDeleteHorario(event); }}>
+                                                <DeleteIcon sx={{ fontSize: 14 }} />
+                                              </IconButton>
+                                            </Tooltip>
+                                          </Box>
+                                        )}
+                                      </Box>
                                     <Typography variant="caption" noWrap sx={{ color: '#666', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 0.5, fontSize: { xs: '0.64rem', sm: '0.75rem' }, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                       <PersonIcon sx={{ fontSize: 12 }} /> {event.docente.nombreCompleto}
                                     </Typography>
