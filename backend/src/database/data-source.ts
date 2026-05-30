@@ -41,6 +41,6 @@ export const dataSource = new DataSource({
   poolSize: 10,
   maxQueryExecutionTime: 3000,
   extra: {
-    ssl: process.env.DB_SSL === 'true' || process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ssl: (process.env.DATABASE_URL?.includes('render.com') || process.env.DB_SSL === 'true') ? { rejectUnauthorized: false } : false,
   },
 });

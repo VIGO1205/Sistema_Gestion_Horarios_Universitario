@@ -17,7 +17,9 @@ export enum CategoriaVentana {
 export enum EstadoVentana {
   PROGRAMADA = 'programada',
   EN_CURSO = 'en_curso',
+  PAUSADA = 'pausada',
   FINALIZADA = 'finalizada',
+  VENCIDA = 'vencida',
 }
 
 @Entity('ventanas_atencion')
@@ -45,6 +47,9 @@ export class VentanaAtencion {
 
   @Column({ type: 'enum', enum: EstadoVentana, default: EstadoVentana.PROGRAMADA })
   estado: EstadoVentana;
+
+  @Column({ type: 'timestamp', nullable: true, transformer: peruTimestampTransformer })
+  pausadoEn: Date | null;
 
   @Column({ type: 'boolean', default: true })
   activo: boolean;

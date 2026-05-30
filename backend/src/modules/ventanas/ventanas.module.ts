@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { VentanasService } from './ventanas.service';
 import { VentanasController } from './ventanas.controller';
@@ -14,6 +14,6 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
   ],
   controllers: [VentanasController],
   providers: [VentanasService, VentanasGateway],
-  exports: [VentanasService],
+  exports: [VentanasService, VentanasGateway],
 })
 export class VentanasModule {}

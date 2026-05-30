@@ -40,7 +40,7 @@ export class VentanasController {
   }
 
   @Post(':id/llamar-siguiente')
-  @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
+  @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR, RolUsuario.DOCENTE)
   llamarSiguiente(@Param('id') id: string) {
     return this.ventanasService.llamarSiguiente(+id);
   }
@@ -61,6 +61,12 @@ export class VentanasController {
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
   detenerVentana(@Param('id') id: string) {
     return this.ventanasService.detenerVentana(+id);
+  }
+
+  @Patch(':id/toggle-pausa')
+  @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
+  togglePausa(@Param('id') id: string) {
+    return this.ventanasService.togglePausa(+id);
   }
 
   @Delete(':id')

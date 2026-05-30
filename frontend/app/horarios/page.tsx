@@ -53,6 +53,7 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { getVentanasSocket } from '@/lib/socket';
 
 const MySwal = withReactContent(Swal);
 
@@ -106,7 +107,7 @@ export default function HorariosPage() {
   const [estadoSeleccion, setEstadoSeleccion] = useState<any>(null);
   const prevEstadoSeleccionRef = useRef<string | null>(null);
   const docentePuedeGestionar = esDocente
-    ? estadoSeleccion?.estado === 'en_atencion'
+    ? (estadoSeleccion?.estado === 'en_atencion' && estadoSeleccion?.ventanaEstado !== 'pausada')
     : true;
   const [filtros, setFiltros] = useState({
     ciclo: '',
@@ -943,7 +944,17 @@ export default function HorariosPage() {
   // Función para eliminar un horario
   const handleDeleteHorario = async (horario: any) => {
     if (esDocente) {
-      if (!docentePuedeGestionar) return;
+      if (!docentePuedeGestionar) {
+        MySwal.fire({
+          icon: 'warning',
+          title: 'Acción No Permitida',
+          text: estadoSeleccion?.ventanaEstado === 'pausada' 
+            ? 'El proceso está pausado temporalmente por el administrador.' 
+            : 'Aún no es tu turno o tu tiempo ha expirado.',
+          confirmButtonColor: '#003366',
+        });
+        return;
+      }
       if (horario.docenteId !== usuario?.docenteId) return;
     }
 
@@ -981,6 +992,19 @@ export default function HorariosPage() {
 
   // Función para guardar/actualizar horario
   const handleSaveHorario = async () => {
+    // Bloqueo de seguridad para docentes si está pausado
+    if (esDocente && !docentePuedeGestionar) {
+      MySwal.fire({
+        icon: 'warning',
+        title: 'Acción No Permitida',
+        text: estadoSeleccion?.ventanaEstado === 'pausada' 
+          ? 'El proceso está pausado temporalmente por el administrador.' 
+          : 'Aún no es tu turno o tu tiempo ha expirado.',
+        confirmButtonColor: '#003366',
+      });
+      return;
+    }
+
     // Validaciones básicas
     if (!horarioForm.docenteId || !horarioForm.cursoId || !horarioForm.aulaId) {
       MySwal.fire({
@@ -1052,6 +1076,8 @@ export default function HorariosPage() {
     if (usuario?.rol !== 'docente') return;
 
     let mounted = true;
+    let detachSocket: (() => void) | null = null;
+
     const fetchEstadoSeleccion = async () => {
       try {
         const res = await api.get('/ventanas/mi-estado');
@@ -1095,14 +1121,42 @@ export default function HorariosPage() {
       }
     };
 
-    fetchEstadoSeleccion();
+    const initializeSocket = async () => {
+      try {
+        const s = await getVentanasSocket();
+        if (!mounted) return;
+
+        const handler = (payload: any) => {
+          if (!mounted) return;
+          if (payload.docenteId && Number(payload.docenteId) !== Number(usuario?.docenteId)) return;
+          
+          setEstadoSeleccion(payload);
+          prevEstadoSeleccionRef.current = payload.estado;
+          console.log('[HorariosPage] socket update', payload);
+        };
+
+        s.on('ventanas:mi-estado', handler);
+        detachSocket = () => {
+          s.off('ventanas:mi-estado', handler);
+        };
+
+        // Initial fetch
+        await fetchEstadoSeleccion();
+      } catch (err) {
+        console.error('Error connecting HorariosPage to socket', err);
+        await fetchEstadoSeleccion();
+      }
+    };
+
+    initializeSocket();
     const intervalId = setInterval(fetchEstadoSeleccion, 5000);
 
     return () => {
       mounted = false;
       clearInterval(intervalId);
+      if (detachSocket) detachSocket();
     };
-  }, [usuario?.rol]);
+  }, [usuario?.rol, usuario?.docenteId]);
 
   if (loading) {
     return <LoadingSpinner />;

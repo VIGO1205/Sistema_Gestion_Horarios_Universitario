@@ -56,6 +56,7 @@ import {
   TrendingUp as TrendingUpIcon,
 } from '@mui/icons-material';
 import { Edit as EditIcon } from '@mui/icons-material';
+import PauseIcon from '@mui/icons-material/Pause';
 import api from '@/lib/api';
 import Swal from 'sweetalert2';
 import { format } from 'date-fns';
@@ -189,9 +190,15 @@ export default function VentanasPage() {
     return () => clearInterval(intervalId);
   }, [docenteEnAtencion?.finAtencion]);
 
-  const getTiempoRestante = (finAtencion: string | Date) => {
+  const getTiempoRestante = (finAtencion: string | Date, pausadoEn?: string | Date | null) => {
     const fin = new Date(finAtencion).getTime();
-    const restanteSeg = Math.max(0, Math.floor((fin - nowMs) / 1000));
+    const ahora = pausadoEn ? new Date(pausadoEn).getTime() : nowMs;
+    
+    // Calculamos la diferencia exacta en milisegundos
+    const diffMs = fin - ahora;
+    
+    // Usamos floor para mostrar los segundos completos, pero la base es de alta precisión (ms)
+    const restanteSeg = Math.max(0, Math.floor(diffMs / 1000));
 
     const horas = Math.floor(restanteSeg / 3600);
     const minutos = Math.floor((restanteSeg % 3600) / 60);
@@ -234,8 +241,8 @@ export default function VentanasPage() {
     }
   };
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
       const [ciclosRes, ventanasRes] = await Promise.all([
         api.get('/ciclos'),
@@ -244,11 +251,19 @@ export default function VentanasPage() {
 
       setCiclos(ciclosRes.data);
       setVentanas(ventanasRes.data);
-      setPage(0);
-      setSelectedVentana(null);
-      setCola([]);
-      setDocenteEnAtencion(null);
-      setDocenteVisible(null);
+      
+      // No resetear la selección si ya existe una válida
+      if (selectedVentana) {
+        const stillExists = ventanasRes.data.find((v: any) => v.id === selectedVentana.id);
+        if (!stillExists) {
+          setSelectedVentana(null);
+          setCola([]);
+          setDocenteEnAtencion(null);
+          setDocenteVisible(null);
+        } else {
+          setSelectedVentana(stillExists);
+        }
+      }
 
       const actual = ciclosRes.data.find((c: any) => c.esActual) || ciclosRes.data[0];
       if (actual && !formData.cicloId) {
@@ -257,7 +272,7 @@ export default function VentanasPage() {
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
@@ -300,18 +315,13 @@ export default function VentanasPage() {
 
     const ahora = new Date();
     const fechaInicio = new Date(formData.fechaHoraInicio);
-    const minimaPermitida = new Date(ahora.getTime());
-    minimaPermitida.setHours(ahora.getHours() + 1);
-    if (minimaPermitida.getMinutes() > 0 || minimaPermitida.getSeconds() > 0) {
-      minimaPermitida.setHours(minimaPermitida.getHours() + 1);
-    }
-    minimaPermitida.setMinutes(0, 0, 0);
-
-    if (fechaInicio < minimaPermitida) {
+    
+    // Validación principal: Solo permitir fechas futuras (mínimo 1 minuto después de ahora)
+    if (fechaInicio <= ahora) {
       Swal.fire({
         icon: 'warning',
         title: 'Fecha Inválida',
-        text: `La fecha de inicio debe ser posterior a las ${minimaPermitida.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (mínimo 1 hora después redondeado al entero).`,
+        text: 'La fecha de inicio debe ser posterior a la fecha y hora actual.',
         confirmButtonColor: '#003366',
       });
       return;
@@ -322,7 +332,7 @@ export default function VentanasPage() {
       Swal.fire({
         icon: 'warning',
         title: 'Horario No Permitido',
-        text: 'Las ventanas solo pueden programarse entre las 07:00 AM y la 01:00 PM (13:00).',
+        text: 'Las ventanas solo pueden programarse dentro del rango de atención institucional: 07:00 AM a 01:00 PM (13:00).',
         confirmButtonColor: '#003366',
       });
       return;
@@ -366,18 +376,18 @@ export default function VentanasPage() {
 
   const handleUpdateVentana = async () => {
     if (!editingVentana) return;
-    // Validar que la fecha de inicio sea al menos 1 hora después redondeado al próximo entero
+    
     const ahora = new Date();
-    const minimaPermitida = new Date(ahora.getTime());
-    minimaPermitida.setHours(ahora.getHours() + 1);
-    if (minimaPermitida.getMinutes() > 0 || minimaPermitida.getSeconds() > 0) {
-      minimaPermitida.setHours(minimaPermitida.getHours() + 1);
-    }
-    minimaPermitida.setMinutes(0, 0, 0);
-
     const fechaInicio = new Date(formData.fechaHoraInicio);
-    if (isNaN(fechaInicio.getTime()) || fechaInicio < minimaPermitida) {
-      Swal.fire({ icon: 'warning', title: 'Fecha Inválida', text: `La fecha de inicio debe ser posterior a las ${minimaPermitida.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (mínimo 1 hora después redondeado).`, confirmButtonColor: '#003366' });
+
+    // Validación principal: Solo permitir fechas futuras
+    if (isNaN(fechaInicio.getTime()) || fechaInicio <= ahora) {
+      Swal.fire({ 
+        icon: 'warning', 
+        title: 'Fecha Inválida', 
+        text: 'La fecha de inicio debe ser posterior a la fecha y hora actual.', 
+        confirmButtonColor: '#003366' 
+      });
       return;
     }
 
@@ -386,7 +396,7 @@ export default function VentanasPage() {
       Swal.fire({
         icon: 'warning',
         title: 'Horario No Permitido',
-        text: 'Las ventanas solo pueden programarse entre las 07:00 AM y la 01:00 PM (13:00).',
+        text: 'Las ventanas solo pueden programarse dentro del rango de atención institucional: 07:00 AM a 01:00 PM (13:00).',
         confirmButtonColor: '#003366',
       });
       return;
@@ -408,21 +418,18 @@ export default function VentanasPage() {
     }
   };
 
-  const handleLlamarSiguiente = async (ventanaId: number) => {
+  const handleLlamarSiguiente = async (ventanaId: number, docenteId?: number) => {
     try {
-      const res = await api.post(`/ventanas/${ventanaId}/llamar-siguiente`);
-      if (res.data) {
-        Swal.fire({
-          icon: 'info',
-          title: 'Turno Activado',
-          text: `Se ha activado el turno para: ${res.data.nombreCompleto}.`,
-          confirmButtonColor: '#003366',
-        });
-      }
-      if (selectedVentana) fetchCola(selectedVentana);
+      const url = docenteId 
+        ? `/ventanas/${ventanaId}/llamar-siguiente?docenteId=${docenteId}`
+        : `/ventanas/${ventanaId}/llamar-siguiente`;
+      await api.post(url);
       fetchData();
+      if (selectedVentana?.id === ventanaId) {
+        fetchCola(selectedVentana);
+      }
     } catch (error: any) {
-      Swal.fire('Atención', error.response?.data?.message || 'Error al activar turno', 'warning');
+      Swal.fire('Error', error.response?.data?.message || 'No se pudo llamar al siguiente docente', 'error');
     }
   };
 
@@ -443,7 +450,7 @@ export default function VentanasPage() {
         await api.post(`/ventanas/saltar/${docenteId}`);
         Swal.fire('Saltado', 'Se ha pasado al siguiente docente.', 'success');
         if (selectedVentana) fetchCola(selectedVentana);
-        fetchData();
+        fetchData(true); // Actualización silenciosa para no perder selección
       } catch (error: any) {
         Swal.fire('Error', error.response?.data?.message || 'No se pudo saltar al docente', 'error');
       }
@@ -513,48 +520,65 @@ export default function VentanasPage() {
 
     if (result.isConfirmed) {
       try {
-        await api.patch(`/ventanas/${id}/detener`);
+        const res = await api.patch(`/ventanas/${id}/detener`);
+        const updatedVentana = res.data;
+        
+        setVentanas(prev => prev.map(v => v.id === id ? { ...v, ...updatedVentana } : v));
+        
+        if (selectedVentana?.id === id) {
+          setSelectedVentana(prev => ({ ...prev, ...updatedVentana }));
+          fetchCola(updatedVentana);
+        }
+        
         Swal.fire('Detenida', 'La ventana ha sido finalizada forzosamente.', 'success');
-        fetchData();
       } catch (error: any) {
         Swal.fire('Error', error.response?.data?.message || 'No se pudo detener la ventana', 'error');
       }
     }
   };
 
-  const getEstadoChip = (estado: string) => {
-    switch (estado) {
-      case 'programada': return <Chip label="Programada" color="primary" variant="outlined" size="small" />;
-      case 'en_curso': return <Chip label="En Curso" color="success" size="small" icon={<PlayIcon />} />;
-      case 'finalizada': return <Chip label="Finalizada" color="default" size="small" icon={<CheckCircleIcon />} />;
-      default: return <Chip label={estado} size="small" />;
+  const handleTogglePausa = async (id: number) => {
+    try {
+      const res = await api.patch(`/ventanas/${id}/toggle-pausa`);
+      const { ventana: updatedVentana, docente: updatedDocente, serverTime } = res.data;
+      
+      // Sincronizar el reloj local con el del servidor para evitar saltos de 1s
+      if (serverTime) {
+        setNowMs(new Date(serverTime).getTime());
+      }
+
+      setVentanas(prev => prev.map(v => v.id === id ? { ...v, ...updatedVentana } : v));
+      
+      if (selectedVentana?.id === id) {
+        setSelectedVentana(prev => ({ ...prev, ...updatedVentana }));
+        
+        if (updatedDocente) {
+          setDocenteEnAtencion(updatedDocente);
+          setDocenteVisible(updatedDocente);
+        } else {
+          fetchCola(updatedVentana);
+        }
+      }
+    } catch (error: any) {
+      Swal.fire('Error', error.response?.data?.message || 'No se pudo cambiar el estado de pausa', 'error');
     }
   };
 
-  const canCallNext = (ventana: any) => {
-    if (ventana.estado === 'finalizada') return false;
-
-    const now = new Date();
-    const inicio = new Date(ventana.fechaHoraInicio);
-
-    // Calcular diferencia en minutos
-    const diffMs = inicio.getTime() - now.getTime();
-    const diffMins = diffMs / 60000;
-
-    // Habilitar si faltan entre 15 min y 10 min, o si ya empezó
-    return diffMins <= 15;
-  };
-
-  const getButtonText = (v: any) => {
-    if (v.estado === 'finalizada') return 'Finalizada';
-
-    const now = new Date();
-    const inicio = new Date(v.fechaHoraInicio);
-    const diffMins = (inicio.getTime() - now.getTime()) / 60000;
-
-    if (diffMins > 15) return `Espera (${Math.floor(diffMins)}m)`;
-    if (diffMins <= 10 && v.estado === 'programada') return 'Auto-Llamando...';
-    return 'Llamar Siguiente';
+  const getEstadoChip = (estado: string) => {
+    switch (estado) {
+      case 'programada':
+        return <Chip label="Programada" size="small" sx={{ bgcolor: '#e3f2fd', color: '#1976d2', fontWeight: 800 }} />;
+      case 'en_curso':
+        return <Chip label="En Curso" icon={<PlayIcon sx={{ color: 'inherit !important' }} />} size="small" sx={{ bgcolor: '#e8f5e9', color: '#2e7d32', fontWeight: 800 }} />;
+      case 'pausada':
+        return <Chip label="Pausada" icon={<PauseIcon sx={{ color: 'inherit !important' }} />} size="small" sx={{ bgcolor: '#fff3e0', color: '#ed6c02', fontWeight: 800 }} />;
+      case 'finalizada':
+        return <Chip label="Finalizada" icon={<CheckCircleIcon sx={{ color: 'inherit !important' }} />} size="small" sx={{ bgcolor: '#f5f5f5', color: '#616161', fontWeight: 800 }} />;
+      case 'vencida':
+        return <Chip label="Vencida" icon={<AlertIcon sx={{ color: 'inherit !important' }} />} size="small" sx={{ bgcolor: '#fff3e0', color: '#ef6c00', fontWeight: 800 }} />;
+      default:
+        return <Chip label={estado} size="small" />;
+    }
   };
 
   return (
@@ -682,44 +706,82 @@ export default function VentanasPage() {
                             <TableCell align="center">
                               <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
                                 {v.estado === 'programada' && isGestionAllowed && (
-                                  <>
-                                    <IconButton
-                                      size="small"
-                                      color="primary"
-                                      onClick={(e) => { e.stopPropagation(); openEditDialog(v); }}
-                                      title="Editar Programación"
-                                    >
-                                      <EditIcon fontSize="small" />
-                                    </IconButton>
-                                    <IconButton
-                                      size="small"
-                                      color="error"
-                                      onClick={(e) => { e.stopPropagation(); handleDeleteVentana(v.id); }}
-                                      title="Eliminar Programación"
-                                    >
-                                      <DeleteIcon fontSize="small" />
-                                    </IconButton>
-                                  </>
+                                  <IconButton
+                                    size="small"
+                                    color="primary"
+                                    onClick={(e) => { e.stopPropagation(); openEditDialog(v); }}
+                                    title="Editar Programación"
+                                  >
+                                    <EditIcon fontSize="small" />
+                                  </IconButton>
                                 )}
-                                {v.estado === 'en_curso' && isGestionAllowed && (
+                                {v.estado === 'vencida' && isGestionAllowed && (
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => { e.stopPropagation(); openEditDialog(v); }}
+                                    sx={{ color: '#ef6c00', bgcolor: '#fff3e0', '&:hover': { bgcolor: '#ffe0b2' } }}
+                                    title="Reprogramar para Hoy"
+                                  >
+                                    <CalendarIcon fontSize="small" />
+                                  </IconButton>
+                                )}
+                                {isGestionAllowed && v.estado !== 'en_curso' && v.estado !== 'pausada' && v.estado !== 'finalizada' && (
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteVentana(v.id); }}
+                                    title="Eliminar Programación"
+                                  >
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                )}
+                                { (v.estado === 'en_curso' || v.estado === 'pausada') && isGestionAllowed && (
                                   <Box sx={{ display: 'flex', gap: 1 }}>
-                                    <Button
-                                      size="small"
-                                      variant="contained"
-                                      color="success"
-                                      startIcon={<PlayIcon />}
-                                      onClick={(e) => { e.stopPropagation(); handleLlamarSiguiente(v.id); }}
-                                      sx={{ fontWeight: 800, borderRadius: 2, fontSize: '0.65rem' }}
-                                    >
-                                      LLAMAR SIGT.
-                                    </Button>
+                                    {v.estado === 'en_curso' && (
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        color="warning"
+                                        startIcon={<PauseIcon />}
+                                        onClick={(e) => { e.stopPropagation(); handleTogglePausa(v.id); }}
+                                        sx={{ fontWeight: 800, borderRadius: 2, fontSize: '0.65rem' }}
+                                      >
+                                        PAUSAR
+                                      </Button>
+                                    )}
+                                    {v.estado === 'pausada' && (
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        color="primary"
+                                        startIcon={<PlayIcon />}
+                                        onClick={(e) => { e.stopPropagation(); handleTogglePausa(v.id); }}
+                                        sx={{ 
+                                          fontWeight: 800, 
+                                          borderRadius: 2, 
+                                          fontSize: '0.65rem',
+                                          bgcolor: 'transparent',
+                                          borderWidth: 2,
+                                          '&:hover': { borderWidth: 2 }
+                                        }}
+                                      >
+                                        REANUDAR
+                                      </Button>
+                                    )}
                                     <Button
                                       size="small"
                                       variant="outlined"
-                                      color="warning"
+                                      color="error"
                                       startIcon={<StopIcon />}
                                       onClick={(e) => { e.stopPropagation(); handleDetenerVentana(v.id); }}
-                                      sx={{ fontWeight: 800, borderRadius: 2, fontSize: '0.65rem' }}
+                                      sx={{ 
+                                        fontWeight: 800, 
+                                        borderRadius: 2, 
+                                        fontSize: '0.65rem',
+                                        bgcolor: 'transparent',
+                                        borderWidth: 2,
+                                        '&:hover': { borderWidth: 2 }
+                                      }}
                                     >
                                       DETENER
                                     </Button>
@@ -782,10 +844,17 @@ export default function VentanasPage() {
                           </Avatar>
                           <Box>
                             <Typography sx={{ fontWeight: 800, color: '#003366' }}>{docenteVisible.nombreCompleto}</Typography>
-                            <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', color: '#1976d2', fontWeight: 700 }}>
-                              <TimerIcon fontSize="inherit" sx={{ mr: 0.5 }} />
-                              Restante: {getTiempoRestante(docenteVisible.finAtencion)}
-                            </Typography>
+                            {selectedVentana?.estado === 'pausada' ? (
+                              <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', color: '#ed6c02', fontWeight: 900 }}>
+                                <PauseIcon fontSize="inherit" sx={{ mr: 0.5 }} />
+                                Restante: {getTiempoRestante(docenteVisible.finAtencion, selectedVentana.pausadoEn)}
+                              </Typography>
+                            ) : (
+                              <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', color: '#1976d2', fontWeight: 700 }}>
+                                <TimerIcon fontSize="inherit" sx={{ mr: 0.5 }} />
+                                Restante: {getTiempoRestante(docenteVisible.finAtencion)}
+                              </Typography>
+                            )}
                           </Box>
                         </Box>
                         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -796,11 +865,11 @@ export default function VentanasPage() {
                                 size="small"
                                 variant="outlined"
                                 color="error"
-                                startIcon={<SkipIcon />}
+                                startIcon={<ArrowRightIcon />}
                                 onClick={() => handleSaltar(docenteVisible.id)}
                                 sx={{ fontWeight: 800, borderRadius: 2 }}
                               >
-                                SALTAR
+                                SIGUIENTE
                               </Button>
                               <Button
                                 fullWidth

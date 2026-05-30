@@ -1,17 +1,20 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, OnModuleInit } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Repository, MoreThan, LessThanOrEqual, Not, IsNull } from 'typeorm';
+import { Repository, MoreThan, LessThanOrEqual, Not, IsNull, In } from 'typeorm';
 import { VentanaAtencion, EstadoVentana, TipoContratoVentana, CategoriaVentana } from '../../database/entities/ventana-atencion.entity';
 import { Docente, EstadoSeleccion, TipoContrato, Categoria } from '../../database/entities/docente.entity';
 import { CreateVentanaDto } from './dto/create-ventana.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion } from '../../database/entities/notificacion.entity';
+import { VentanasGateway } from './ventanas.gateway';
 
 @Injectable()
-export class VentanasService {
+export class VentanasService implements OnModuleInit {
   private readonly logger = new Logger(VentanasService.name);
   private readonly docentesNotificados = new Set<number>();
+  private ventanasGateway: VentanasGateway;
 
   private parseVentanaDate(value: string): Date {
     // Si no viene zona horaria (datetime-local), asumimos hora local de Peru (UTC-5).
@@ -29,7 +32,12 @@ export class VentanasService {
     @InjectRepository(Docente)
     private docenteRepo: Repository<Docente>,
     private notificacionesService: NotificacionesService,
+    private moduleRef: ModuleRef,
   ) {}
+
+  onModuleInit() {
+    this.ventanasGateway = this.moduleRef.get(VentanasGateway, { strict: false });
+  }
 
   async create(createVentanaDto: CreateVentanaDto): Promise<{ message: string; ventanas: VentanaAtencion[] }> {
     const { cicloId, fechaHoraInicio, duracionMinutos } = createVentanaDto;
@@ -243,6 +251,15 @@ export class VentanasService {
     // Guardar docente antes de notificar para asegurar consistencia
     const savedDocente = await this.docenteRepo.save(siguienteDocente);
 
+    // Notificar por socket si el gateway está disponible
+    if (this.ventanasGateway?.server) {
+      const miEstado = await this.getMiEstado(savedDocente.id);
+      this.ventanasGateway.server.emit('ventanas:mi-estado', { 
+        ...miEstado, 
+        docenteId: savedDocente.id 
+      });
+    }
+
     // Generar notificación interna
     await this.notificacionesService.create(
       savedDocente.id,
@@ -309,6 +326,114 @@ export class VentanasService {
     return ventana;
   }
 
+  async togglePausa(ventanaId: number): Promise<{ ventana: VentanaAtencion; docente?: Docente; serverTime: Date }> {
+    const ventana = await this.ventanaRepo.findOne({ where: { id: ventanaId, activo: true } });
+    if (!ventana) throw new NotFoundException('Ventana no encontrada');
+
+    const ahora = new Date();
+    let docenteActual: Docente | undefined;
+
+    if (ventana.estado === EstadoVentana.EN_CURSO) {
+      ventana.estado = EstadoVentana.PAUSADA;
+      ventana.pausadoEn = ahora;
+      this.logger.log(`Ventana ${ventanaId} PAUSADA.`);
+      
+      docenteActual = await this.docenteRepo.findOne({
+        where: { ventanaId: ventanaId, estadoSeleccion: EstadoSeleccion.EN_ATENCION, activo: true }
+      }) || undefined;
+      
+    } else if (ventana.estado === EstadoVentana.PAUSADA) {
+      docenteActual = await this.docenteRepo.findOne({
+        where: { ventanaId: ventanaId, estadoSeleccion: EstadoSeleccion.EN_ATENCION, activo: true }
+      }) || undefined;
+
+      if (docenteActual && docenteActual.finAtencion && ventana.pausadoEn) {
+        // Calcular exactamente cuánto tiempo estuvo pausada
+        const msPausados = ahora.getTime() - ventana.pausadoEn.getTime();
+        
+        // 1. Compensar al docente actual
+        const nuevaFechaFinDocente = new Date(docenteActual.finAtencion.getTime() + msPausados);
+        docenteActual.finAtencion = nuevaFechaFinDocente;
+        await this.docenteRepo.save(docenteActual);
+
+        // 2. Expandir la ventana actual
+        ventana.fechaHoraFin = new Date(ventana.fechaHoraFin.getTime() + msPausados);
+
+        // 3. EFECTO DOMINÓ (mejorado): Encadenar ventanas futuras para que la siguiente
+        // comience justo cuando termine la anterior (preservando duraciones), y
+        // mover al día siguiente si sobrepasa la franja institucional.
+        const ventanasFuturas = await this.ventanaRepo.find({
+          where: {
+            activo: true,
+            estado: In([EstadoVentana.PROGRAMADA, EstadoVentana.EN_CURSO]),
+            id: Not(ventana.id),
+            fechaHoraInicio: MoreThan(ventana.fechaHoraInicio)
+          },
+          order: { fechaHoraInicio: 'ASC' }
+        });
+
+        const HORA_INICIO = 7;
+        const HORA_FIN = 13;
+
+        // Usar transacción para evitar estados parciales si algo falla
+        await this.ventanaRepo.manager.transaction(async (manager) => {
+          // referencia inicial: el nuevo fin de la ventana actual (ya compensado)
+          let referencia = new Date(ventana.fechaHoraFin.getTime());
+
+          for (const v of ventanasFuturas) {
+            // Duración original de la ventana
+            const duracionMs = v.fechaHoraFin.getTime() - v.fechaHoraInicio.getTime();
+
+            // La siguiente ventana debe empezar cuando termine la anterior
+            let nuevoInicio = new Date(referencia.getTime());
+            let nuevoFin = new Date(nuevoInicio.getTime() + duracionMs);
+
+            // Si el nuevo fin sobrepasa la franja institucional, mover al día siguiente
+            const horaFinPeru = nuevoFin.getHours();
+            if (horaFinPeru >= HORA_FIN) {
+              nuevoInicio = new Date(nuevoInicio.getTime());
+              nuevoInicio.setDate(nuevoInicio.getDate() + 1);
+              nuevoInicio.setHours(HORA_INICIO, 0, 0, 0);
+              nuevoFin = new Date(nuevoInicio.getTime() + duracionMs);
+            }
+
+            v.fechaHoraInicio = nuevoInicio;
+            v.fechaHoraFin = nuevoFin;
+            await manager.save(v);
+
+            // Avanzar la referencia al fin de esta ventana para encadenar la siguiente
+            referencia = new Date(v.fechaHoraFin.getTime());
+          }
+        });
+
+        this.logger.log(`Reanudando: Se compensaron ${Math.round(msPausados / 1000)}s y se reprogramaron ${ventanasFuturas.length} ventanas (encadenadas).`);
+      }
+
+      ventana.estado = EstadoVentana.EN_CURSO;
+      ventana.pausadoEn = null;
+      this.logger.log(`Ventana ${ventanaId} REANUDADA.`);
+    } else if (ventana.estado === EstadoVentana.PROGRAMADA) {
+      ventana.estado = EstadoVentana.PAUSADA;
+      ventana.pausadoEn = ahora;
+      this.logger.log(`Ventana ${ventanaId} PAUSADA.`);
+    } else {
+      throw new BadRequestException('Solo se pueden pausar/reanudar ventanas en curso, programadas o pausadas');
+    }
+
+    const ventanaGuardada = await this.ventanaRepo.save(ventana);
+
+    // Notificar al docente por socket si existe para sincronizar su UI al instante
+    if (docenteActual && this.ventanasGateway?.server) {
+      const miEstado = await this.getMiEstado(docenteActual.id);
+      this.ventanasGateway.server.emit('ventanas:mi-estado', { 
+        ...miEstado, 
+        docenteId: docenteActual.id 
+      });
+    }
+
+    return { ventana: ventanaGuardada, docente: docenteActual, serverTime: ahora };
+  }
+
   async remove(ventanaId: number): Promise<{ message: string }> {
     const ventana = await this.ventanaRepo.findOne({ where: { id: ventanaId } });
     if (!ventana) {
@@ -333,18 +458,11 @@ export class VentanasService {
     return { message: 'Ventana eliminada y docentes liberados correctamente' };
   }
 
-  async finalizarTurno(docenteId: number): Promise<Docente> {
-    const docente = await this.docenteRepo.findOne({ where: { id: docenteId } });
-    if (!docente) {
-      throw new NotFoundException('Docente no encontrado');
-    }
-
-    docente.estadoSeleccion = EstadoSeleccion.FINALIZADO;
-    return await this.docenteRepo.save(docente);
-  }
-
   async validarPermisoRegistro(docenteId: number): Promise<{ permitido: boolean; mensaje?: string; finAtencion?: Date }> {
-    const docente = await this.docenteRepo.findOne({ where: { id: docenteId } });
+    const docente = await this.docenteRepo.findOne({ 
+      where: { id: docenteId },
+      relations: ['ventana']
+    });
     
     if (!docente) {
       return { permitido: false, mensaje: 'Docente no encontrado' };
@@ -352,6 +470,16 @@ export class VentanasService {
 
     if (docente.estadoSeleccion !== EstadoSeleccion.EN_ATENCION) {
       return { permitido: false, mensaje: 'Aún no es tu turno o tu ventana de selección ha finalizado' };
+    }
+
+    // Verificar si la ventana está pausada
+    if (docente.ventana?.estado === EstadoVentana.PAUSADA) {
+      return { permitido: false, mensaje: 'El proceso de registro está pausado temporalmente por el administrador.' };
+    }
+
+    // Solo permitir si la ventana está en curso
+    if (docente.ventana?.estado !== EstadoVentana.EN_CURSO) {
+      return { permitido: false, mensaje: 'Tu ventana de atención no está activa en este momento.' };
     }
 
     const ahora = new Date();
@@ -380,6 +508,7 @@ export class VentanasService {
       where: [
         { estado: EstadoVentana.PROGRAMADA, activo: true },
         { estado: EstadoVentana.EN_CURSO, activo: true },
+        { estado: EstadoVentana.PAUSADA, activo: true },
       ],
     });
 
@@ -388,14 +517,25 @@ export class VentanasService {
     }
     
     if (docente.estadoSeleccion === EstadoSeleccion.EN_ATENCION) {
-      if (docente.finAtencion && ahora > docente.finAtencion) {
+      const ventana = docente.ventanaId
+        ? await this.ventanaRepo.findOne({ where: { id: docente.ventanaId } })
+        : null;
+
+      if (docente.finAtencion && ahora > docente.finAtencion && ventana?.estado !== EstadoVentana.PAUSADA) {
         docente.estadoSeleccion = EstadoSeleccion.FINALIZADO;
         await this.docenteRepo.save(docente);
       } else {
+        // Si está pausada, calculamos los segundos restantes basándonos en el momento de la pausa, NO en el ahora.
+        const referencia = (ventana?.estado === EstadoVentana.PAUSADA && ventana.pausadoEn) 
+          ? ventana.pausadoEn 
+          : ahora;
+
         return {
           estado: docente.estadoSeleccion,
           finAtencion: docente.finAtencion,
-          segundosRestantes: docente.finAtencion ? Math.max(0, Math.floor((docente.finAtencion.getTime() - ahora.getTime()) / 1000)) : 0
+          ventanaEstado: ventana?.estado,
+          pausadoEn: ventana?.pausadoEn,
+          segundosRestantes: docente.finAtencion ? Math.max(0, Math.floor((docente.finAtencion.getTime() - referencia.getTime()) / 1000)) : 0
         };
       }
     }
@@ -624,6 +764,7 @@ export class VentanasService {
   @Cron(CronExpression.EVERY_MINUTE)
   async handleAutoGestion() {
     const ahora = new Date();
+    const hoy = ahora.toISOString().split('T')[0];
     
     // 1. AUTO-FINALIZAR TURNOS EXPIRADOS Y LLAMAR SIGUIENTE
     const docentesEnAtencion = await this.docenteRepo.find({
@@ -631,6 +772,14 @@ export class VentanasService {
     });
 
     for (const docente of docentesEnAtencion) {
+      const ventanaDocente = docente.ventanaId
+        ? await this.ventanaRepo.findOne({ where: { id: docente.ventanaId } })
+        : null;
+
+      if (ventanaDocente?.estado === EstadoVentana.PAUSADA) {
+        continue;
+      }
+
       if (docente.finAtencion && ahora >= docente.finAtencion) {
         this.logger.log(`Turno expirado para ${docente.nombreCompleto}. Auto-finalizando...`);
         docente.estadoSeleccion = EstadoSeleccion.FINALIZADO;
@@ -646,73 +795,141 @@ export class VentanasService {
       }
     }
 
-    // 2. NOTIFICAR 15 MIN ANTES (Próxima Ventana o Próximo Turno)
+    // 2. GESTIÓN DE VENTANAS PROGRAMADAS Y VENCIDAS
     const ventanasProximas = await this.ventanaRepo.find({
       where: { estado: EstadoVentana.PROGRAMADA, activo: true },
     });
 
     for (const ventana of ventanasProximas) {
+      const fechaVentana = ventana.fechaHoraInicio.toISOString().split('T')[0];
       const diffMs = ventana.fechaHoraInicio.getTime() - ahora.getTime();
       const diffMins = Math.floor(diffMs / 60000);
 
-      // Si faltan 15 min para que inicie la ventana, notificar al primer docente de la cola global
-      if (diffMins <= 15 && diffMins > 14) {
-        const primero = await this.docenteRepo.findOne({
-          where: { estadoSeleccion: EstadoSeleccion.EN_ESPERA, activo: true },
-          order: { 
-            tipoContrato: 'ASC', 
-            categoria: 'ASC',
-            antiguedadAnios: 'DESC' 
-          }
-        });
-
-        if (primero && !this.docentesNotificados.has(primero.id)) {
-          this.logger.log(`NOTIFICACIÓN: Hola ${primero.nombreCompleto}, la ventana global de atención inicia en 15 min.`);
-          await this.notificacionesService.create(
-            primero.id,
-            'Tu turno se acerca',
-            `Hola ${primero.nombreCompleto}, el proceso de selección inicia en aproximadamente 15 minutos. Eres el primero en la cola.`,
-            TipoNotificacion.RECORDATORIO_15MIN
-          );
-          this.docentesNotificados.add(primero.id);
-        }
+      // SEGURIDAD CRON: Si la ventana es de un día pasado, marcarla como VENCIDA
+      if (fechaVentana < hoy) {
+        this.logger.warn(`Ventana ${ventana.id} del día ${fechaVentana} marcada como VENCIDA por el Cron.`);
+        ventana.estado = EstadoVentana.VENCIDA;
+        await this.ventanaRepo.save(ventana);
+        continue;
       }
 
-      // Si ya debe iniciar (llegó la hora), llamarlo
-      if (diffMins <= 0) {
-        await this.llamarSiguiente(ventana.id);
+      // Solo procesar ventanas de HOY
+      if (fechaVentana === hoy) {
+        // Notificar 15 min antes
+        if (diffMins <= 15 && diffMins > 14) {
+          const primero = await this.docenteRepo.findOne({
+            where: { estadoSeleccion: EstadoSeleccion.EN_ESPERA, activo: true, ventanaId: ventana.id },
+            order: { 
+              antiguedadAnios: 'DESC' 
+            }
+          });
+
+          if (primero && !this.docentesNotificados.has(primero.id)) {
+            this.logger.log(`NOTIFICACIÓN: Hola ${primero.nombreCompleto}, tu ventana inicia en 15 min.`);
+            try {
+              await this.notificacionesService.create(
+                primero.id,
+                'Tu turno se acerca',
+                `Hola ${primero.nombreCompleto}, el proceso de selección para tu categoría inicia en aproximadamente 15 minutos.`,
+                TipoNotificacion.RECORDATORIO_15MIN
+              );
+              this.docentesNotificados.add(primero.id);
+            } catch (err) {
+              this.logger.error(`Error al crear notificación para docente ${primero.id}: ${err.message}`);
+            }
+          }
+        }
+
+        // Si ya debe iniciar (llegó la hora), llamarlo
+        if (diffMins <= 0) {
+          // Si ya pasaron más de 120 min de la hora de inicio de HOY y sigue programada,
+          // es posible que el sistema haya estado caído. La marcamos como vencida por seguridad.
+          if (diffMins < -120) {
+            this.logger.warn(`Ventana ${ventana.id} de hoy marcada como VENCIDA por retraso excesivo (>2h).`);
+            ventana.estado = EstadoVentana.VENCIDA;
+            await this.ventanaRepo.save(ventana);
+          } else {
+            try {
+              await this.llamarSiguiente(ventana.id);
+            } catch (err) {
+              this.logger.error(`Error al llamar siguiente en ventana ${ventana.id}: ${err.message}`);
+            }
+          }
+        }
       }
     }
 
     // 3. NOTIFICAR AL SIGUIENTE MIENTRAS UNO ESTÁ EN ATENCIÓN (Cola Global)
     for (const docente of docentesEnAtencion) {
+      const ventanaDocente = docente.ventanaId
+        ? await this.ventanaRepo.findOne({ where: { id: docente.ventanaId } })
+        : null;
+
+      if (ventanaDocente?.estado === EstadoVentana.PAUSADA) {
+        continue;
+      }
+
       if (docente.finAtencion) {
         const diffMs = docente.finAtencion.getTime() - ahora.getTime();
         const diffMins = Math.floor(diffMs / 60000);
 
-        // Si al docente actual le quedan 15 min, notificar al siguiente de la cola global
-        if (diffMins <= 15 && diffMins > 14) {
+        // Si al docente actual le quedan 5 min, notificar al siguiente de la cola global
+        if (diffMins <= 5 && diffMins > 4) {
           const siguiente = await this.docenteRepo.findOne({
-            where: { estadoSeleccion: EstadoSeleccion.EN_ESPERA, activo: true },
+            where: docente.ventanaId
+              ? { estadoSeleccion: EstadoSeleccion.EN_ESPERA, activo: true, ventanaId: docente.ventanaId }
+              : { estadoSeleccion: EstadoSeleccion.EN_ESPERA, activo: true },
             order: { 
-              tipoContrato: 'ASC', 
-              categoria: 'ASC',
               antiguedadAnios: 'DESC' 
             }
           });
 
           if (siguiente && !this.docentesNotificados.has(siguiente.id)) {
             this.logger.log(`NOTIFICACIÓN: Hola ${siguiente.nombreCompleto}, prepárate. Tu turno inicia pronto.`);
-            await this.notificacionesService.create(
-              siguiente.id,
-              'Prepárate para tu turno',
-              `Hola ${siguiente.nombreCompleto}, el docente actual está por terminar. Tu turno iniciará en aproximadamente 15 minutos.`,
-              TipoNotificacion.RECORDATORIO_15MIN
-            );
-            this.docentesNotificados.add(siguiente.id);
+            try {
+              await this.notificacionesService.create(
+                siguiente.id,
+                'Prepárate para tu turno',
+                `Hola ${siguiente.nombreCompleto}, el docente actual está por terminar. Tu turno iniciará en aproximadamente 5 minutos.`,
+                TipoNotificacion.RECORDATORIO_15MIN
+              );
+              this.docentesNotificados.add(siguiente.id);
+            } catch (err) {
+              this.logger.error(`Error al crear notificación para docente ${siguiente.id}: ${err.message}`);
+            }
           }
         }
       }
+    }
+  }
+
+  async finalizarTurno(docenteId: number): Promise<void> {
+    const docente = await this.docenteRepo.findOne({ 
+      where: { id: docenteId },
+      relations: ['ventana']
+    });
+    
+    if (!docente) throw new NotFoundException('Docente no encontrado');
+    if (docente.estadoSeleccion !== EstadoSeleccion.EN_ATENCION) {
+      throw new BadRequestException('El docente no está en atención actualmente');
+    }
+
+    this.logger.log(`Docente ${docente.nombreCompleto} finalizó su turno voluntariamente.`);
+    docente.estadoSeleccion = EstadoSeleccion.FINALIZADO;
+    docente.finAtencion = new Date();
+    await this.docenteRepo.save(docente);
+
+    // Notificar por socket si el gateway está disponible
+    if (this.ventanasGateway?.server) {
+      this.ventanasGateway.server.emit('ventanas:mi-estado', {
+        estado: 'finalizado', 
+        docenteId: docente.id 
+      });
+    }
+
+    // Llamar al siguiente de inmediato
+    if (docente.ventanaId) {
+      await this.llamarSiguiente(docente.ventanaId);
     }
   }
 }

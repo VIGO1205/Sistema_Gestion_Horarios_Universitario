@@ -6,7 +6,8 @@ const pad = (value: number) => String(value).padStart(2, '0');
 
 const toPeruTimestampString = (date: Date): string => {
   const peruDate = new Date(date.getTime() - PERU_OFFSET_MS);
-  return `${peruDate.getUTCFullYear()}-${pad(peruDate.getUTCMonth() + 1)}-${pad(peruDate.getUTCDate())} ${pad(peruDate.getUTCHours())}:${pad(peruDate.getUTCMinutes())}:${pad(peruDate.getUTCSeconds())}`;
+  const ms = String(peruDate.getUTCMilliseconds()).padStart(3, '0');
+  return `${peruDate.getUTCFullYear()}-${pad(peruDate.getUTCMonth() + 1)}-${pad(peruDate.getUTCDate())} ${pad(peruDate.getUTCHours())}:${pad(peruDate.getUTCMinutes())}:${pad(peruDate.getUTCSeconds())}.${ms}`;
 };
 
 const fromPeruTimestampValue = (value: unknown): Date | null => {
@@ -19,13 +20,14 @@ const fromPeruTimestampValue = (value: unknown): Date | null => {
   }
 
   if (typeof value === 'string') {
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+    // Soportar formatos con y sin milisegundos
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{3}))?)?)?/);
     if (!match) {
       return new Date(value);
     }
 
-    const [, year, month, day, hour = '00', minute = '00', second = '00'] = match;
-    return new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}-05:00`);
+    const [, year, month, day, hour = '00', minute = '00', second = '00', ms = '000'] = match;
+    return new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}.${ms}-05:00`);
   }
 
   return value as Date;

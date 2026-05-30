@@ -1,14 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Paper, Typography, Chip, Slide, IconButton, Tooltip } from '@mui/material';
+import { Box, Paper, Typography, Chip, Slide, IconButton, Tooltip, Button } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import TimerIcon from '@mui/icons-material/Timer';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import PlayIcon from '@mui/icons-material/PlayArrow';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import PauseIcon from '@mui/icons-material/Pause';
 import api from '@/lib/api';
 import { useAuth } from './providers/AuthProvider';
 import { getVentanasSocket } from '@/lib/socket';
+import Swal from 'sweetalert2';
 
 const formatCountdown = (segundos: number) => {
   const total = Math.max(0, Math.floor(segundos));
@@ -51,6 +55,18 @@ export default function VentanaFlotanteDocente() {
     let mounted = true;
     let detachSocket: (() => void) | null = null;
 
+    const fetchEstado = async () => {
+      try {
+        const estadoRes = await api.get('/ventanas/mi-estado');
+        if (mounted) {
+          setEstadoSeleccion(estadoRes.data);
+          setEstadoSincronizadoMs(Date.now());
+        }
+      } catch (e) {
+        console.error('Error fetching estado for VentanaFlotante', e);
+      }
+    };
+
     const initializeSocket = async () => {
       try {
         const s = await getVentanasSocket();
@@ -61,38 +77,33 @@ export default function VentanaFlotanteDocente() {
           if (payload.docenteId && Number(payload.docenteId) !== Number(docenteId)) return;
           setEstadoSeleccion(payload);
           setEstadoSincronizadoMs(Date.now());
-          // eslint-disable-next-line no-console
-          console.log('[VentanaFlotante] socket update', { payload });
+          console.log('[VentanaFlotante] socket update', payload);
         };
 
-        s.off('ventanas:mi-estado', handler);
         s.on('ventanas:mi-estado', handler);
         detachSocket = () => {
           s.off('ventanas:mi-estado', handler);
         };
 
-        // initial fetch fallback
-        try {
-          const estadoRes = await api.get('/ventanas/mi-estado');
-          if (mounted) {
-            setEstadoSeleccion(estadoRes.data);
-            setEstadoSincronizadoMs(Date.now());
-          }
-        } catch (e) {
-          console.error('Error fetching initial estado for VentanaFlotante', e);
-        }
+        // Initial fetch
+        await fetchEstado();
       } catch (err) {
         console.error('Error connecting VentanaFlotante to socket', err);
+        // Fallback to initial fetch if socket fails
+        await fetchEstado();
       }
     };
 
     initializeSocket();
 
+    // Polling de seguridad cada 5 segundos para mantener sincronización
+    const pollInterval = setInterval(fetchEstado, 5000);
+
     return () => {
       mounted = false;
+      clearInterval(pollInterval);
       if (detachSocket) {
         detachSocket();
-        detachSocket = null;
       }
     };
   }, [docenteId, isAuthenticated, isValidating, usuario?.rol]);
@@ -107,28 +118,79 @@ export default function VentanaFlotanteDocente() {
     return () => clearInterval(intervalId);
   }, [estadoSeleccion?.estado]);
 
+  const handleLlamarSiguiente = async () => {
+    try {
+      await api.patch(`/ventanas/llamar-siguiente/${docenteId}`);
+      Swal.fire({
+        title: 'Siguiente docente llamado',
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } catch (error: any) {
+      Swal.fire('Error', error.response?.data?.message || 'No se pudo llamar al siguiente docente', 'error');
+    }
+  };
+
+  const handleFinalizarTurno = async () => {
+    const result = await Swal.fire({
+      title: '¿Finalizar tu turno?',
+      text: 'Confirma que has terminado de registrar tus horarios. Una vez finalizado, ya no podrás realizar cambios.',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#166534',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Sí, he terminado',
+      cancelButtonText: 'Continuar editando'
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await api.patch(`/ventanas/finalizar-turno/${docenteId}`);
+        Swal.fire({
+          title: 'Turno Finalizado',
+          text: 'Gracias por completar tu registro. Se llamará al siguiente docente.',
+          icon: 'success',
+          timer: 3000,
+          showConfirmButton: false
+        });
+        // El socket o el refresco de la página se encargará de ocultar la ventana
+      } catch (error: any) {
+        Swal.fire('Error', error.response?.data?.message || 'No se pudo finalizar el turno', 'error');
+      }
+    }
+  };
+
   const view = useMemo(() => {
     const estadoActual = estadoSeleccion?.estado ?? null;
-    const segundosTranscurridos = Math.max(0, Math.floor((nowMs - estadoSincronizadoMs) / 1000));
+    const isPausada = estadoSeleccion?.ventanaEstado === 'pausada';
+    // Segundos transcurridos desde que recibimos/ sincronizamos el estado del servidor
+    const segundosTranscurridos = Math.max(0, Math.round((nowMs - estadoSincronizadoMs) / 1000));
 
     if (estadoActual === 'en_atencion') {
       const fin = new Date(estadoSeleccion?.finAtencion).getTime();
-      const segundosRestantes = Math.max(0, Math.floor((fin - nowMs) / 1000));
+      
+      // Lógica de congelación real:
+      // Si el servidor nos envía los segundosRestantes (ya congelados en el backend), los usamos directamente.
+      // Si no está pausado, calculamos normalmente usando nowMs.
+      const segundosRestantes = isPausada 
+        ? (estadoSeleccion.segundosRestantes ?? Math.max(0, Math.round((fin - new Date(estadoSeleccion.pausadoEn || estadoSincronizadoMs).getTime()) / 1000)))
+        : Math.max(0, Math.round((fin - nowMs) / 1000));
 
-      if (segundosRestantes <= 0) {
+      if (segundosRestantes <= 0 && !isPausada) {
         return { visible: false };
       }
 
       return {
         visible: true,
-        title: 'Registro activo',
-        subtitle: 'Tu turno ya comenzó.',
+        title: isPausada ? 'Registro pausado' : 'Registro activo',
+        subtitle: isPausada ? 'El administrador ha pausado el tiempo.' : 'Tu turno ya comenzó.',
         countdown: formatCountdown(segundosRestantes),
-        badge: 'ACTIVO',
-        icon: <TimerIcon sx={{ color: '#166534' }} />,
-        accent: '#166534',
-        bg: 'rgba(22, 101, 52, 0.08)',
-        border: '#bbf7d0',
+        badge: isPausada ? 'PAUSADO' : 'ACTIVO',
+        icon: isPausada ? <PauseIcon sx={{ color: '#ed6c02' }} /> : <TimerIcon sx={{ color: '#166534' }} />,
+        accent: isPausada ? '#ed6c02' : '#166534',
+        bg: isPausada ? '#fff7ed' : 'rgba(22, 101, 52, 0.08)',
+        border: isPausada ? '#ed6c02' : '#bbf7d0',
       };
     }
 
@@ -195,14 +257,18 @@ export default function VentanaFlotanteDocente() {
           maxWidth: 'calc(100vw - 24px)',
           p: isMinimized ? 1 : 2,
           borderRadius: isMinimized ? 999 : 4,
-          border: `1px solid ${view.border}`,
+          border: `2px solid ${view.border}`, // Borde un poco más grueso
           boxShadow: '0 16px 40px rgba(15, 23, 42, 0.18)',
-          bgcolor: '#ffffff',
+          bgcolor: estadoSeleccion?.ventanaEstado === 'pausada' ? '#fff7ed' : '#ffffff', // Fondo naranja muy claro si está pausado
           overflow: 'hidden',
+          transition: 'all 0.3s ease', // Transición suave de colores
         }}
       >
         {isMinimized ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 1, pr: 0.5 }}>
+            {estadoSeleccion?.ventanaEstado === 'pausada' && (
+              <PauseIcon sx={{ color: '#ed6c02', fontSize: 20 }} />
+            )}
             <Typography
               variant="h6"
               sx={{
@@ -210,7 +276,7 @@ export default function VentanaFlotanteDocente() {
                 color: view.accent,
                 letterSpacing: '-0.03em',
                 lineHeight: 1,
-                minWidth: 116,
+                minWidth: estadoSeleccion?.ventanaEstado === 'pausada' ? 'auto' : 116,
                 textAlign: 'center',
               }}
             >
@@ -278,6 +344,46 @@ export default function VentanaFlotanteDocente() {
                 {view.countdown}
               </Typography>
             </Box>
+
+            {estadoSeleccion?.estado === 'en_atencion' && (
+              <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  color="success"
+                  startIcon={<PlayIcon />}
+                  onClick={handleLlamarSiguiente}
+                  disabled={estadoSeleccion?.ventanaEstado === 'pausada'}
+                  sx={{
+                    borderRadius: 3,
+                    fontWeight: 900,
+                    textTransform: 'none',
+                    fontSize: '0.8rem',
+                    boxShadow: '0 4px 12px rgba(46, 125, 50, 0.2)',
+                  }}
+                >
+                  Siguiente
+                </Button>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  startIcon={<CheckCircleIcon />}
+                  onClick={handleFinalizarTurno}
+                  disabled={estadoSeleccion?.ventanaEstado === 'pausada'}
+                  sx={{
+                    borderRadius: 3,
+                    fontWeight: 900,
+                    bgcolor: '#166534',
+                    '&:hover': { bgcolor: '#14532d' },
+                    textTransform: 'none',
+                    fontSize: '0.8rem',
+                    boxShadow: '0 4px 12px rgba(22, 101, 52, 0.2)',
+                  }}
+                >
+                  Finalizar
+                </Button>
+              </Box>
+            )}
           </Box>
         )}
       </Paper>

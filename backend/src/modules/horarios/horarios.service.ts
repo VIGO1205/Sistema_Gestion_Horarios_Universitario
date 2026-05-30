@@ -53,10 +53,10 @@ export class HorariosService {
     return await this.dataSource.transaction(async (manager: EntityManager) => {
       // 1. Validar Permisos
       if (user?.rol === RolUsuario.DOCENTE) {
-        if (!user.docenteId || user.docenteId !== data.docenteId) {
+        if (!user.docenteId || Number(user.docenteId) !== Number(data.docenteId)) {
           throw new BadRequestException('No tienes permiso para registrar horarios para otro docente');
         }
-        const permiso = await this.ventanasService.validarPermisoRegistro(user.docenteId);
+        const permiso = await this.ventanasService.validarPermisoRegistro(Number(user.docenteId));
         if (!permiso.permitido) {
           throw new BadRequestException(permiso.mensaje || 'No tienes permiso para registrar horarios en este momento');
         }
@@ -554,10 +554,10 @@ export class HorariosService {
 
       // 1. Validar Permisos
       if (user?.rol === RolUsuario.DOCENTE) {
-        if (!user.docenteId || user.docenteId !== horario.docenteId) {
+        if (!user.docenteId || Number(user.docenteId) !== Number(horario.docenteId)) {
           throw new BadRequestException('No tienes permiso para modificar este horario');
         }
-        const permiso = await this.ventanasService.validarPermisoRegistro(user.docenteId);
+        const permiso = await this.ventanasService.validarPermisoRegistro(Number(user.docenteId));
         if (!permiso.permitido) {
           throw new BadRequestException(permiso.mensaje || 'No tienes permiso para modificar horarios en este momento');
         }
@@ -636,10 +636,10 @@ export class HorariosService {
       }
 
       if (user?.rol === RolUsuario.DOCENTE) {
-        if (!user.docenteId || user.docenteId !== horario.docenteId) {
+        if (!user.docenteId || Number(user.docenteId) !== Number(horario.docenteId)) {
           throw new BadRequestException('No tienes permiso para eliminar este horario');
         }
-        const permiso = await this.ventanasService.validarPermisoRegistro(user.docenteId);
+        const permiso = await this.ventanasService.validarPermisoRegistro(Number(user.docenteId));
         if (!permiso.permitido) {
           throw new BadRequestException(permiso.mensaje || 'No tienes permiso para eliminar horarios en este momento');
         }
