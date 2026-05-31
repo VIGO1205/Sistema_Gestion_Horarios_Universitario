@@ -5,19 +5,20 @@
 
 BEGIN;
 
--- 1) Eliminar todas las ventanas de atención (estado, pausado, etc.)
-DELETE FROM ventanas_atencion;
-
--- 2) Eliminar notificaciones relacionadas con turnos/recordatorios para evitar mensajes obsoletos
-DELETE FROM notificaciones WHERE tipo IN ('turno_activo','recordatorio_15min','recordatorio_24h');
-
--- 3) Limpiar campos en docentes: ventana_id, inicioAtencion, finAtencion y restablecer estadoSeleccion a 'en_espera'
+-- 1) Limpiar campos en docentes: ventana_id, inicioAtencion, finAtencion y restablecer estadoSeleccion a 'en_espera'
+-- SE HACE PRIMERO PARA EVITAR VIOLACIÓN DE FK AL BORRAR VENTANAS
 UPDATE docentes
 SET "ventana_id" = NULL,
     "inicioAtencion" = NULL,
     "finAtencion" = NULL,
     "estadoSeleccion" = 'en_espera'
 WHERE TRUE;
+
+-- 2) Eliminar todas las ventanas de atención
+DELETE FROM ventanas_atencion;
+
+-- 3) Eliminar notificaciones relacionadas con turnos/recordatorios
+DELETE FROM notificaciones WHERE tipo IN ('turno_activo','recordatorio_15min','recordatorio_24h');
 
 -- 4) Reiniciar la secuencia de ventanas_atencion.id de forma segura.
 -- Si la tabla está vacía fijar la secuencia para que nextval devuelva 1.

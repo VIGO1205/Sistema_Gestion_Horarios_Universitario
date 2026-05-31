@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete, Query, ParseIntPipe, Patch } from '@nestjs/common';
 import { ProgramacionesService } from './programaciones.service';
 import { CreateProgramacionDto } from './dto/create-programacion.dto';
 import { UpdateProgramacionDto } from './dto/update-programacion.dto';
+import { UpdateCargaAcademicaDto } from './dto/update-carga-academica.dto';
 
 @Controller('programacion-curso-ciclo')
 export class ProgramacionesController {
@@ -11,6 +12,29 @@ export class ProgramacionesController {
   findAll(@Query('cursoId') cursoId?: string) {
     if (cursoId) return this.service.findByCurso(Number(cursoId));
     return this.service.findAll();
+  }
+
+  @Get('carga-academica/:cicloId')
+  getCargaAcademica(
+    @Param('cicloId', ParseIntPipe) cicloId: number,
+    @Query('carreraId') carreraId?: string,
+    @Query('cicloAcademico') cicloAcademico?: string,
+  ) {
+    return this.service.getCargaAcademica(
+      cicloId,
+      carreraId ? Number(carreraId) : undefined,
+      cicloAcademico ? Number(cicloAcademico) : undefined,
+    );
+  }
+
+  @Post('carga-academica')
+  updateCargaAcademica(@Body() dto: UpdateCargaAcademicaDto) {
+    return this.service.updateCargaAcademica(dto);
+  }
+
+  @Post('bulk')
+  bulkCreateOrUpdate(@Body() items: any[]) {
+    return this.service.bulkCreateOrUpdate(items);
   }
 
   @Get(':id')

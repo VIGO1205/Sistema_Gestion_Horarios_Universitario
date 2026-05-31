@@ -70,6 +70,9 @@ export class Docente {
   @Column({ type: 'varchar', length: 150, nullable: true })
   emailPersonal: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true, default: 'TIEMPO COMPLETO 40 H' })
+  dedicacion: string;
+
   @Column({ name: 'ventana_id', type: 'integer', nullable: true })
   ventanaId: number | null;
 

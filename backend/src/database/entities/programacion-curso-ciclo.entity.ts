@@ -17,11 +17,20 @@ export class ProgramacionCursoCiclo {
   @Column({ name: 'horas_teoria', type: 'integer', default: 0 })
   horasTeoria: number;
 
+  @Column({ name: 'num_grupos_teoria', type: 'integer', default: 0 })
+  numGruposTeoria: number;
+
   @Column({ name: 'horas_practica', type: 'integer', default: 0 })
   horasPractica: number;
 
+  @Column({ name: 'num_grupos_practica', type: 'integer', default: 0 })
+  numGruposPractica: number;
+
   @Column({ name: 'horas_laboratorio', type: 'integer', default: 0 })
   horasLaboratorio: number;
+
+  @Column({ name: 'num_grupos_laboratorio', type: 'integer', default: 0 })
+  numGruposLaboratorio: number;
 
   @Column({ name: 'numero_grupos', type: 'integer', default: 0 })
   numeroGrupos: number;

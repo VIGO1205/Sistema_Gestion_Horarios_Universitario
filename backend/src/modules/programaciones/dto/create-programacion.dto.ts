@@ -13,11 +13,26 @@ export class CreateProgramacionDto {
 
   @IsInt()
   @Min(0)
+  @IsOptional()
+  numGruposTeoria?: number;
+
+  @IsInt()
+  @Min(0)
   horasPractica: number;
 
   @IsInt()
   @Min(0)
+  @IsOptional()
+  numGruposPractica?: number;
+
+  @IsInt()
+  @Min(0)
   horasLaboratorio: number;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  numGruposLaboratorio?: number;
 
   @IsInt()
   @Min(0)

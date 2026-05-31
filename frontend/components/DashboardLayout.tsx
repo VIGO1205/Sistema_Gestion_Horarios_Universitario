@@ -33,7 +33,7 @@ import {
   Logout as LogoutIcon,
   AccountCircle as AccountCircleIcon,
   School as SchoolIcon,
-  AutoAwesome as AutoIcon,
+  Assignment as AssignmentIcon,
   Timer as TimerIcon,
 } from '@mui/icons-material';
 import { useRouter, usePathname } from 'next/navigation';
@@ -57,6 +57,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', roles: ['admin', 'coordinador', 'docente'] },
+  { text: 'Carga Académica', icon: <AssignmentIcon />, path: '/carga-academica', roles: ['admin', 'coordinador'] },
   { text: 'Horarios', icon: <CalendarIcon />, path: '/horarios', roles: ['admin', 'coordinador', 'docente'] },
   { text: 'Docentes', icon: <PeopleIcon />, path: '/docentes', roles: ['admin', 'coordinador'] },
   { text: 'Carreras', icon: <SchoolIcon />, path: '/carreras', roles: ['admin'] },
@@ -168,6 +169,54 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const currentDrawerWidth = isMobile ? (open ? drawerWidth : 0) : (open ? drawerWidth : miniDrawerWidth);
 
+  // Logo Elegante para el Sidebar
+  const SidebarLogo = () => (
+    <Box sx={{ 
+      p: 3, 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center',
+      gap: 1,
+      transition: 'all 0.3s'
+    }}>
+      <Box sx={{ 
+        width: open ? 60 : 45, 
+        height: open ? 60 : 45, 
+        bgcolor: 'rgba(255,255,255,0.1)', 
+        borderRadius: '20%', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        border: '1px solid rgba(255,215,0,0.3)',
+        boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
+        transition: 'all 0.3s'
+      }}>
+        <SchoolIcon sx={{ color: '#FFD700', fontSize: open ? 35 : 28 }} />
+      </Box>
+      {open && (
+        <Box sx={{ textAlign: 'center', mt: 1 }}>
+          <Typography variant="h6" sx={{ 
+            fontWeight: 800, 
+            color: 'white', 
+            fontSize: '1.2rem',
+            letterSpacing: 1,
+            lineHeight: 1.2
+          }}>
+            SGH - UNT
+          </Typography>
+          <Typography variant="caption" sx={{ 
+            color: '#FFD700', 
+            fontWeight: 600,
+            letterSpacing: 2,
+            opacity: 0.8
+          }}>
+            SISTEMA DE GESTIÓN
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f4f7f9' }}>
       {/* Header / AppBar */}
@@ -264,18 +313,51 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               easing: theme.transitions.easing.sharp,
               duration: theme.transitions.duration.enteringScreen,
             }),
+            /* Estilo personalizado del scrollbar */
+            '&::-webkit-scrollbar': {
+              width: '6px',
+            },
+            '&::-webkit-scrollbar-track': {
+              background: 'transparent',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              background: 'rgba(255, 215, 0, 0.2)',
+              borderRadius: '10px',
+            },
+            '&:hover::-webkit-scrollbar-thumb': {
+              background: 'rgba(255, 215, 0, 0.4)',
+            },
           },
         }}
       >
-        <Toolbar />
-        <Box sx={{ overflow: 'auto', py: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <SidebarLogo />
+        <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)', mx: 2, mb: 1 }} />
+        <Box sx={{ 
+          overflowX: 'hidden', 
+          overflowY: 'auto',
+          py: 1, 
+          display: 'flex', 
+          flexDirection: 'column', 
+          height: '100%',
+          '&::-webkit-scrollbar': {
+            width: '6px',
+            display: 'none', // Oculto por defecto
+          },
+          '&:hover::-webkit-scrollbar': {
+            display: 'block', // Solo aparece al hacer hover
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: 'rgba(255, 215, 0, 0.3)',
+            borderRadius: '10px',
+          }
+        }}>
           <List sx={{ px: open ? 2 : 1 }}>
             {navItems
               .filter(item => !item.roles || item.roles.includes(usuario?.rol))
               .map((item) => {
               const isActive = pathname === item.path;
               return (
-                <ListItem key={item.text} disablePadding sx={{ mb: 1 }}>
+                <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
                   <Tooltip title={!open ? item.text : ""} placement="right">
                     <ListItemButton
                       onClick={() => navigateTo(item.path)}
@@ -285,6 +367,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         color: isActive ? '#FFD700' : 'rgba(255,255,255,0.8)',
                         justifyContent: open ? 'initial' : 'center',
                         px: 2.5,
+                        minHeight: 48,
                         '&:hover': {
                           bgcolor: 'rgba(255, 255, 255, 0.1)',
                           color: 'white',
@@ -305,7 +388,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         sx={{ opacity: open ? 1 : 0, display: open ? 'block' : 'none' }}
                         primaryTypographyProps={{ 
                           fontWeight: isActive ? 600 : 400,
-                          fontSize: '0.95rem',
+                          fontSize: '0.9rem',
                           noWrap: true
                         }} 
                       />
@@ -318,19 +401,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           
           {open && (
             <Box sx={{ mt: 'auto', p: 3, textAlign: 'center' }}>
-              <Box sx={{ 
-                p: 2, 
-                bgcolor: 'rgba(255,255,255,0.05)', 
-                borderRadius: 3,
-                border: '1px solid rgba(255,255,255,0.1)'
-              }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
-                  Sistema de Gestión
-                </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 600, color: '#FFD700' }}>
-                  UNT - 2026
-                </Typography>
-              </Box>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>
+                © UNT - 2026
+              </Typography>
             </Box>
           )}
         </Box>

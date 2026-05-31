@@ -705,7 +705,7 @@ export default function VentanasPage() {
                             <TableCell>{getEstadoChip(v.estado)}</TableCell>
                             <TableCell align="center">
                               <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
-                                {v.estado === 'programada' && isGestionAllowed && (
+                                {(v.estado === 'programada' || v.estado === 'finalizada' || v.estado === 'vencida') && isGestionAllowed && (
                                   <IconButton
                                     size="small"
                                     color="primary"
@@ -715,17 +715,7 @@ export default function VentanasPage() {
                                     <EditIcon fontSize="small" />
                                   </IconButton>
                                 )}
-                                {v.estado === 'vencida' && isGestionAllowed && (
-                                  <IconButton
-                                    size="small"
-                                    onClick={(e) => { e.stopPropagation(); openEditDialog(v); }}
-                                    sx={{ color: '#ef6c00', bgcolor: '#fff3e0', '&:hover': { bgcolor: '#ffe0b2' } }}
-                                    title="Reprogramar para Hoy"
-                                  >
-                                    <CalendarIcon fontSize="small" />
-                                  </IconButton>
-                                )}
-                                {isGestionAllowed && v.estado !== 'en_curso' && v.estado !== 'pausada' && v.estado !== 'finalizada' && (
+                                {isGestionAllowed && v.estado !== 'en_curso' && v.estado !== 'pausada' && (
                                   <IconButton
                                     size="small"
                                     color="error"
@@ -786,11 +776,6 @@ export default function VentanasPage() {
                                       DETENER
                                     </Button>
                                   </Box>
-                                )}
-                                {v.estado === 'finalizada' && (
-                                  <Typography variant="caption" sx={{ fontWeight: 800, color: '#999' }}>
-                                    -
-                                  </Typography>
                                 )}
                               </Box>
                             </TableCell>

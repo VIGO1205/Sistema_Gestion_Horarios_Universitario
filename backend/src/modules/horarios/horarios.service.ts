@@ -83,27 +83,37 @@ export class HorariosService {
       }
 
       // 4. Validar y Resolver Grupos / Carga
-      if (data.tipoClase === TipoClase.LABORATORIO || data.tipoClase === 'laboratorio') {
-        data.grupoId = await this.validarYResolverGrupoLaboratorio(
-          data.docenteId,
-          data.cursoId,
-          data.cicloId,
+      const asignacion = await manager.getRepository(AsignacionDocenteCurso).findOne({
+        where: {
+          docenteId: data.docenteId,
+          cursoId: data.cursoId,
+          cicloId: data.cicloId,
+          tipoClase: data.tipoClase as any,
+        },
+        relations: ['grupos'],
+      });
+
+      if (!asignacion) {
+        throw new BadRequestException(`No existe una asignación de carga académica para este docente, curso y tipo de clase (${data.tipoClase}) en el ciclo seleccionado.`);
+      }
+
+      // Si la asignación tiene grupos definidos, es obligatorio elegir uno
+      if (asignacion.grupos && asignacion.grupos.length > 0) {
+        data.grupoId = await this.validarYResolverGrupo(
+          asignacion,
           data.grupoId,
           undefined,
           manager
         );
-      } else {
-        await this.validarCursoRepetidoMismaDuracion(
-          data.docenteId,
-          data.cursoId,
-          data.cicloId,
-          data.tipoClase,
-          data.horaInicio,
-          data.horaFin,
-          undefined,
-          manager
-        );
       }
+
+      await this.validarCargaHoraria(
+        asignacion,
+        data.horaInicio,
+        data.horaFin,
+        undefined,
+        manager
+      );
 
       // 5. Guardar Horario
       const horario = manager.getRepository(Horario).create({
@@ -594,27 +604,36 @@ export class HorariosService {
 
         // 3. Validar Carga
         const tipoClaseEffective = (data.tipoClase ?? horario.tipoClase) as any;
-        if (tipoClaseEffective === TipoClase.LABORATORIO || tipoClaseEffective === 'laboratorio') {
-          data.grupoId = await this.validarYResolverGrupoLaboratorio(
+        const asignacion = await manager.getRepository(AsignacionDocenteCurso).findOne({
+          where: {
             docenteId,
-            data.cursoId ?? horario.cursoId,
+            cursoId: data.cursoId ?? horario.cursoId,
             cicloId,
+            tipoClase: tipoClaseEffective,
+          },
+          relations: ['grupos'],
+        });
+
+        if (!asignacion) {
+          throw new BadRequestException(`No existe una asignación de carga académica para este docente, curso y tipo de clase (${tipoClaseEffective}) en el ciclo seleccionado.`);
+        }
+
+        if (asignacion.grupos && asignacion.grupos.length > 0) {
+          data.grupoId = await this.validarYResolverGrupo(
+            asignacion,
             data.grupoId ?? horario.grupoId,
             id,
             manager
           );
-        } else {
-          await this.validarCursoRepetidoMismaDuracion(
-            docenteId,
-            data.cursoId ?? horario.cursoId,
-            cicloId,
-            data.tipoClase ?? horario.tipoClase,
-            horaInicio,
-            horaFin,
-            id,
-            manager
-          );
         }
+
+        await this.validarCargaHoraria(
+          asignacion,
+          data.horaInicio ?? horario.horaInicio,
+          data.horaFin ?? horario.horaFin,
+          id,
+          manager
+        );
       }
 
       Object.assign(horario, data);
@@ -653,11 +672,8 @@ export class HorariosService {
     });
   }
 
-  private async validarCursoRepetidoMismaDuracion(
-    docenteId: number,
-    cursoId: number,
-    cicloId: number,
-    tipoClase: string,
+  private async validarCargaHoraria(
+    asignacion: AsignacionDocenteCurso,
     horaInicio: string,
     horaFin: string,
     excluirHorarioId?: number,
@@ -669,28 +685,13 @@ export class HorariosService {
       throw new BadRequestException('La hora fin debe ser mayor que la hora inicio');
     }
 
-    const asignacionRepo = manager ? manager.getRepository(AsignacionDocenteCurso) : this.asignacionRepo;
     const horarioRepo = manager ? manager.getRepository(Horario) : this.horarioRepo;
 
-    const asignacion = await asignacionRepo.findOne({
-      where: {
-        docenteId,
-        cursoId,
-        cicloId,
-        tipoClase: tipoClase as any,
-      },
-      relations: ['curso'],
-    });
-
-    if (!asignacion) {
-      throw new BadRequestException(`No existe una asignación de carga académica para este docente, curso y tipo de clase (${tipoClase}) en el ciclo seleccionado.`);
-    }
-
     const query = horarioRepo.createQueryBuilder('h')
-      .where('h.docenteId = :docenteId', { docenteId })
-      .andWhere('h.cursoId = :cursoId', { cursoId })
-      .andWhere('h.cicloId = :cicloId', { cicloId })
-      .andWhere('h.tipoClase = :tipoClase', { tipoClase });
+      .where('h.docenteId = :docenteId', { docenteId: asignacion.docenteId })
+      .andWhere('h.cursoId = :cursoId', { cursoId: asignacion.cursoId })
+      .andWhere('h.cicloId = :cicloId', { cicloId: asignacion.cicloId })
+      .andWhere('h.tipoClase = :tipoClase', { tipoClase: asignacion.tipoClase });
 
     if (excluirHorarioId) {
       query.andWhere('h.id != :excluirHorarioId', { excluirHorarioId });
@@ -710,43 +711,30 @@ export class HorariosService {
       const horasSolicitadas = duracionNuevaMin / 60;
       const horasRestantes = Math.max(0, (minutosMaximos - minutosYaAsignados) / 60);
       throw new ConflictException(
-        `Carga semanal excedida para ${asignacion.curso?.nombre || cursoId} (${tipoClase}). Máximo: ${horasMaximas}h, asignadas: ${horasYaAsignadas}h, intentas agregar: ${horasSolicitadas}h, disponibles: ${horasRestantes}h.`,
+        `Carga semanal excedida para el docente. Máximo: ${horasMaximas}h, asignadas: ${horasYaAsignadas}h, intentas agregar: ${horasSolicitadas}h, disponibles: ${horasRestantes}h.`,
       );
     }
   }
 
-  private async validarYResolverGrupoLaboratorio(
-    docenteId: number,
-    cursoId: number,
-    cicloId: number,
+  private async validarYResolverGrupo(
+    asignacion: AsignacionDocenteCurso,
     grupoId?: number,
     excluirHorarioId?: number,
     manager?: EntityManager,
   ): Promise<number> {
-    const asignacionRepo = manager ? manager.getRepository(AsignacionDocenteCurso) : this.asignacionRepo;
     const grupoRepo = manager ? manager.getRepository(GrupoDocenteAsignacion) : this.grupoRepo;
     const horarioRepo = manager ? manager.getRepository(Horario) : this.horarioRepo;
+    const docenteId = asignacion.docenteId;
+    const cursoId = asignacion.cursoId;
+    const cicloId = asignacion.cicloId;
 
-    const asignacion = await asignacionRepo.findOne({
-      where: {
-        docenteId,
-        cursoId,
-        cicloId,
-        tipoClase: TipoClase.LABORATORIO as any,
-      },
-    });
-
-    if (!asignacion) {
-      throw new BadRequestException('No existe una asignación de laboratorio para este docente, curso y ciclo.');
-    }
-
-    const grupos = await grupoRepo.find({
+    const grupos = asignacion.grupos || await grupoRepo.find({
       where: { asignacionId: asignacion.id },
       order: { numeroGrupo: 'ASC' },
     });
 
     if (!grupos.length) {
-      throw new BadRequestException('No hay grupos de laboratorio registrados para esta asignación.');
+      throw new BadRequestException('No hay grupos registrados para esta asignación.');
     }
 
     const horariosLaboratorio = await horarioRepo.find({

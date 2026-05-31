@@ -47,6 +47,7 @@ import {
   Add as AddIcon,
   AccessTime as AccessTimeIcon,
   Close as CloseIcon,
+  ChevronLeft as ChevronLeftIcon,
 } from '@mui/icons-material';
 import api from '@/lib/api';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -54,6 +55,7 @@ import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getVentanasSocket } from '@/lib/socket';
+import DashboardDocente from '@/components/DashboardDocente';
 
 const MySwal = withReactContent(Swal);
 
@@ -99,6 +101,8 @@ export default function HorariosPage() {
   const { usuario } = useAuth();
   const esDocente = usuario?.rol === 'docente';
   const [loading, setLoading] = useState(true);
+  const [showDashboard, setShowDashboard] = useState(esDocente);
+  const [modoLectura, setModoLectura] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [horarios, setHorarios] = useState<any[]>([]);
   const [mapaOcupacion, setMapaOcupacion] = useState<any>({});
@@ -107,7 +111,7 @@ export default function HorariosPage() {
   const [estadoSeleccion, setEstadoSeleccion] = useState<any>(null);
   const prevEstadoSeleccionRef = useRef<string | null>(null);
   const docentePuedeGestionar = esDocente
-    ? (estadoSeleccion?.estado === 'en_atencion' && estadoSeleccion?.ventanaEstado !== 'pausada')
+    ? (estadoSeleccion?.estado === 'en_atencion' && estadoSeleccion?.ventanaEstado !== 'pausada' && !modoLectura)
     : true;
   const [filtros, setFiltros] = useState({
     ciclo: '',
@@ -1162,8 +1166,32 @@ export default function HorariosPage() {
     return <LoadingSpinner />;
   }
 
+  if (esDocente && showDashboard) {
+    return (
+      <DashboardDocente
+        docente={usuario}
+        estadoSeleccion={estadoSeleccion}
+        ciclos={ciclos}
+        onEnterGrilla={(soloLectura) => {
+          setModoLectura(soloLectura);
+          setShowDashboard(false);
+        }}
+      />
+    );
+  }
+
   return (
     <Box sx={{ flexGrow: 1 }}>
+      {/* Botón Volver al Dashboard (solo para docentes) */}
+      {esDocente && (
+        <Button
+          startIcon={<ChevronLeftIcon />}
+          onClick={() => setShowDashboard(true)}
+          sx={{ mb: 2, color: '#003366', fontWeight: 700 }}
+        >
+          Volver al Portal del Docente
+        </Button>
+      )}
       {/* Cabecera */}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <Box>

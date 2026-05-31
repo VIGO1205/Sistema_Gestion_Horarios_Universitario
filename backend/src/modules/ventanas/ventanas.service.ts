@@ -159,10 +159,15 @@ export class VentanasService implements OnModuleInit {
     const ventana = await this.ventanaRepo.findOne({ where: { id: ventanaId } });
     if (!ventana) throw new NotFoundException('Ventana no encontrada');
 
-    // Sólo permitir edición si está programada
-    if (ventana.estado !== EstadoVentana.PROGRAMADA) {
-      throw new BadRequestException('Sólo se pueden editar ventanas en estado programada');
+    // Permitir edición si está programada, finalizada o vencida
+    const estadoNormalizado = ventana.estado.toLowerCase();
+    if (estadoNormalizado !== EstadoVentana.PROGRAMADA && 
+        estadoNormalizado !== EstadoVentana.FINALIZADA && 
+        estadoNormalizado !== EstadoVentana.VENCIDA) {
+      throw new BadRequestException('Sólo se pueden editar ventanas en estado programada, finalizada o vencida');
     }
+
+    const anteriorEstado = ventana.estado;
 
     if (updateDto.fechaHoraInicio) {
       ventana.fechaHoraInicio = this.parseVentanaDate(updateDto.fechaHoraInicio as any);
@@ -172,6 +177,22 @@ export class VentanasService implements OnModuleInit {
     }
     if (updateDto.duracionMinutos) {
       ventana.duracionMinutos = updateDto.duracionMinutos as number;
+    }
+
+    // Si la ventana estaba finalizada o vencida y se reprograma a una fecha futura,
+    // volvemos su estado a PROGRAMADA y reseteamos a los docentes asociados
+    const ahora = new Date();
+    if ((estadoNormalizado === EstadoVentana.FINALIZADA || estadoNormalizado === EstadoVentana.VENCIDA) && 
+        ventana.fechaHoraInicio > ahora) {
+      ventana.estado = EstadoVentana.PROGRAMADA;
+      
+      // Liberar docentes asociados para que puedan volver a ser llamados
+      await this.docenteRepo.update(
+        { ventanaId: ventanaId, activo: true },
+        { estadoSeleccion: EstadoSeleccion.EN_ESPERA, inicioAtencion: undefined as any, finAtencion: undefined as any }
+      );
+      
+      this.logger.log(`Ventana ${ventanaId} reprogramada: regresando a estado PROGRAMADA y liberando docentes.`);
     }
 
     return await this.ventanaRepo.save(ventana);

@@ -31,6 +31,9 @@ import {
   Checkbox,
 } from '@mui/material';
 import {
+  School as SchoolIcon,
+  Groups as GroupsIcon,
+  Science as ScienceIcon,
   Book as BookIcon,
   Refresh as RefreshIcon,
   Add as AddIcon,
@@ -92,7 +95,16 @@ export default function CursosPage() {
   const [currentCursoProg, setCurrentCursoProg] = useState<any>(null);
   const [ciclos, setCiclos] = useState<any[]>([]);
   const [currentCicloId, setCurrentCicloId] = useState<number | null>(null);
-  const [newProg, setNewProg] = useState({ cicloId: '', horasTeoria: 0, horasPractica: 0, horasLaboratorio: 0, numeroGrupos: 0 });
+  const [newProg, setNewProg] = useState({ 
+    cicloId: '', 
+    horasTeoria: 0, 
+    numGruposTeoria: 0,
+    horasPractica: 0, 
+    numGruposPractica: 0,
+    horasLaboratorio: 0, 
+    numGruposLaboratorio: 0,
+    numeroGrupos: 0 // Mantener por compatibilidad si es necesario
+  });
   const [editingProgId, setEditingProgId] = useState<number | null>(null);
 
   const filteredPreviewCursos = useMemo(() => {
@@ -609,8 +621,11 @@ export default function CursosPage() {
     setNewProg({
       cicloId: p.cicloId,
       horasTeoria: p.horasTeoria ?? 0,
+      numGruposTeoria: p.numGruposTeoria ?? 0,
       horasPractica: p.horasPractica ?? 0,
+      numGruposPractica: p.numGruposPractica ?? 0,
       horasLaboratorio: p.horasLaboratorio ?? 0,
+      numGruposLaboratorio: p.numGruposLaboratorio ?? p.numeroGrupos ?? 0,
       numeroGrupos: p.numeroGrupos ?? 0,
     });
     // focus dialog fields visually
@@ -855,53 +870,72 @@ export default function CursosPage() {
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
           ) : (
             <Box>
-              <TableContainer sx={{ maxHeight: 300, overflow: 'auto', width: '100%' }}>
-                <Table size="small" stickyHeader sx={{ tableLayout: 'fixed', width: '100%' }}>
+              <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid #eef2f6', borderRadius: 3, mb: 4, overflow: 'hidden' }}>
+                <Table size="small">
                   <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ width: 60 }}>N°</TableCell>
-                    <TableCell sx={{ width: 120 }}>Horas Teoría</TableCell>
-                    <TableCell sx={{ width: 120 }}>Horas Práctica</TableCell>
-                    <TableCell sx={{ width: 110 }}>Horas Lab</TableCell>
-                    <TableCell sx={{ width: 95 }}>N° Grupos</TableCell>
-                    <TableCell sx={{ width: 92 }}>Acciones</TableCell>
-                  </TableRow>
-                </TableHead>
+                    <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                      <TableCell sx={{ fontWeight: 700, color: '#003366' }}>Periodo</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: '#003366', textAlign: 'center' }}>Horas (T|P|L)</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: '#003366', textAlign: 'center' }}>Grupos (T|P|L)</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: '#003366', textAlign: 'center', width: 100 }}>Acciones</TableCell>
+                    </TableRow>
+                  </TableHead>
                   <TableBody>
-                    {programaciones.map((p, index) => (
-                      <TableRow key={p.id}>
-                        <TableCell sx={{ width: 60 }}>{index + 1}</TableCell>
-                        <TableCell sx={{ width: 120 }}>{p.horasTeoria}</TableCell>
-                        <TableCell sx={{ width: 120 }}>{p.horasPractica}</TableCell>
-                        <TableCell sx={{ width: 110 }}>{p.horasLaboratorio}</TableCell>
-                        <TableCell sx={{ width: 95 }}>{p.numeroGrupos}</TableCell>
-                        <TableCell>
-                          <Tooltip title="Editar">
+                    {programaciones.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} sx={{ textAlign: 'center', py: 3, color: 'text.secondary', fontStyle: 'italic' }}>
+                          No hay programaciones registradas para este curso.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      programaciones.map((p) => (
+                        <TableRow key={p.id} sx={{ '&:hover': { bgcolor: '#fcfdfe' } }}>
+                          <TableCell>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#003366' }}>
+                              {p.ciclo?.nombre}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}>
+                              <Chip size="small" label={p.horasTeoria} variant="outlined" title="Teoría" sx={{ height: 20, fontSize: '0.7rem' }} />
+                              <Chip size="small" label={p.horasPractica} variant="outlined" title="Práctica" sx={{ height: 20, fontSize: '0.7rem' }} />
+                              <Chip size="small" label={p.horasLaboratorio} variant="outlined" title="Laboratorio" sx={{ height: 20, fontSize: '0.7rem' }} />
+                            </Box>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}>
+                              <Chip size="small" label={p.numGruposTeoria || 0} sx={{ height: 20, fontSize: '0.7rem', fontWeight: 700, bgcolor: '#e0f2f1', color: '#00695c' }} />
+                              <Chip size="small" label={p.numGruposPractica || 0} sx={{ height: 20, fontSize: '0.7rem', fontWeight: 700, bgcolor: '#fff3e0', color: '#e65100' }} />
+                              <Chip size="small" label={p.numGruposLaboratorio || p.numeroGrupos || 0} sx={{ height: 20, fontSize: '0.7rem', fontWeight: 700, bgcolor: '#e3f2fd', color: '#0d47a1' }} />
+                            </Box>
+                          </TableCell>
+                          <TableCell align="center">
                             <IconButton size="small" color="primary" onClick={() => handleEditProg(p)}>
                               <EditIcon fontSize="small" />
                             </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Eliminar">
                             <IconButton size="small" color="error" onClick={() => handleDeleteProg(p.id)}>
                               <DeleteIcon fontSize="small" />
                             </IconButton>
-                          </Tooltip>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
 
-              <Box sx={{ mt: 3, borderTop: '1px solid #eee', pt: 2 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Crear nueva programación</Typography>
-                <Box sx={{ mt: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, minmax(0, 1fr))' }, gap: 2, alignItems: 'center' }}>
-                  <Box>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Ciclo</InputLabel>
+              <Box sx={{ p: 3, bgcolor: '#f8fafc', borderRadius: 4, border: '1px solid #eef2f6' }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#003366', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {editingProgId ? <EditIcon fontSize="small" /> : <AddIcon fontSize="small" />} {editingProgId ? 'EDITAR' : 'NUEVA'} PROGRAMACIÓN
+                </Typography>
+                
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={5}>
+                    <FormControl fullWidth size="small" sx={{ mt: 2 }}>
+                      <InputLabel>Periodo Académico</InputLabel>
                       <Select
                         value={newProg.cicloId}
-                        label="Ciclo"
+                        label="Periodo Académico"
                         onChange={(e) => setNewProg((p) => ({ ...p, cicloId: String(e.target.value) }))}
                       >
                         {ciclos.map((c: any) => (
@@ -909,29 +943,64 @@ export default function CursosPage() {
                         ))}
                       </Select>
                     </FormControl>
-                  </Box>
-                  <Box>
-                    <TextField fullWidth size="small" label="Horas Teoría" type="number" inputProps={{ min: 0 }} value={newProg.horasTeoria} onChange={(e) => setNewProg((p) => ({ ...p, horasTeoria: Math.max(0, Number(e.target.value)) }))} />
-                  </Box>
-                  <Box>
-                    <TextField fullWidth size="small" label="Horas Práctica" type="number" inputProps={{ min: 0 }} value={newProg.horasPractica} onChange={(e) => setNewProg((p) => ({ ...p, horasPractica: Math.max(0, Number(e.target.value)) }))} />
-                  </Box>
-                  <Box>
-                    <TextField fullWidth size="small" label="Horas Lab" type="number" inputProps={{ min: 0 }} value={newProg.horasLaboratorio} onChange={(e) => setNewProg((p) => ({ ...p, horasLaboratorio: Math.max(0, Number(e.target.value)) }))} />
-                  </Box>
-                  <Box>
-                    <TextField fullWidth size="small" label="N° Grupos" type="number" inputProps={{ min: 0, max: 4 }} value={newProg.numeroGrupos} onChange={(e) => setNewProg((p) => ({ ...p, numeroGrupos: Math.max(0, Number(e.target.value)) }))} />
-                  </Box>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2, pr: { xs: 0, md: 0.5 } }}>
+                  </Grid>
+                  <Grid item xs={12} md={7}></Grid>
+
+                  {/* Sección Teoría */}
+                  <Grid item xs={12} md={4}>
+                    <Paper elevation={0} sx={{ p: 2, border: '1px solid #e2e8f0', borderRadius: 3, bgcolor: 'white' }}>
+                      <Typography variant="caption" sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1, fontWeight: 800, color: '#00695c', letterSpacing: 1 }}>
+                        <SchoolIcon sx={{ fontSize: 16 }} /> TEORÍA
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <TextField fullWidth size="small" label="Horas" type="number" value={newProg.horasTeoria} onChange={(e) => setNewProg((p) => ({ ...p, horasTeoria: Math.max(0, Number(e.target.value)) }))} />
+                        <TextField fullWidth size="small" label="Grupos" type="number" value={newProg.numGruposTeoria} onChange={(e) => setNewProg((p) => ({ ...p, numGruposTeoria: Math.max(0, Number(e.target.value)) }))} />
+                      </Box>
+                    </Paper>
+                  </Grid>
+
+                  {/* Sección Práctica */}
+                  <Grid item xs={12} md={4}>
+                    <Paper elevation={0} sx={{ p: 2, border: '1px solid #e2e8f0', borderRadius: 3, bgcolor: 'white' }}>
+                      <Typography variant="caption" sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1, fontWeight: 800, color: '#e65100', letterSpacing: 1 }}>
+                        <GroupsIcon sx={{ fontSize: 16 }} /> PRÁCTICA
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <TextField fullWidth size="small" label="Horas" type="number" value={newProg.horasPractica} onChange={(e) => setNewProg((p) => ({ ...p, horasPractica: Math.max(0, Number(e.target.value)) }))} />
+                        <TextField fullWidth size="small" label="Grupos" type="number" value={newProg.numGruposPractica} onChange={(e) => setNewProg((p) => ({ ...p, numGruposPractica: Math.max(0, Number(e.target.value)) }))} />
+                      </Box>
+                    </Paper>
+                  </Grid>
+
+                  {/* Sección Laboratorio */}
+                  <Grid item xs={12} md={4}>
+                    <Paper elevation={0} sx={{ p: 2, border: '1px solid #e2e8f0', borderRadius: 3, bgcolor: 'white' }}>
+                      <Typography variant="caption" sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1, fontWeight: 800, color: '#0d47a1', letterSpacing: 1 }}>
+                        <ScienceIcon sx={{ fontSize: 16 }} /> LABORATORIO
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <TextField fullWidth size="small" label="Horas" type="number" value={newProg.horasLaboratorio} onChange={(e) => setNewProg((p) => ({ ...p, horasLaboratorio: Math.max(0, Number(e.target.value)) }))} />
+                        <TextField fullWidth size="small" label="Grupos" type="number" value={newProg.numGruposLaboratorio} onChange={(e) => setNewProg((p) => ({ ...p, numGruposLaboratorio: Math.max(0, Number(e.target.value)) }))} />
+                      </Box>
+                    </Paper>
+                  </Grid>
+                </Grid>
+
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 4 }}>
                   {editingProgId && (
                     <Button
                       variant="outlined"
                       onClick={() => {
                         setEditingProgId(null);
-                        setNewProg({ cicloId: currentCicloId ? String(currentCicloId) : '', horasTeoria: 0, horasPractica: 0, horasLaboratorio: 0, numeroGrupos: 0 });
+                        setNewProg({ 
+                          cicloId: currentCicloId ? String(currentCicloId) : '', 
+                          horasTeoria: 0, numGruposTeoria: 0,
+                          horasPractica: 0, numGruposPractica: 0,
+                          horasLaboratorio: 0, numGruposLaboratorio: 0,
+                          numeroGrupos: 0 
+                        });
                       }}
-                      sx={{ minWidth: 110, borderRadius: 2, fontWeight: 700, textTransform: 'none' }}
+                      sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none' }}
                     >
                       Cancelar
                     </Button>
@@ -944,17 +1013,16 @@ export default function CursosPage() {
                         MySwal.fire({ icon: 'warning', title: 'Ciclo requerido', text: 'Selecciona un ciclo.' });
                         return;
                       }
-                      if (newProg.horasLaboratorio > 0 && (newProg.numeroGrupos < 1 || newProg.numeroGrupos > 4)) {
-                        MySwal.fire({ icon: 'warning', title: 'Número de grupos inválido', text: 'Si hay horas de laboratorio, N° Grupos debe ser entre 1 y 4.' });
-                        return;
-                      }
                       const payload: any = {
                         cursoId: currentCursoProg.id,
                         cicloId: Number(newProg.cicloId),
                         horasTeoria: Number(newProg.horasTeoria || 0),
+                        numGruposTeoria: Number(newProg.numGruposTeoria || 0),
                         horasPractica: Number(newProg.horasPractica || 0),
+                        numGruposPractica: Number(newProg.numGruposPractica || 0),
                         horasLaboratorio: Number(newProg.horasLaboratorio || 0),
-                        numeroGrupos: Number(newProg.numeroGrupos || 0),
+                        numGruposLaboratorio: Number(newProg.numGruposLaboratorio || 0),
+                        numeroGrupos: Number(newProg.numGruposLaboratorio || 0),
                       };
                       if (editingProgId) {
                         await handleUpdateProg(editingProgId, payload);
@@ -962,19 +1030,25 @@ export default function CursosPage() {
                       } else {
                         await handleCreateProg(payload);
                       }
-                      setNewProg({ cicloId: currentCicloId ? String(currentCicloId) : '', horasTeoria: 0, horasPractica: 0, horasLaboratorio: 0, numeroGrupos: 0 });
+                      setNewProg({ 
+                        cicloId: currentCicloId ? String(currentCicloId) : '', 
+                        horasTeoria: 0, numGruposTeoria: 0,
+                        horasPractica: 0, numGruposPractica: 0,
+                        horasLaboratorio: 0, numGruposLaboratorio: 0,
+                        numeroGrupos: 0 
+                      });
                     }}
                     sx={{
-                      bgcolor: editingProgId ? '#0a7a3f' : '#003366',
-                      minWidth: 118,
+                      bgcolor: '#003366',
                       borderRadius: 2,
-                      fontWeight: 700,
+                      fontWeight: 800,
                       textTransform: 'none',
-                      boxShadow: '0 6px 16px rgba(0, 51, 102, 0.22)',
-                      '&:hover': { bgcolor: editingProgId ? '#086634' : '#00264d' },
+                      px: 4,
+                      boxShadow: '0 4px 14px 0 rgba(0,51,102,0.39)',
+                      '&:hover': { bgcolor: '#00264d' },
                     }}
                   >
-                    {editingProgId ? 'Actualizar' : 'Crear'}
+                    {editingProgId ? 'ACTUALIZAR PROGRAMACIÓN' : 'GUARDAR PROGRAMACIÓN'}
                   </Button>
                 </Box>
               </Box>
