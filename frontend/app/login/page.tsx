@@ -70,20 +70,28 @@ export default function LoginPage() {
 
       login(access_token, usuario);
       router.push('/dashboard');
-      // No quitamos el loading si es exitoso para que el spinner siga hasta que cambie de página
     } catch (err: any) {
-      setLoading(false); // Solo quitamos el loading si hay error
+      setLoading(false);
       const message = err.response?.data?.message;
       
       if (err.response?.status === 401) {
-        if (message === 'Usuario no encontrado') {
+        if (message === 'Credenciales Inválidas') {
           setError('Credenciales Inválidas');
           setErrorType('email');
         } else if (message === 'Contraseña incorrecta') {
           setError('Contraseña Incorrecta');
           setErrorType('password');
+        } else if (message.includes('bloqueada')) {
+          setError(message);
+          setErrorType('general');
+        } else if (message.includes('desactivada')) {
+          setError(message);
+          setErrorType('general');
+        } else if (message.includes('perfil de docente')) {
+          setError(message);
+          setErrorType('general');
         } else {
-          setError('Credenciales Inválidas');
+          setError(message || 'Error de autenticación');
           setErrorType('general');
         }
       } else {
@@ -107,180 +115,198 @@ export default function LoginPage() {
         height: '100vh',
         width: '100vw',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #003366 0%, #001a33 100%)',
+        background: 'white',
         position: 'fixed',
         top: 0,
         left: 0,
         overflow: 'hidden',
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          width: '100%',
-          height: '100%',
-          backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(255, 215, 0, 0.05) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }
+        flexDirection: { xs: 'column', md: 'row' }
       }}
     >
-      <Box sx={{ width: '100%', maxWidth: 500, p: 2, zIndex: 1 }}>
-        <Paper
-          elevation={24}
-          sx={{
-            borderRadius: 4,
-            overflow: 'hidden',
-            background: 'rgba(255, 255, 255, 1)',
-            display: 'flex',
-            flexDirection: 'column',
-            minHeight: 480, // Aumentamos la altura mínima
-          }}
-        >
-          <Box
-            sx={{
-              p: 4,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              backgroundColor: '#003366',
-              color: 'white',
-            }}
-          >
-            <SchoolIcon sx={{ fontSize: 50, mb: 1, color: '#FFD700' }} />
-            <Typography variant="h4" component="h1" fontWeight="700" textAlign="center">
-              Sistema de Horarios
-            </Typography>
-            <Typography variant="subtitle1" sx={{ opacity: 0.9 }}>
-              Universidad Nacional de Trujillo
+      {/* Lado Izquierdo: Formulario */}
+      <Box
+        sx={{
+          flex: { xs: '1 1 auto', md: '1 1 50% ' },
+          p: { xs: 4, md: 10, lg: 15 },
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100%',
+          bgcolor: 'white',
+          zIndex: 2,
+        }}
+      >
+        <Box sx={{ maxWidth: 450, width: '100%' }}>
+          <Box sx={{ mb: 6, textAlign: 'left' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1.5 }}>
+              <SchoolIcon sx={{ fontSize: 50, color: '#003366' }} />
+              <Typography variant="h2" fontWeight="900" color="#003366" sx={{ letterSpacing: -2 }}>
+                SGH - UNT
+              </Typography>
+            </Box>
+            <Typography variant="h5" color="text.secondary" fontWeight="500" sx={{ opacity: 0.8 }}>
+              Bienvenido al Sistema de Gestión de Horarios
             </Typography>
           </Box>
 
-          <CardContent sx={{ p: 4, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-            <form onSubmit={handleLogin} noValidate style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-              <Box sx={{ mb: 1 }}>
-                <TextField
-                  fullWidth
-                  label="Correo Electrónico"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  margin="normal"
-                  variant="outlined"
-                  placeholder="ejemplo@unt.edu.pe"
-                  autoComplete="username"
-                  inputProps={{ autoComplete: 'username' }}
-                  error={errorType === 'email' || errorType === 'general'}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <EmailIcon color={(errorType === 'email' || errorType === 'general') ? 'error' : 'primary'} />
-                      </InputAdornment>
-                    ),
-                    sx: { borderRadius: 2 }
-                  }}
-                  sx={{ mb: 0.5 }}
-                />
-                <Box sx={{ minHeight: '20px', display: 'flex', alignItems: 'center', px: 1 }}>
-                  {(errorType === 'email' || (errorType === 'general' && !email.trim())) && (
-                    <Typography variant="caption" color="error" sx={{ display: 'flex', alignItems: 'center', fontWeight: 500 }}>
-                      <ErrorOutlineIcon sx={{ fontSize: 14, mr: 0.5 }} />
-                      {error}
-                    </Typography>
-                  )}
-                </Box>
-              </Box>
-
-              <Box sx={{ mb: 1 }}>
-                <TextField
-                  fullWidth
-                  label="Contraseña"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  margin="normal"
-                  variant="outlined"
-                  placeholder="Ingresa tu contraseña"
-                  autoComplete="current-password"
-                  inputProps={{ autoComplete: 'current-password' }}
-                  error={errorType === 'password' || errorType === 'general'}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <LockIcon color={(errorType === 'password' || errorType === 'general') ? 'error' : 'primary'} />
-                      </InputAdornment>
-                    ),
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          type="button"
-                          aria-label="toggle password visibility"
-                          onClick={handleClickShowPassword}
-                          edge="end"
-                        >
-                          {showPassword ? <VisibilityOff /> : <Visibility />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                    sx: { borderRadius: 2 }
-                  }}
-                  sx={{ mb: 0.5 }}
-                />
-                <Box sx={{ minHeight: '20px', display: 'flex', alignItems: 'center', px: 1 }}>
-                  {(errorType === 'password' || (errorType === 'general' && !password.trim())) && (
-                    <Typography variant="caption" color="error" sx={{ display: 'flex', alignItems: 'center', fontWeight: 500 }}>
-                      <ErrorOutlineIcon sx={{ fontSize: 14, mr: 0.5 }} />
-                      {error}
-                    </Typography>
-                  )}
-                </Box>
-              </Box>
-              
-              <Button
-                type="submit"
+          <form onSubmit={handleLogin} noValidate>
+            <Box sx={{ mb: 3 }}>
+              <TextField
                 fullWidth
-                variant="contained"
-                size="large"
-                disabled={loading}
-                startIcon={!loading && <LoginIcon />}
-                sx={{
-                  mt: 2,
-                  py: 1.5,
-                  borderRadius: 2,
-                  fontSize: '1.1rem',
-                  fontWeight: 600,
-                  textTransform: 'none',
-                  backgroundColor: '#003366',
-                  '&:hover': {
-                    backgroundColor: '#002244',
-                  }
+                label="Correo Institucional"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={handleKeyDown}
+                variant="outlined"
+                placeholder="ejemplo@unt.edu.pe"
+                error={errorType === 'email' || errorType === 'general'}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <EmailIcon color={(errorType === 'email' || errorType === 'general') ? 'error' : 'primary'} />
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: 0, height: 60 }
                 }}
-              >
-                {loading ? <CircularProgress size={26} color="inherit" /> : 'Iniciar Sesión'}
-              </Button>
-
-              {/* Espacio para error general si no aplica a email o password específicamente */}
-              <Box sx={{ mt: 2, minHeight: '24px', display: 'flex', justifyContent: 'center' }}>
-                {errorType === 'general' && email.trim() && password.trim() && (
-                  <Typography variant="caption" color="error" sx={{ display: 'flex', alignItems: 'center', fontWeight: 500 }}>
-                    <ErrorOutlineIcon sx={{ fontSize: 16, mr: 0.5 }} />
+              />
+              <Box sx={{ minHeight: '24px', mt: 0.5, px: 1 }}>
+                {(errorType === 'email' || (errorType === 'general' && !email.trim())) && (
+                  <Typography variant="caption" color="error" sx={{ display: 'flex', alignItems: 'center', fontWeight: 600 }}>
+                    <ErrorOutlineIcon sx={{ fontSize: 14, mr: 0.5 }} />
                     {error}
                   </Typography>
                 )}
               </Box>
-            </form>
-          </CardContent>
-        </Paper>
+            </Box>
+
+            <Box sx={{ mb: 5 }}>
+              <TextField
+                fullWidth
+                label="Contraseña"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={handleKeyDown}
+                variant="outlined"
+                placeholder="••••••••"
+                error={errorType === 'password' || errorType === 'general'}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <LockIcon color={(errorType === 'password' || errorType === 'general') ? 'error' : 'primary'} />
+                    </InputAdornment>
+                  ),
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={handleClickShowPassword} edge="end">
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: 0, height: 60 }
+                }}
+              />
+              <Box sx={{ minHeight: '24px', mt: 0.5, px: 1 }}>
+                {(errorType === 'password' || (errorType === 'general' && email.trim() && !password.trim())) && (
+                  <Typography variant="caption" color="error" sx={{ display: 'flex', alignItems: 'center', fontWeight: 600 }}>
+                    <ErrorOutlineIcon sx={{ fontSize: 14, mr: 0.5 }} />
+                    {error}
+                  </Typography>
+                )}
+                {errorType === 'general' && email.trim() && password.trim() && (
+                  <Typography variant="caption" color="error" sx={{ display: 'flex', alignItems: 'center', fontWeight: 600 }}>
+                    <ErrorOutlineIcon sx={{ fontSize: 14, mr: 0.5 }} />
+                    {error}
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+
+            <Button
+              fullWidth
+              size="large"
+              variant="contained"
+              onClick={() => handleLogin()}
+              disabled={loading}
+              sx={{
+                py: 2.5,
+                borderRadius: 0,
+                fontSize: '1.2rem',
+                fontWeight: '900',
+                textTransform: 'none',
+                backgroundColor: '#003366',
+                boxShadow: 'none',
+                '&:hover': {
+                  backgroundColor: '#002244',
+                }
+              }}
+            >
+              {loading ? <CircularProgress size={24} color="inherit" /> : 'Iniciar Sesión'}
+            </Button>
+          </form>
+
+          <Box sx={{ mt: 10, textAlign: 'center' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ opacity: 0.7, fontWeight: 500, fontSize: '0.8rem' }}>
+              © 2026 Universidad Nacional de Trujillo <br />
+              Facultad de Ingeniería - Ingeniería de Sistemas
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
+
+      {/* Lado Derecho: Imagen/Información Institucional */}
+      <Box
+        sx={{
+          flex: { xs: 'none', md: '1 1 50% ' },
+          display: { xs: 'none', md: 'flex' },
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          position: 'relative',
+          background: 'linear-gradient(rgba(0, 51, 102, 0.8), rgba(0, 51, 102, 0.9)), url("https://www.unitru.edu.pe/Recursos/img/slider/slider1.jpg")',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          p: 8,
+          color: 'white',
+          textAlign: 'center'
+        }}
+      >
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(255, 215, 0, 0.08) 0%, transparent 80%)',
+            pointerEvents: 'none',
+          }}
+        />
         
-        <Typography 
-          variant="body2" 
-          align="center" 
-          display="block"
-          sx={{ mt: 3, color: 'rgba(255,255,255,0.7)' }}
-        >
-          © {new Date().getFullYear()} Escuela de Ingeniería de Sistemas - UNT
-        </Typography>
+        <Box sx={{ zIndex: 1, maxWidth: 600 }}>
+          <SchoolIcon sx={{ fontSize: 100, color: '#FFD700', mb: 4 }} />
+          <Typography variant="h2" fontWeight="900" sx={{ mb: 3, letterSpacing: -2, lineHeight: 1 }}>
+            Excelencia Académica
+          </Typography>
+          <Typography variant="h5" sx={{ mb: 6, fontWeight: 300, opacity: 0.9, lineHeight: 1.6, maxWidth: 500, mx: 'auto' }}>
+            Plataforma oficial para la gestión y organización de horarios académicos de la Universidad Nacional de Trujillo.
+          </Typography>
+          
+          <Divider sx={{ bgcolor: 'rgba(255,215,0,0.4)', width: '80px', mx: 'auto', mb: 6, height: '4px', borderRadius: 0 }} />
+          
+          <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: 'rgba(255,255,255,0.1)', px: 3, py: 1.5, borderRadius: 0, border: '1px solid rgba(255,255,255,0.2)' }}>
+              <LoginIcon sx={{ fontSize: 20, color: '#FFD700' }} />
+              <Typography variant="subtitle1" fontWeight="700">Acceso Seguro</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: 'rgba(255,255,255,0.1)', px: 3, py: 1.5, borderRadius: 0, border: '1px solid rgba(255,255,255,0.2)' }}>
+              <SchoolIcon sx={{ fontSize: 20, color: '#FFD700' }} />
+              <Typography variant="subtitle1" fontWeight="700">Gestión Integral</Typography>
+            </Box>
+          </Box>
+        </Box>
       </Box>
     </Box>
   );

@@ -27,6 +27,12 @@ export class Usuario {
   @Column({ type: 'integer', nullable: true })
   docenteId: number;
 
+  @Column({ type: 'integer', default: 0 })
+  intentosFallidos: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  bloqueadoHasta: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -33,6 +33,28 @@ async function bootstrap() {
   app.useGlobalInterceptors(new LoggerInterceptor());
   app.useGlobalFilters(new HttpExceptionFilter());
 
+  // Helmet para seguridad básica de cabeceras
+  app.use(helmet());
+
+  // Rate Limiting global
+  app.use(
+    rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutos
+      max: 100, // Límite de 100 peticiones por ventana de tiempo por IP
+      message: 'Demasiadas peticiones desde esta IP, por favor intenta después de 15 minutos',
+    }),
+  );
+
+  // Rate Limiting específico para login
+  app.use(
+    '/auth/login',
+    rateLimit({
+      windowMs: 1 * 60 * 1000, // 1 minuto
+      max: 5, // Límite de 5 intentos de login por minuto por IP
+      message: 'Demasiados intentos de inicio de sesión, intenta en un minuto',
+    }),
+  );
+
   const port = process.env.PORT || 3001;
   await app.listen(port, '0.0.0.0');
   console.log(`Backend corriendo en: http://localhost:${port}`);
