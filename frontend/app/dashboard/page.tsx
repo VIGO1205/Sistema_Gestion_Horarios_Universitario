@@ -146,6 +146,70 @@ export default function DashboardEstadisticas() {
   const prevEstadoRef = useRef<string | null>(null);
   const avisoToastRef = useRef<string | null>(null);
 
+  // Mensaje de Bienvenida Elegante tras Login (Estilo Banner Lineal)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !usuario) return;
+
+    const shouldShow = sessionStorage.getItem('showWelcome') === 'true';
+    
+    if (shouldShow) {
+      sessionStorage.removeItem('showWelcome');
+      
+      // Delay mínimo para asegurar que el DOM esté listo
+      setTimeout(() => {
+        MySwal.fire({
+          toast: true,
+          position: 'top',
+          showConfirmButton: false,
+          timer: 5000,
+          timerProgressBar: true,
+          background: '#ffffff',
+          color: '#1e293b',
+          width: 'auto',
+          padding: '0.6rem 1.5rem',
+          html: `
+            <div style="display: flex; align-items: center; gap: 20px; font-family: 'Inter', sans-serif;">
+              <div style="background: #003366; color: #ffffff; padding: 4px 12px; font-weight: 900; font-size: 0.75rem; border-radius: 6px; letter-spacing: 0.5px;">SGH - UNT</div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-weight: 700; font-size: 1rem; color: #003366;">¡Bienvenido!</span>
+                <span style="opacity: 0.2; color: #000;">|</span>
+                <span style="font-weight: 600; font-size: 0.95rem; color: #475569;">${usuario.nombre || usuario.email.split('@')[0]}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; background: rgba(0, 51, 102, 0.05); padding: 4px 15px; border-radius: 20px; border: 1px solid rgba(0, 51, 102, 0.1);">
+                <span style="font-size: 0.7rem; font-weight: 800; text-transform: uppercase; color: #003366;">${usuario.rol}</span>
+              </div>
+            </div>
+          `,
+          customClass: {
+            popup: 'banner-welcome-premium',
+            timerProgressBar: 'banner-timer-premium'
+          },
+          didOpen: (toast) => {
+            toast.style.marginTop = '15px';
+            const style = document.createElement('style');
+            style.innerHTML = `
+              .banner-welcome-premium {
+                border-radius: 16px !important;
+                box-shadow: none !important;
+                border: 1px solid rgba(0, 51, 102, 0.1) !important;
+                animation: slideDownFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+              }
+              .banner-timer-premium {
+                background: #FFD700 !important;
+                height: 3px !important;
+              }
+              @keyframes slideDownFade {
+                from { transform: translateY(-20px); opacity: 0; }
+                to { transform: translateY(0); opacity: 1; }
+              }
+            `;
+            document.head.appendChild(style);
+          }
+        });
+      }, 500);
+    }
+  }, [usuario]);
+
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (estadoSeleccion?.estado === 'en_atencion' && estadoSeleccion.segundosRestantes > 0) {

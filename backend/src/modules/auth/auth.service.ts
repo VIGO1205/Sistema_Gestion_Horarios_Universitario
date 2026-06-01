@@ -57,7 +57,7 @@ export class AuthService {
     }
 
     // Verificar si tiene docente asociado si el rol lo requiere
-    if ((usuario.rol === 'docente' || usuario.rol === 'coordinador') && !usuario.docente) {
+    if (usuario.rol === 'docente' && !usuario.docente) {
       throw new UnauthorizedException('Usuario sin perfil de docente asociado. Contacta al administrador.');
     }
 

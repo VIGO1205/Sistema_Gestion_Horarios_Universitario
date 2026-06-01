@@ -24,8 +24,12 @@ import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import SchoolIcon from '@mui/icons-material/School';
 import LoginIcon from '@mui/icons-material/Login';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
-import { useAuth } from '@/components/providers/AuthProvider';
 import api from '@/lib/api';
+import Swal from 'sweetalert2';
+import withReactContent from 'sweetalert2-react-content';
+import { useAuth } from '@/components/providers/AuthProvider';
+
+const MySwal = withReactContent(Swal);
 
 export default function LoginPage() {
   const router = useRouter();
@@ -69,6 +73,12 @@ export default function LoginPage() {
       const { access_token, usuario } = response.data;
 
       login(access_token, usuario);
+      
+      // Marcar para mostrar bienvenida en el dashboard
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('showWelcome', 'true');
+      }
+
       router.push('/dashboard');
     } catch (err: any) {
       setLoading(false);
@@ -158,10 +168,11 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={handleKeyDown}
-                variant="outlined"
-                placeholder="ejemplo@unt.edu.pe"
-                error={errorType === 'email' || errorType === 'general'}
+              onKeyDown={handleKeyDown}
+              variant="outlined"
+              placeholder="ejemplo@unt.edu.pe"
+              autoComplete="username"
+              error={errorType === 'email' || errorType === 'general'}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -191,6 +202,7 @@ export default function LoginPage() {
                 onKeyDown={handleKeyDown}
                 variant="outlined"
                 placeholder="••••••••"
+                autoComplete="current-password"
                 error={errorType === 'password' || errorType === 'general'}
                 InputProps={{
                   startAdornment: (
