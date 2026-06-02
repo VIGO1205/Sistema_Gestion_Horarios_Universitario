@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -116,9 +116,7 @@ export default function DashboardDocente({
   const categoriaMostrar = docente?.categoria || '---';
 
   const totalHorasLectivas = cargaLectiva.reduce((sum, item) => {
-    const horasBase = Number(item.horasSemanales || 0);
-    const numGrupos = item.grupos?.length || 1; // Si no hay grupos definidos, asumimos al menos 1
-    return sum + (horasBase * numGrupos);
+    return sum + Number(item.horasSemanales || 0);
   }, 0);
   
   // Extraer el número de la dedicación (ej: "40 H" -> 40)
@@ -126,6 +124,36 @@ export default function DashboardDocente({
   const porcentajeLectiva = Math.min(100, (totalHorasLectivas / dedicacionTotalHoras) * 100);
 
   const numberToLetter = (num: number) => String.fromCharCode(64 + num);
+
+  const cargaLectivaAgrupada = useMemo(() => {
+    const grupos: Record<number, any> = {};
+    
+    cargaLectiva.forEach((item) => {
+      const cursoId = item.cursoId;
+      if (!grupos[cursoId]) {
+        grupos[cursoId] = {
+          codigo: item.curso?.codigo,
+          nombre: item.curso?.nombre,
+          ciclo: item.curso?.cicloAcademico,
+          horasT: 0,
+          horasP: 0,
+          horasL: 0,
+          totalHoras: 0,
+        };
+      }
+      
+      const horas = Number(item.horasSemanales || 0);
+      const tipo = item.tipoClase?.toLowerCase();
+      
+      if (tipo === 'teoria') grupos[cursoId].horasT += horas;
+      else if (tipo === 'practica') grupos[cursoId].horasP += horas;
+      else if (tipo === 'laboratorio') grupos[cursoId].horasL += horas;
+      
+      grupos[cursoId].totalHoras += horas;
+    });
+    
+    return Object.values(grupos);
+  }, [cargaLectiva]);
 
   const getStatusInfo = () => {
     const estado = estadoSeleccion?.estado;
@@ -351,11 +379,11 @@ export default function DashboardDocente({
                 <Table size="small">
                   <TableHead>
                     <TableRow sx={{ bgcolor: '#f1f5f9' }}>
-                      <TableCell sx={{ fontWeight: 800, color: '#475569' }}>CÓDIGO</TableCell>
-                      <TableCell sx={{ fontWeight: 800, color: '#475569' }}>CURSO</TableCell>
-                      <TableCell sx={{ fontWeight: 800, color: '#475569' }}>TIPO</TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 800, color: '#475569' }}>GRUPO</TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 800, color: '#475569' }}>TOTAL HRS</TableCell>
+                      <TableCell sx={{ fontWeight: 800, color: '#475569' }}>CODIGO</TableCell>
+                      <TableCell sx={{ fontWeight: 800, color: '#475569' }}>NOMBRE DEL CURSO</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 800, color: '#475569' }}>AÑO O CICLO</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 800, color: '#475569' }}>HORAS</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 800, color: '#475569' }}>TOTAL HRS.</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -365,34 +393,20 @@ export default function DashboardDocente({
                           <CircularProgress size={24} />
                         </TableCell>
                       </TableRow>
-                    ) : cargaLectiva.length > 0 ? (
-                      cargaLectiva.map((item, idx) => {
-                        const numGrupos = item.grupos?.length || 1;
-                        const totalHorasItem = Number(item.horasSemanales || 0) * numGrupos;
-                        
+                    ) : cargaLectivaAgrupada.length > 0 ? (
+                      cargaLectivaAgrupada.map((item, idx) => {
                         return (
                           <TableRow key={idx} hover>
-                            <TableCell sx={{ fontWeight: 600 }}>{item.curso?.codigo || '---'}</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>{item.curso?.nombre}</TableCell>
-                            <TableCell>
-                              <Chip
-                                label={item.tipoClase?.toUpperCase()}
-                                size="small"
-                                sx={{
-                                  fontWeight: 800,
-                                  fontSize: '0.65rem',
-                                  bgcolor: item.tipoClase === 'teoria' ? '#eff6ff' : item.tipoClase === 'practica' ? '#fffbeb' : '#f0fdf4',
-                                  color: item.tipoClase === 'teoria' ? '#1e40af' : item.tipoClase === 'practica' ? '#92400e' : '#166534',
-                                }}
-                              />
-                            </TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>{item.codigo || '---'}</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>{item.nombre}</TableCell>
                             <TableCell align="center" sx={{ fontWeight: 700, color: '#475569' }}>
-                              {item.grupos && item.grupos.length > 0 
-                                ? item.grupos.map((g: any) => numberToLetter(g.numeroGrupo)).join(', ')
-                                : 'A'}
+                              {item.ciclo || '---'}
+                            </TableCell>
+                            <TableCell align="center" sx={{ fontWeight: 700, color: '#475569', fontSize: '0.75rem' }}>
+                              Teor: {item.horasT}; Pract: {item.horasP}; Lab: {item.horasL}
                             </TableCell>
                             <TableCell align="center" sx={{ fontWeight: 800, color: '#003366' }}>
-                              {totalHorasItem}H
+                              {item.totalHoras}
                             </TableCell>
                           </TableRow>
                         );

@@ -487,29 +487,32 @@ export default function HorariosPage() {
     aplicarRecalculoHoraFin(horarioForm.horaInicio, cursoActual, cursosDocente, horarioForm.tipoClase);
   }, [horarioForm.docenteId, horarioForm.cursoId, horarioForm.horaInicio, loadingCursosDocente, cursosDocente, selectedHorario]);
 
-  // Efecto para cargar grupos si es laboratorio
+  // Efecto para cargar grupos para cualquier tipo de clase
   useEffect(() => {
     const tClase = horarioForm.tipoClase?.toLowerCase();
     const cursoId = Number(horarioForm.cursoId);
-    if (tClase === 'laboratorio' && cursoId && cursosDocente.length > 0) {
+    
+    if (tClase && cursoId && cursosDocente.length > 0) {
       const asig = cursosDocente.find(a => 
         Number(a.cursoId) === cursoId && 
-        a.tipoClase.toLowerCase() === 'laboratorio'
+        a.tipoClase.toLowerCase() === tClase
       );
       
       if (asig && asig.grupos) {
-        // Filtrar grupos que ya están ocupados (usando la info que viene del backend)
-        // Pero permitimos el grupo que ya tiene el horario que estamos editando
+        // Filtrar grupos que ya están ocupados
         const gruposDisponibles = asig.grupos.filter((g: any) => 
           !g.ocupado || (selectedHorario && g.id === selectedHorario.grupoId)
         );
         
         setGrupos(gruposDisponibles);
         
-        // Si hay grupos disponibles y el actual no es válido, seleccionar el primero disponible
+        // Lógica de selección automática:
+        // Si hay grupos disponibles:
         if (gruposDisponibles.length > 0) {
           const grupoActualValido = gruposDisponibles.some((g: any) => g.id === horarioForm.grupoId);
-          if (!grupoActualValido) {
+          
+          // Si el grupo actual no es válido O si solo hay 1 grupo (selección por defecto)
+          if (!grupoActualValido || gruposDisponibles.length === 1) {
             setHorarioForm(prev => ({ ...prev, grupoId: gruposDisponibles[0].id }));
           }
         }
@@ -811,6 +814,8 @@ export default function HorariosPage() {
   const isStartTime = (eventHoraInicio: string, gridHora: string) => {
     return eventHoraInicio.substring(0, 5) === gridHora;
   };
+
+  const numberToLetter = (num: number) => String.fromCharCode(64 + num);
 
   // Función para obtener color según el Docente (para diferenciar en la grilla)
   const getColorByDocente = (docenteId: number) => {
@@ -1876,47 +1881,64 @@ export default function HorariosPage() {
                         ? 'Sin cursos' 
                         : 'Seleccionar curso...'}
                 </MenuItem>
-                {cursosDocente.map((asig: any) => {
-                  const isFull = asig.horasAsignadas >= asig.horasSemanales;
-                  const isEditingCurrent = selectedHorario && 
-                                          Number(selectedHorario.cursoId) === Number(asig.cursoId) && 
-                                          selectedHorario.tipoClase.toLowerCase() === asig.tipoClase.toLowerCase();
-                  
-                  // Validación de Mapa de Calor: Ver si este curso específico tiene cruce en el slot seleccionado
-                  const keyOcupacion = `${horarioForm.diaSemana}_${parseInt(horarioForm.horaInicio.split(':')[0])}`;
-                  const ocupacionesSlot = mapaOcupacion[keyOcupacion] || [];
-                  const tieneCruceGrupo = ocupacionesSlot.some((o: any) => 
-                    o.carreraId === asig.curso?.carreraId && o.cicloAcademico === asig.curso?.cicloAcademico
-                  );
+                {cursosDocente
+                  .filter((asig: any) => {
+                    const isFull = asig.horasAsignadas >= asig.horasSemanales;
+                    const isEditingCurrent = selectedHorario && 
+                                            Number(selectedHorario.cursoId) === Number(asig.cursoId) && 
+                                            selectedHorario.tipoClase.toLowerCase() === asig.tipoClase.toLowerCase();
+                    // Solo mostramos si NO está lleno O si es el que estamos editando actualmente
+                    return !isFull || isEditingCurrent;
+                  })
+                  .map((asig: any) => {
+                    const isFull = asig.horasAsignadas >= asig.horasSemanales;
+                    const isEditingCurrent = selectedHorario && 
+                                            Number(selectedHorario.cursoId) === Number(asig.cursoId) && 
+                                            selectedHorario.tipoClase.toLowerCase() === asig.tipoClase.toLowerCase();
+                    
+                    // Validación de Mapa de Calor: Ver si este curso específico tiene cruce en el slot seleccionado
+                    const keyOcupacion = `${horarioForm.diaSemana}_${parseInt(horarioForm.horaInicio.split(':')[0])}`;
+                    const ocupacionesSlot = mapaOcupacion[keyOcupacion] || [];
+                    const tieneCruceGrupo = ocupacionesSlot.some((o: any) => 
+                      o.carreraId === asig.curso?.carreraId && o.cicloAcademico === asig.curso?.cicloAcademico
+                    );
 
-                  return (
-                    <MenuItem 
-                      key={`${asig.cursoId}-${asig.tipoClase}`} 
-                      value={`${asig.cursoId}-${asig.tipoClase}`}
-                      disabled={(isFull && !isEditingCurrent) || tieneCruceGrupo}
-                    >
-                      <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {asig.curso?.nombre || 'Curso'} {tieneCruceGrupo ? '(CRUCE DE GRUPO)' : ''}
+                    return (
+                      <MenuItem 
+                        key={`${asig.cursoId}-${asig.tipoClase}`} 
+                        value={`${asig.cursoId}-${asig.tipoClase}`}
+                        disabled={tieneCruceGrupo}
+                      >
+                        <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {asig.curso?.nombre || 'Curso'} {tieneCruceGrupo ? '(CRUCE DE GRUPO)' : ''}
+                            </Typography>
+                            {tieneCruceGrupo ? (
+                              <Chip 
+                                label="CRUCE DE ALUMNOS" 
+                                size="small" 
+                                color="error" 
+                                variant="filled"
+                                sx={{ height: 20, fontSize: '0.65rem', fontWeight: 800 }} 
+                              />
+                            ) : isFull && isEditingCurrent ? (
+                              <Chip 
+                                label="CARGA COMPLETA" 
+                                size="small" 
+                                color="success" 
+                                variant="outlined"
+                                sx={{ height: 20, fontSize: '0.65rem', fontWeight: 800 }} 
+                              />
+                            ) : null}
+                          </Box>
+                          <Typography variant="caption" color={tieneCruceGrupo ? "error" : "textSecondary"}>
+                            {asig.tipoClase?.toUpperCase()} | {asig.horasAsignadas}h de {asig.horasSemanales}h Semanales asignadas
                           </Typography>
-                          {(isFull && !isEditingCurrent) || tieneCruceGrupo ? (
-                            <Chip 
-                              label={tieneCruceGrupo ? "CRUCE DE ALUMNOS" : "CARGA COMPLETA"} 
-                              size="small" 
-                              color="error" 
-                              variant="filled"
-                              sx={{ height: 20, fontSize: '0.65rem', fontWeight: 800 }} 
-                            />
-                          ) : null}
                         </Box>
-                        <Typography variant="caption" color={(isFull && !isEditingCurrent) || tieneCruceGrupo ? "error" : "textSecondary"}>
-                          {asig.tipoClase?.toUpperCase()} | {asig.horasAsignadas}h de {asig.horasSemanales}h Semanales asignadas
-                        </Typography>
-                      </Box>
-                    </MenuItem>
-                  );
-                })}
+                      </MenuItem>
+                    );
+                  })}
               </TextField>
             </Grid>
 
@@ -1968,33 +1990,30 @@ export default function HorariosPage() {
             </Grid>
 
             <Grid item xs={12} md={4}>
-              {horarioForm.tipoClase?.toLowerCase() === 'laboratorio' ? (
-                <TextField
-                  select
-                  fullWidth
-                  size="small"
-                  label="N° Grupo"
-                  disabled={!docentePuedeGestionar || loadingGrupos}
-                  value={horarioForm.grupoId}
-                  onChange={(e) => setHorarioForm({ ...horarioForm, grupoId: e.target.value })}
-                  helperText={grupos.length === 1 ? "Grupo único asignado automáticamente" : ""}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <FilterIcon fontSize="small" color="primary" />
-                      </InputAdornment>
-                    ),
-                  }}
-                >
-                  {grupos.map((g: any) => (
-                    <MenuItem key={g.id} value={g.id}>
-                      Grupo {g.numeroGrupo}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              ) : (
-                <Box sx={{ width: '100%', height: '40px' }} /> // Placeholder para mantener el layout estable
-              )}
+              <TextField
+                select
+                fullWidth
+                size="small"
+                label="N° Grupo"
+                disabled={!docentePuedeGestionar || loadingGrupos || grupos.length === 0}
+                value={horarioForm.grupoId || ''}
+                onChange={(e) => setHorarioForm({ ...horarioForm, grupoId: e.target.value })}
+                helperText={grupos.length === 1 ? "Grupo único asignado automáticamente" : ""}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <FilterIcon fontSize="small" color="primary" />
+                    </InputAdornment>
+                  ),
+                }}
+              >
+                {grupos.length === 0 && <MenuItem value="">Sin grupos disponibles</MenuItem>}
+                {grupos.map((g: any) => (
+                  <MenuItem key={g.id} value={g.id}>
+                    Grupo {numberToLetter(g.numeroGrupo)}
+                  </MenuItem>
+                ))}
+              </TextField>
             </Grid>
 
             {/* Fila 3: Día y Horas */}

@@ -1,43 +1,34 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository, Not } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Docente } from '../../entities/docente.entity';
-import { AsignacionDocenteCurso, TipoClase } from '../../entities/asignacion-docente-curso.entity';
 import { DocenteCarrera } from '../../entities/docente-carrera.entity';
 import { Carrera } from '../../entities/carrera.entity';
-import { Curso } from '../../entities/curso.entity';
-import { GrupoDocenteAsignacion } from '../../database/entities/grupo-docente-asignacion.entity';
-import { ProgramacionCursoCiclo } from '../../database/entities/programacion-curso-ciclo.entity';
-import { Horario } from '../../entities/horario.entity';
 import { CreateDocenteDto } from './dto/create-docente.dto';
 import { UpdateDocenteDto } from './dto/update-docente.dto';
 import { UsuariosService } from '../usuarios/usuarios.service';
 import { RolUsuario } from '../../entities/usuario.entity';
+import { AsignacionDocenteCurso } from '../../entities/asignacion-docente-curso.entity';
+import { Horario } from '../../entities/horario.entity';
 
 @Injectable()
 export class DocentesService {
   constructor(
     @InjectRepository(Docente)
     private docentesRepository: Repository<Docente>,
-    @InjectRepository(AsignacionDocenteCurso)
-    private asignacionRepository: Repository<AsignacionDocenteCurso>,
-    @InjectRepository(GrupoDocenteAsignacion)
-    private grupoRepository: Repository<GrupoDocenteAsignacion>,
-    @InjectRepository(ProgramacionCursoCiclo)
-    private programacionRepository: Repository<ProgramacionCursoCiclo>,
     @InjectRepository(DocenteCarrera)
     private docenteCarreraRepository: Repository<DocenteCarrera>,
     @InjectRepository(Carrera)
     private carreraRepository: Repository<Carrera>,
-    @InjectRepository(Curso)
-    private cursoRepository: Repository<Curso>,
+    @InjectRepository(AsignacionDocenteCurso)
+    private asignacionRepo: Repository<AsignacionDocenteCurso>,
     @InjectRepository(Horario)
-    private horarioRepository: Repository<Horario>,
+    private horarioRepo: Repository<Horario>,
     private usuariosService?: UsuariosService,
   ) {}
 
   async create(createDocenteDto: CreateDocenteDto): Promise<Docente> {
-    const { asignaciones, carreraIds, ...docenteData } = createDocenteDto;
+    const { carreraIds, ...docenteData } = createDocenteDto;
 
     if (docenteData.fechaIngreso === '') docenteData.fechaIngreso = undefined;
     
@@ -89,7 +80,6 @@ export class DocentesService {
     }
 
     await this.syncCarreras(savedDocente.id, carreraIds);
-    await this.syncAsignaciones(savedDocente.id, asignaciones, carreraIds);
 
     return await this.findOne(savedDocente.id);
   }
@@ -168,7 +158,7 @@ export class DocentesService {
   }
 
   async update(id: number, updateDocenteDto: UpdateDocenteDto): Promise<Docente> {
-    const { asignaciones, carreraIds, ...docenteData } = updateDocenteDto;
+    const { carreraIds, ...docenteData } = updateDocenteDto;
     const docente = await this.findOne(id);
 
     // 1. Normalizar y calcular antigüedad (Evitar NaN)
@@ -198,8 +188,7 @@ export class DocentesService {
       this.samePrimitive(docente.categoria, camposNuevos.categoria ?? docente.categoria) &&
       this.samePrimitive(Number(docente.antiguedadAnios), Number(camposNuevos.antiguedadAnios ?? docente.antiguedadAnios)) &&
       this.samePrimitive(Boolean(docente.activo), camposNuevos.activo ?? docente.activo) &&
-      (carrerasNuevas === undefined || this.sameArray(carrerasActuales, carrerasNuevas)) &&
-      (asignaciones === undefined || await this.sameAsignaciones(docente.id, asignaciones));
+      (carrerasNuevas === undefined || this.sameArray(carrerasActuales, carrerasNuevas));
 
     if (docenteSinCambios) {
       return await this.findOne(id);
@@ -209,7 +198,6 @@ export class DocentesService {
     await this.docentesRepository.save(docente);
 
     await this.syncCarreras(id, carreraIds);
-    await this.syncAsignaciones(id, asignaciones, carreraIds);
 
     return await this.findOne(id);
   }
@@ -237,68 +225,6 @@ export class DocentesService {
     return await this.docentesRepository.save(docente);
   }
 
-  async findCourses(id: number, cicloId?: number) {
-    try {
-      const asignaciones = await this.asignacionRepository.find({
-        where: { 
-          docenteId: id,
-          ...(cicloId ? { cicloId } : {})
-        },
-        relations: ['curso', 'ciclo', 'grupos'],
-      });
-
-      if (asignaciones.length === 0) {
-        return [];
-      }
-
-      const horasAsignadasPorCursoTipo = new Map<string, number>();
-      const gruposOcupadosIds: number[] = [];
-
-      if (cicloId) {
-        const horarios = await this.horarioRepository.find({
-          where: { docenteId: id, cicloId },
-          select: ['cursoId', 'tipoClase', 'grupoId', 'horaInicio', 'horaFin']
-        });
-
-        horarios.forEach(h => {
-          const key = `${h.cursoId}-${h.tipoClase.toLowerCase()}`;
-          const hInicio = parseInt(h.horaInicio.split(':')[0]);
-          const hFin = parseInt(h.horaFin.split(':')[0]);
-          const duracion = hFin - hInicio;
-          
-          horasAsignadasPorCursoTipo.set(key, (horasAsignadasPorCursoTipo.get(key) || 0) + duracion);
-          
-          if (h.grupoId) {
-            gruposOcupadosIds.push(Number(h.grupoId));
-          }
-        });
-      }
-
-      return asignaciones.map((asignacion) => {
-        const gruposBase = (asignacion as any).grupos || [];
-        const gruposConEstado = gruposBase.map((g: any) => ({
-          ...g,
-          ocupado: gruposOcupadosIds.includes(Number(g.id)),
-        }));
-
-        const key = `${asignacion.cursoId}-${asignacion.tipoClase.toLowerCase()}`;
-        const horasAsignadas = horasAsignadasPorCursoTipo.get(key) || 0;
-
-        return {
-          ...(asignacion as any),
-          grupos: gruposConEstado,
-          horasAsignadas,
-          numeroGrupos: asignacion.tipoClase === 'laboratorio'
-            ? (gruposConEstado.length ?? 0)
-            : 0,
-        };
-      });
-    } catch (error) {
-      console.error('Error en findCourses:', error);
-      return [];
-    }
-  }
-
   private pickDefinedValues<T extends Record<string, any>>(values: T): Partial<T> {
     return Object.fromEntries(
       Object.entries(values).filter(([, value]) => value !== undefined),
@@ -323,52 +249,6 @@ export class DocentesService {
     }
 
     return left.every((value, index) => value === right[index]);
-  }
-
-  private normalizeAsignacionesFromDto(asignaciones?: any[]): any[] {
-    const grupos = new Map<string, any>();
-
-    for (const asignacion of asignaciones || []) {
-      const cursoId = Number(asignacion?.cursoId);
-      const cicloId = Number(asignacion?.cicloId);
-      const key = `${cursoId}`;
-
-      if (!grupos.has(key)) {
-        grupos.set(key, {
-          cursoId,
-          cicloId,
-          horasTeoria: 0,
-          horasPractica: 0,
-          horasLaboratorio: 0,
-          numeroGrupos: 0,
-        });
-      }
-
-      const grupo = grupos.get(key);
-      if (asignacion?.tipoClase === 'teoria') {
-        grupo.horasTeoria += Number(asignacion.horasSemanales || 0);
-      }
-      if (asignacion?.tipoClase === 'practica') {
-        grupo.horasPractica += Number(asignacion.horasSemanales || 0);
-      }
-      if (asignacion?.tipoClase === 'laboratorio') {
-        grupo.horasLaboratorio += Number(asignacion.horasSemanales || 0);
-        grupo.numeroGrupos = Math.max(grupo.numeroGrupos, Number(asignacion.numeroGrupos ?? asignacion.numero_grupos ?? 0));
-      }
-    }
-
-    return Array.from(grupos.values()).sort((left, right) => {
-      if (left.cursoId !== right.cursoId) return left.cursoId - right.cursoId;
-      return left.cicloId - right.cicloId;
-    });
-  }
-
-  private async sameAsignaciones(docenteId: number, asignacionesDto?: any[]): Promise<boolean> {
-    const actuales = await this.findCourses(docenteId);
-    const actualesNormalizadas = this.normalizeAsignacionesFromDto(actuales);
-
-    const nuevasNormalizadas = this.normalizeAsignacionesFromDto(asignacionesDto);
-    return JSON.stringify(actualesNormalizadas) === JSON.stringify(nuevasNormalizadas);
   }
 
   private async syncCarreras(docenteId: number, carreraIds?: number[]) {
@@ -400,234 +280,42 @@ export class DocentesService {
     await this.docenteCarreraRepository.save(assignments);
   }
 
-  private async syncAsignaciones(docenteId: number, asignacionesDtoInput?: any[], carreraIds?: number[]) {
-    if (asignacionesDtoInput === undefined) {
-      return;
+  async findCourses(id: number, cicloId?: number) {
+    const qb = this.asignacionRepo.createQueryBuilder('asig')
+      .leftJoinAndSelect('asig.curso', 'curso')
+      .leftJoinAndSelect('asig.grupos', 'grupos')
+      .leftJoinAndSelect('asig.ciclo', 'ciclo')
+      .where('asig.docenteId = :id', { id });
+
+    if (cicloId) {
+      qb.andWhere('asig.cicloId = :cicloId', { cicloId });
     }
 
-    if (!Array.isArray(asignacionesDtoInput) || asignacionesDtoInput.length === 0) {
-      await this.asignacionRepository.createQueryBuilder()
-        .delete()
-        .where('"docenteId" = :docenteId', { docenteId })
-        .execute();
-      return;
-    }
+    const asignaciones = await qb.getMany();
 
-    if (!Array.isArray(carreraIds) || carreraIds.length === 0) {
-      throw new BadRequestException('Primero debes seleccionar al menos una carrera para poder asignar cursos.');
-    }
+    // Calcular horas ya asignadas en el horario para cada curso/tipoClase
+    const result = await Promise.all(asignaciones.map(async (asig) => {
+      const horarios = await this.horarioRepo.find({
+        where: {
+          docenteId: id,
+          cursoId: asig.cursoId,
+          cicloId: asig.cicloId,
+          tipoClase: asig.tipoClase as any,
+        }
+      });
 
-    const asignacionesDto = Array.isArray(asignacionesDtoInput) ? asignacionesDtoInput : [];
-    const seen = new Set();
-    
-    for (const a of asignacionesDto) {
-      const key = `${a.cursoId}-${a.cicloId}-${a.tipoClase}`;
-      if (seen.has(key)) {
-        const curso = await this.cursoRepository.findOne({ where: { id: Number(a.cursoId) } });
-        throw new BadRequestException(
-          `El curso "${curso?.nombre ?? a.cursoId}" (${a.tipoClase}) ya fue agregado. No se permiten duplicados del mismo tipo para el mismo curso.`
-        );
-      }
-      seen.add(key);
-    }
+      const minutosAsignados = horarios.reduce((total, h) => {
+        const [h1, m1] = h.horaInicio.split(':').map(Number);
+        const [h2, m2] = h.horaFin.split(':').map(Number);
+        return total + ((h2 * 60 + m2) - (h1 * 60 + m1));
+      }, 0);
 
-    const cursoIds = asignacionesDto.map(a => a.cursoId);
-    const cursos = await this.cursoRepository.find({ where: { id: In(cursoIds) } });
-    
-    if (cursos.length !== new Set(cursoIds).size) {
-      throw new BadRequestException('Uno o más cursos seleccionados no existen.');
-    }
-
-    const carrerasPermitidas = new Set(carreraIds.map((value) => Number(value)));
-    const cursosInvalidos = cursos.filter((curso) => !curso.carreraId || !carrerasPermitidas.has(Number(curso.carreraId)));
-
-    if (cursosInvalidos.length > 0) {
-      throw new BadRequestException('No puedes asignar cursos que no pertenezcan a las carreras seleccionadas.');
-    }
-
-    const nuevasAsignaciones = asignacionesDto.map((dto) =>
-      this.asignacionRepository.create({
-        docenteId,
-        cursoId: dto.cursoId,
-        cicloId: dto.cicloId,
-        tipoClase: dto.tipoClase,
-        horasSemanales: dto.horasSemanales,
-      }),
-    );
-
-    const cursoIdsUnicos = Array.from(new Set(asignacionesDto.map((asignacion) => Number(asignacion.cursoId))));
-    const programaciones = await this.programacionRepository.find({
-      where: { cursoId: In(cursoIdsUnicos) },
-    });
-
-    const programacionMap = new Map<string, ProgramacionCursoCiclo>();
-    for (const programacion of programaciones) {
-      programacionMap.set(`${programacion.cursoId}-${programacion.cicloId}`, programacion);
-    }
-
-    const clavesValidar = new Set<string>();
-    for (const asignacion of asignacionesDto) {
-      clavesValidar.add(`${Number(asignacion.cursoId)}-${Number(asignacion.cicloId)}`);
-    }
-
-    const otrasAsignaciones = await this.asignacionRepository.find({
-      where: {
-        cursoId: In(cursoIdsUnicos),
-        docenteId: Not(docenteId),
-      },
-    });
-
-    const otrasAsignacionesIds = otrasAsignaciones.map((asignacion) => asignacion.id);
-    const gruposExistentes = otrasAsignacionesIds.length > 0
-      ? await this.grupoRepository.find({
-          where: { asignacionId: In(otrasAsignacionesIds) },
-        })
-      : [];
-
-    const gruposPorAsignacionId = new Map<number, number>();
-    for (const grupo of gruposExistentes) {
-      gruposPorAsignacionId.set(grupo.asignacionId, (gruposPorAsignacionId.get(grupo.asignacionId) ?? 0) + 1);
-    }
-
-    const otrasAsignacionesNormalizadas = otrasAsignaciones.map((asignacion) => ({
-      ...asignacion,
-      numeroGrupos: asignacion.tipoClase === TipoClase.LABORATORIO
-        ? (gruposPorAsignacionId.get(asignacion.id) ?? 0)
-        : 0,
+      return {
+        ...asig,
+        horasAsignadas: minutosAsignados / 60,
+      };
     }));
 
-    for (const asignacion of otrasAsignaciones) {
-      clavesValidar.add(`${asignacion.cursoId}-${asignacion.cicloId}`);
-    }
-
-    for (const clave of clavesValidar) {
-      const [cursoIdRaw, cicloIdRaw] = clave.split('-');
-      const cursoId = Number(cursoIdRaw);
-      const cicloId = Number(cicloIdRaw);
-      const programacion = programacionMap.get(clave);
-
-      if (!programacion) {
-        const curso = cursos.find((c) => c.id === cursoId);
-        const cursoNombre = curso ? curso.nombre : `ID ${cursoId}`;
-        // try to find client index from incoming DTOs so frontend can highlight exact row
-        const offendingDto = (asignacionesDto || []).find((d: any) => Number(d.cursoId) === cursoId && Number(d.cicloId) === cicloId);
-        const clientIndex = offendingDto ? (Number(offendingDto.clientAsignacionIndex ?? offendingDto.clientIndex ?? -1)) : -1;
-        throw new BadRequestException({
-          message: `No se encontró la programación del curso "${cursoNombre}" para el ciclo ${cicloId}. Añade la programación en 'Programación por ciclo' antes de asignar docentes.`,
-          cursoId,
-          cicloId,
-          clientIndex: clientIndex >= 0 ? clientIndex : undefined,
-        });
-      }
-
-      const asignacionesCursoCiclo = [
-        ...otrasAsignacionesNormalizadas.filter((asignacion) => Number(asignacion.cursoId) === cursoId && Number(asignacion.cicloId) === cicloId),
-        ...asignacionesDto.filter((asignacion) => Number(asignacion.cursoId) === cursoId && Number(asignacion.cicloId) === cicloId),
-      ];
-
-      const teoriaTotal = asignacionesCursoCiclo
-        .filter((asignacion) => asignacion.tipoClase === 'teoria')
-        .reduce((acc, asignacion) => acc + Number(asignacion.horasSemanales || 0), 0);
-
-      const practicaTotal = asignacionesCursoCiclo
-        .filter((asignacion) => asignacion.tipoClase === 'practica')
-        .reduce((acc, asignacion) => acc + Number(asignacion.horasSemanales || 0), 0);
-
-      const laboratorios = asignacionesCursoCiclo.filter((asignacion) => asignacion.tipoClase === 'laboratorio');
-      const labHorasProgramadas = Number(programacion.horasLaboratorio || 0);
-      const gruposProgramados = Number(programacion.numeroGrupos || 0);
-
-      if (teoriaTotal > Number(programacion.horasTeoria || 0)) {
-        const curso = cursos.find((c) => c.id === cursoId);
-        throw new BadRequestException(
-          `Carga excedida para el curso "${curso?.nombre ?? cursoId}": la teoría programada es ${programacion.horasTeoria} y estás asignando ${teoriaTotal}.`
-        );
-      }
-
-      if (practicaTotal > Number(programacion.horasPractica || 0)) {
-        const curso = cursos.find((c) => c.id === cursoId);
-        throw new BadRequestException(
-          `Carga excedida para el curso "${curso?.nombre ?? cursoId}": la práctica programada es ${programacion.horasPractica} y estás asignando ${practicaTotal}.`
-        );
-      }
-
-      if (laboratorios.length > 0) {
-        if (labHorasProgramadas <= 0) {
-          const curso = cursos.find((c) => c.id === cursoId);
-          throw new BadRequestException(
-            `El curso "${curso?.nombre ?? cursoId}" no tiene laboratorio programado y no admite grupos de laboratorio.`
-          );
-        }
-
-        const gruposInvalidos = laboratorios.filter((asignacion) => {
-          const grupos = Number(asignacion.numeroGrupos ?? asignacion.numero_grupos ?? 0);
-          return grupos < 1 || grupos > 4;
-        });
-
-        if (gruposInvalidos.length > 0) {
-          const curso = cursos.find((c) => c.id === cursoId);
-          const offending = gruposInvalidos[0] as any;
-          throw new BadRequestException(
-            {
-              message: `El curso "${curso?.nombre ?? cursoId}" debe asignar entre 1 y 4 grupos de laboratorio.`,
-              cursoId,
-              cicloId,
-              tipoClase: 'laboratorio',
-              numeroGrupos: Number(offending.numeroGrupos ?? offending.numero_grupos ?? 0),
-              horasSemanales: Number(offending.horasSemanales || 0),
-            }
-          );
-        }
-
-        const horasLaboratorioInvalidas = laboratorios.filter(
-          (asignacion) => Number(asignacion.horasSemanales || 0) !== labHorasProgramadas,
-        );
-
-        if (horasLaboratorioInvalidas.length > 0) {
-          const curso = cursos.find((c) => c.id === cursoId);
-          throw new BadRequestException(
-            `El curso "${curso?.nombre ?? cursoId}" debe asignar ${labHorasProgramadas} horas de laboratorio por docente.`
-          );
-        }
-
-        const gruposAsignados = laboratorios.reduce(
-          (acc, asignacion) => acc + Number(asignacion.numeroGrupos ?? asignacion.numero_grupos ?? 0),
-          0,
-        );
-
-        if (gruposAsignados > gruposProgramados) {
-          const curso = cursos.find((c) => c.id === cursoId);
-          throw new BadRequestException(
-            `El curso "${curso?.nombre ?? cursoId}" tiene ${gruposProgramados} grupos de laboratorio programados y estás asignando ${gruposAsignados}.`
-          );
-        }
-      }
-    }
-
-    // Solo cuando todas las validaciones pasaron, reemplazamos las asignaciones previas.
-    await this.asignacionRepository.createQueryBuilder()
-      .delete()
-      .where('"docenteId" = :docenteId', { docenteId })
-      .execute();
-
-    const savedAsignaciones = await this.asignacionRepository.save(nuevasAsignaciones);
-
-    // Crear grupos para cada asignación según numeroGrupos en el DTO
-    const gruposACrear: any[] = [];
-    for (let i = 0; i < asignacionesDto.length; i++) {
-      const dto = asignacionesDto[i];
-      const asign = savedAsignaciones[i];
-      const num = dto.tipoClase === 'laboratorio'
-        ? Number(dto.numeroGrupos ?? dto.numero_grupos ?? 0) || 0
-        : 0;
-
-      for (let g = 1; g <= num; g++) {
-        gruposACrear.push(this.grupoRepository.create({ asignacionId: asign.id, numeroGrupo: g }));
-      }
-    }
-
-    if (gruposACrear.length > 0) {
-      await this.grupoRepository.save(gruposACrear);
-    }
+    return result;
   }
 }

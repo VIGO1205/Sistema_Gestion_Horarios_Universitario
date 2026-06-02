@@ -399,16 +399,23 @@ export default function CargaAcademicaPage() {
       grupos: [{ numeroGrupo: primerGrupoLibre }],
     };
 
-    setSelectedCurso({
+    const updatedCurso = {
       ...selectedCurso,
       asignaciones: [...selectedCurso.asignaciones, newAsignacion],
-    });
+    };
+    updatedCurso.creditosAsignados = calcularCreditosLocales(updatedCurso);
+    setSelectedCurso(updatedCurso);
+    setCargaAcademica(prev => prev.map(c => c.id === updatedCurso.id ? updatedCurso : c));
   };
 
   const handleRemoveAsignacion = (index: number) => {
     const newAsignaciones = [...selectedCurso.asignaciones];
     newAsignaciones.splice(index, 1);
-    setSelectedCurso({ ...selectedCurso, asignaciones: newAsignaciones });
+    
+    const updatedCurso = { ...selectedCurso, asignaciones: newAsignaciones };
+    updatedCurso.creditosAsignados = calcularCreditosLocales(updatedCurso);
+    setSelectedCurso(updatedCurso);
+    setCargaAcademica(prev => prev.map(c => c.id === updatedCurso.id ? updatedCurso : c));
   };
 
   const handleAsignacionChange = (index: number, field: string, value: any) => {
@@ -434,6 +441,7 @@ export default function CargaAcademicaPage() {
     const updatedCurso = { ...selectedCurso, asignaciones: newAsignaciones };
     updatedCurso.creditosAsignados = calcularCreditosLocales(updatedCurso);
     setSelectedCurso(updatedCurso);
+    setCargaAcademica(prev => prev.map(c => c.id === updatedCurso.id ? updatedCurso : c));
   };
 
   const handleGruposChange = (asignacionIndex: number, selectedGrupos: number[]) => {
@@ -462,6 +470,7 @@ export default function CargaAcademicaPage() {
     const updatedCurso = { ...selectedCurso, asignaciones: newAsignaciones };
     updatedCurso.creditosAsignados = calcularCreditosLocales(updatedCurso);
     setSelectedCurso(updatedCurso);
+    setCargaAcademica(prev => prev.map(c => c.id === updatedCurso.id ? updatedCurso : c));
   };
 
   const navigateCourse = (direction: 'prev' | 'next') => {
@@ -486,10 +495,13 @@ export default function CargaAcademicaPage() {
     let totalPuntosP = 0;
     let totalPuntosL = 0;
     
-    // Solo sumamos si hay asignaciones reales
+    // Solo sumamos si hay asignaciones reales y con docente seleccionado
     if (!curso.asignaciones || curso.asignaciones.length === 0) return 0;
 
     curso.asignaciones.forEach((asig: any) => {
+      // SOLO sumamos al progreso si hay un docente seleccionado
+      if (!asig.docenteId) return;
+
       const horasAsig = Number(asig.horasSemanales || 0);
       const numGrupos = asig.grupos?.length || 0;
       const tipo = String(asig.tipoClase || '').toLowerCase();
@@ -515,10 +527,11 @@ export default function CargaAcademicaPage() {
   };
 
   const getStatusColor = (curso: any) => {
-    const { creditosCalculados, curso: cursoInfo } = curso;
-    const diff = Math.abs(creditosCalculados - (cursoInfo?.creditos || 0));
+    const creditos = curso.creditosAsignados || 0;
+    const meta = curso.curso?.creditos || 0;
+    const diff = Math.abs(creditos - meta);
     if (diff < 0.01) return 'success';
-    if (creditosCalculados > (cursoInfo?.creditos || 0)) return 'error';
+    if (creditos > meta) return 'error';
     return 'warning';
   };
 

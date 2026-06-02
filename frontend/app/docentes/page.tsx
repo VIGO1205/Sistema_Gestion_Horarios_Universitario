@@ -62,9 +62,7 @@ const MySwal = withReactContent(Swal);
 export default function DocentesPage() {
   const [loading, setLoading] = useState(true);
   const [docentes, setDocentes] = useState<any[]>([]);
-  const [cursos, setCursos] = useState<any[]>([]);
   const [carreras, setCarreras] = useState<any[]>([]);
-  const [ciclos, setCiclos] = useState<any[]>([]);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [filtros, setFiltros] = useState({
     search: '',
@@ -90,7 +88,6 @@ export default function DocentesPage() {
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedDocente, setSelectedDocente] = useState<any>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as any });
-  const [invalidAsignacionIndex, setInvalidAsignacionIndex] = useState<number[] | null>(null);
 
   const categoriasDocente = [
     { id: 'principal', nombre: 'Principal' },
@@ -103,7 +100,7 @@ export default function DocentesPage() {
     { id: 'contratado', nombre: 'Contratado' }
   ];
 
-  const { control, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm({
+  const { control, handleSubmit, reset, watch, formState: { errors } } = useForm({
     defaultValues: {
       nombreCompleto: '',
       dni: '',
@@ -115,65 +112,18 @@ export default function DocentesPage() {
       telegramId: '',
       antiguedadAnios: 0,
       activo: true,
-      carreraIds: [] as number[],
-      asignaciones: [] as any[]
+      carreraIds: [] as number[]
     }
   });
 
-  const asignacionesWatch = watch('asignaciones');
-
-  useEffect(() => {
-    // Clear highlighted invalid row when asignaciones change
-    setInvalidAsignacionIndex(null);
-  }, [asignacionesWatch]);
-
-  const agruparAsignaciones = (asignaciones: any[] = []) => {
-    const grupos = new Map<string, any>();
-
-    for (const asig of asignaciones) {
-      const key = `${asig.cursoId}`;
-      if (!grupos.has(key)) {
-        grupos.set(key, {
-          cursoId: asig.cursoId,
-          cicloId: asig.cicloId,
-          horasTeoria: 0,
-          horasPractica: 0,
-          horasLaboratorio: 0,
-          numeroGrupos: 0,
-        });
-      }
-
-      const grupo = grupos.get(key);
-      if (asig.tipoClase === 'teoria') grupo.horasTeoria += Number(asig.horasSemanales || 0);
-      if (asig.tipoClase === 'practica') grupo.horasPractica += Number(asig.horasSemanales || 0);
-      if (asig.tipoClase === 'laboratorio') {
-        grupo.horasLaboratorio += Number(asig.horasSemanales || 0);
-        grupo.numeroGrupos = Math.max(grupo.numeroGrupos, Number(asig.numeroGrupos ?? asig.grupos?.length ?? 0));
-      }
-    }
-
-    return Array.from(grupos.values());
-  };
-
   useEffect(() => {
     fetchDocentes();
-    fetchCursos();
     fetchCarreras();
-    fetchCiclos();
   }, []);
 
   useEffect(() => {
     setPage(0);
   }, [filtros.search, filtros.tipoContrato, filtros.categoria, filtros.carreraId]);
-
-  const fetchCiclos = async () => {
-    try {
-      const res = await api.get('/ciclos');
-      setCiclos(res.data);
-    } catch (error) {
-      console.error('Error fetching ciclos:', error);
-    }
-  };
 
   const fetchCarreras = async () => {
     try {
@@ -181,15 +131,6 @@ export default function DocentesPage() {
       setCarreras(res.data);
     } catch (error) {
       console.error('Error fetching carreras:', error);
-    }
-  };
-
-  const fetchCursos = async () => {
-    try {
-      const res = await api.get('/cursos');
-      setCursos(res.data);
-    } catch (error) {
-      console.error('Error fetching cursos:', error);
     }
   };
 
@@ -207,14 +148,7 @@ export default function DocentesPage() {
   };
 
   const carrerasSeleccionadas = watch('carreraIds') || [];
-  const asignacionesSeleccionadas = watch('asignaciones') || [];
-  const cursosAsignadosIds = useMemo(() => {
-    return new Set(
-      (Array.isArray(asignacionesSeleccionadas) ? asignacionesSeleccionadas : [])
-        .map((asig: any) => Number(asig?.cursoId))
-        .filter((value: number) => Number.isFinite(value) && value > 0),
-    );
-  }, [asignacionesSeleccionadas]);
+
   const docentesFiltrados = useMemo(() => {
     return docentes.filter((docente: any) => {
       const texto = `${docente.nombreCompleto || ''} ${docente.dni || ''}`.toLowerCase();
@@ -231,27 +165,12 @@ export default function DocentesPage() {
     });
   }, [docentes, filtros]);
 
-  const cursosFiltradosPorCarreras = useMemo(() => {
-    if (!Array.isArray(carrerasSeleccionadas) || carrerasSeleccionadas.length === 0) {
-      return [];
-    }
-
-    const carrerasSeleccionadasSet = new Set(carrerasSeleccionadas.map((value: any) => Number(value)));
-    return cursos.filter((curso: any) => carrerasSeleccionadasSet.has(Number(curso.carreraId)));
-  }, [cursos, carrerasSeleccionadas]);
-
   const handleOpenDialog = async (docente: any = null) => {
     if (docente) {
       setSelectedDocente(docente);
       try {
-        const [cursosRes, docenteRes] = await Promise.all([
-          api.get(`/docentes/${docente.id}/cursos`),
-          api.get(`/docentes/${docente.id}`),
-        ]);
+        const docenteRes = await api.get(`/docentes/${docente.id}`);
         
-        // Transformar asignaciones para el formulario
-        const asignaciones = agruparAsignaciones(cursosRes.data || []);
-
         const carreraIds = (docenteRes.data?.carreras || [])
           .map((rel: any) => rel.carrera?.id)
           .filter(Boolean);
@@ -268,7 +187,6 @@ export default function DocentesPage() {
           antiguedadAnios: docenteRes.data?.antiguedadAnios ?? docente.antiguedadAnios ?? 0,
           activo: docenteRes.data?.activo ?? docente.activo ?? true,
           carreraIds,
-          asignaciones,
         });
       } catch (error) {
         reset({
@@ -283,7 +201,6 @@ export default function DocentesPage() {
           antiguedadAnios: docente.antiguedadAnios ?? 0,
           activo: docente.activo ?? true,
           carreraIds: docente.carreras?.map((rel: any) => rel.carrera?.id).filter(Boolean) || [],
-          asignaciones: [],
         });
       }
     } else {
@@ -300,7 +217,6 @@ export default function DocentesPage() {
         antiguedadAnios: 0,
         activo: true,
         carreraIds: [],
-        asignaciones: [],
       });
     }
     setOpenDialog(true);
@@ -313,120 +229,12 @@ export default function DocentesPage() {
 
   const onSubmit = async (data: any) => {
     try {
-      const {
-        nombreCompleto,
-        dni,
-        tipoContrato,
-        categoria,
-        fechaIngreso,
-        telefono,
-        emailPersonal,
-        telegramId,
-        antiguedadAnios,
-        activo,
-        carreraIds = [],
-        asignaciones = [],
-      } = data;
-
-      const asignacionesPlanas = Array.isArray(asignaciones)
-        ? asignaciones.flatMap((asig: any, agrupIndex: number) => {
-            const base = {
-              cursoId: Number(asig.cursoId),
-              cicloId: Number(asig.cicloId),
-            };
-
-            return [
-              asig.horasTeoria > 0 ? { ...base, tipoClase: 'teoria', horasSemanales: Number(asig.horasTeoria) } : null,
-              asig.horasPractica > 0 ? { ...base, tipoClase: 'practica', horasSemanales: Number(asig.horasPractica) } : null,
-              asig.horasLaboratorio > 0 ? { ...base, tipoClase: 'laboratorio', horasSemanales: Number(asig.horasLaboratorio), numeroGrupos: Number(asig.numeroGrupos ?? 0) } : null,
-            ].filter(Boolean);
-          })
-        : [];
-
       const payload = {
-        nombreCompleto,
-        dni,
-        tipoContrato,
-        categoria,
-        fechaIngreso,
-        telefono,
-        emailPersonal,
-        telegramId,
-        antiguedadAnios: Number(antiguedadAnios),
-        activo,
-        carreraIds: Array.isArray(carreraIds) ? carreraIds.map((value: any) => Number(value)) : [],
-        asignaciones: asignacionesPlanas,
+        ...data,
+        antiguedadAnios: Number(data.antiguedadAnios),
+        carreraIds: Array.isArray(data.carreraIds) ? data.carreraIds.map((value: any) => Number(value)) : [],
       };
 
-      // Cliente: validar que no existan filas con curso seleccionado pero sin horas
-      const groupedAsignaciones = Array.isArray(data.asignaciones) ? data.asignaciones : [];
-
-      const problematicGroupedIndex = groupedAsignaciones.findIndex((a: any) => {
-        const cursoOk = Boolean(a?.cursoId);
-        const horasTotal = Number(a?.horasTeoria || 0) + Number(a?.horasPractica || 0) + Number(a?.horasLaboratorio || 0);
-        return cursoOk && horasTotal === 0;
-      });
-
-      const duplicateCourseIndex = groupedAsignaciones.findIndex((a: any, index: number) => {
-        const cursoId = Number(a?.cursoId);
-        return cursoId > 0 && groupedAsignaciones.findIndex((other: any, otherIndex: number) => otherIndex !== index && Number(other?.cursoId) === cursoId) >= 0;
-      });
-
-      if (problematicGroupedIndex >= 0) {
-        setInvalidAsignacionIndex([problematicGroupedIndex]);
-        MySwal.fire({
-          icon: 'error',
-          title: 'Datos incompletos',
-          text: 'Has seleccionado un curso pero no asignaste horas. Completa al menos 1 hora en teoría, práctica o laboratorio.',
-        });
-        return;
-      }
-
-      if (duplicateCourseIndex >= 0) {
-        setInvalidAsignacionIndex([duplicateCourseIndex]);
-        MySwal.fire({
-          icon: 'error',
-          title: 'Curso repetido',
-          text: 'Un mismo curso solo puede aparecer una vez por docente. Edita la fila existente en lugar de crear otra.',
-        });
-        return;
-      }
-
-      const invalidLabIndex = groupedAsignaciones.findIndex((a: any) => {
-        const horasLaboratorio = Number(a?.horasLaboratorio || 0);
-        const grupos = Number(a?.numeroGrupos || 0);
-        return horasLaboratorio > 0 && (grupos < 1 || grupos > 4);
-      });
-
-      if (invalidLabIndex >= 0) {
-        setInvalidAsignacionIndex([invalidLabIndex]);
-        MySwal.fire({
-          icon: 'error',
-          title: 'Grupos de laboratorio inválidos',
-          text: 'Si asignas horas de laboratorio, el número de grupos debe estar entre 1 y 4.',
-        });
-        return;
-      }
-
-      // Cliente: validar que exista al menos una asignación con al menos 1 hora
-      if (!Array.isArray(asignacionesPlanas) || asignacionesPlanas.length === 0) {
-        // Encontrar la primera fila problemática para resaltar: curso no seleccionado o todas las horas en cero
-        const problematicIndex = (data.asignaciones || []).findIndex((a: any) => {
-          const cursoOk = Boolean(a?.cursoId);
-          const horasTotal = Number(a?.horasTeoria || 0) + Number(a?.horasPractica || 0) + Number(a?.horasLaboratorio || 0);
-          return !cursoOk || horasTotal === 0;
-        });
-
-        setInvalidAsignacionIndex(problematicIndex >= 0 ? [problematicIndex] : [0]);
-
-        MySwal.fire({
-          icon: 'error',
-          title: 'Datos incompletos',
-          text: 'Debes seleccionar al menos un curso y asignar al menos 1 hora en teoría, práctica o laboratorio.',
-        });
-
-        return;
-      }
       if (selectedDocente) {
         await api.patch(`/docentes/${selectedDocente.id}`, payload);
         MySwal.fire({
@@ -449,32 +257,10 @@ export default function DocentesPage() {
       handleCloseDialog();
       fetchDocentes();
     } catch (error: any) {
-      const errData = error.response?.data;
-      // Normalize backend error shape — Nest sometimes wraps/serializes differently
-      const backendPayload = (() => {
-        if (!errData) return null;
-        if (typeof errData === 'object' && ('cursoId' in errData || 'cicloId' in errData)) return errData;
-        if (typeof errData === 'object' && errData.message && typeof errData.message === 'object' && ('cursoId' in errData.message || 'cicloId' in errData.message)) return errData.message;
-        // Fallback: sometimes Nest uses { statusCode, message: 'text' }
-        return null;
-      })();
-
-      if (backendPayload) {
-        if (typeof backendPayload.clientIndex === 'number') {
-          setInvalidAsignacionIndex([Number(backendPayload.clientIndex)]);
-        } else if (backendPayload?.cursoId && backendPayload?.cicloId) {
-          const indices = (data.asignaciones || [])
-            .map((a: any, i: number) => ({ a, i }))
-            .filter(({ a }: { a: any }) => Number(a.cursoId) === Number(backendPayload.cursoId) && Number(a.cicloId) === Number(backendPayload.cicloId))
-            .map(({ i }: { i: number }) => i);
-          if (indices.length > 0) setInvalidAsignacionIndex([indices[indices.length - 1]]);
-        }
-      }
-
       MySwal.fire({
         icon: 'error',
         title: 'Error',
-        text: (backendPayload && backendPayload.message) || errData?.message || 'Error al guardar docente',
+        text: error.response?.data?.message || 'Error al guardar docente',
       });
     }
   };
@@ -742,7 +528,7 @@ export default function DocentesPage() {
       </TableContainer>
 
       {/* Diálogo CRUD */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="lg" fullWidth PaperProps={{ sx: { width: '90vw', maxWidth: 1120 } }}>
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         <form onSubmit={handleSubmit(onSubmit)}>
           <DialogTitle sx={{ bgcolor: '#003366', color: '#fff', fontWeight: 800, py: 2 }}>
               {selectedDocente ? 'Editar Docente' : 'Nuevo Docente'}
@@ -956,204 +742,6 @@ export default function DocentesPage() {
                         />
                       )}
                     />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 700, color: '#003366', display: 'flex', alignItems: 'center' }}>
-                  <WorkIcon sx={{ mr: 1 }} fontSize="small" />
-                  Carga Académica (Asignaciones)
-                </Typography>
-                
-                <Controller
-                  name="asignaciones"
-                  control={control}
-                  render={({ field: { value, onChange } }) => (
-                    <Box>
-                      {value?.map((asig: any, index: number) => (
-                        <Paper
-                          key={index}
-                          variant="outlined"
-                          sx={{
-                            p: 1.5,
-                            mb: 2,
-                            bgcolor: '#f8f9fa',
-                            border: (invalidAsignacionIndex && invalidAsignacionIndex.includes(index)) ? '2px solid' : '1px solid transparent',
-                            borderColor: (invalidAsignacionIndex && invalidAsignacionIndex.includes(index)) ? 'error.main' : 'transparent',
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              display: 'grid',
-                              gridTemplateColumns: {
-                                xs: '1fr',
-                                md: 'minmax(300px, 1.6fr) minmax(140px, 1fr) repeat(4, 120px) 56px',
-                              },
-                              gap: 1.5,
-                              alignItems: 'center',
-                            }}
-                          >
-                            <Box sx={{ minWidth: 0 }}>
-                              <FormControl fullWidth size="small">
-                                <InputLabel>Curso</InputLabel>
-                                <Select
-                                  value={asig.cursoId}
-                                  label="Curso"
-                                  onChange={(e) => {
-                                    const newAsig = [...value];
-                                    newAsig[index].cursoId = e.target.value;
-                                    newAsig[index].horasTeoria = 0;
-                                    newAsig[index].horasPractica = 0;
-                                    newAsig[index].horasLaboratorio = 0;
-                                    onChange(newAsig);
-                                  }}
-                                >
-                                  {cursosFiltradosPorCarreras.map(curso => (
-                                    <MenuItem
-                                      key={curso.id}
-                                      value={curso.id}
-                                      disabled={Number(asig.cursoId) !== Number(curso.id) && cursosAsignadosIds.has(Number(curso.id))}
-                                    >
-                                      {curso.nombre} ({curso.codigo})
-                                    </MenuItem>
-                                  ))}
-                                </Select>
-                              </FormControl>
-                            </Box>
-                            <Box sx={{ minWidth: 0 }}>
-                              <FormControl fullWidth size="small">
-                                <InputLabel>Ciclo</InputLabel>
-                                <Select
-                                  value={asig.cicloId}
-                                  label="Ciclo"
-                                  onChange={(e) => {
-                                    const newAsig = [...value];
-                                    newAsig[index].cicloId = e.target.value;
-                                    onChange(newAsig);
-                                  }}
-                                >
-                                  {ciclos.map(ciclo => (
-                                    <MenuItem key={ciclo.id} value={ciclo.id}>{ciclo.nombre}</MenuItem>
-                                  ))}
-                                </Select>
-                              </FormControl>
-                            </Box>
-                            <Box sx={{ minWidth: 0 }}>
-                              <Tooltip title="Horas de teoría para este curso y ciclo">
-                                <TextField
-                                  fullWidth
-                                  size="small"
-                                  type="number"
-                                  label="Hrs/Teoría"
-                                  value={asig.horasTeoria ?? ''}
-                                  onChange={(e) => {
-                                    const newAsig = [...value];
-                                    newAsig[index].horasTeoria = e.target.value === '' ? 0 : Number(e.target.value);
-                                    onChange(newAsig);
-                                  }}
-                                />
-                              </Tooltip>
-                            </Box>
-                            <Box sx={{ minWidth: 0 }}>
-                              <Tooltip title="Horas de práctica para este curso y ciclo">
-                                <TextField
-                                  fullWidth
-                                  size="small"
-                                  type="number"
-                                  label="Hrs/Práctica"
-                                  value={asig.horasPractica ?? ''}
-                                  onChange={(e) => {
-                                    const newAsig = [...value];
-                                    newAsig[index].horasPractica = e.target.value === '' ? 0 : Number(e.target.value);
-                                    onChange(newAsig);
-                                  }}
-                                />
-                              </Tooltip>
-                            </Box>
-                            <Box sx={{ minWidth: 0 }}>
-                              <Tooltip title="Horas de laboratorio para este curso y ciclo">
-                                <TextField
-                                  fullWidth
-                                  size="small"
-                                  type="number"
-                                  label="Hrs/Lab"
-                                  value={asig.horasLaboratorio ?? ''}
-                                  onChange={(e) => {
-                                    const newAsig = [...value];
-                                    const horasLaboratorio = e.target.value === '' ? 0 : Number(e.target.value);
-                                    newAsig[index].horasLaboratorio = horasLaboratorio;
-                                    if (horasLaboratorio > 0 && Number(newAsig[index].numeroGrupos ?? 0) <= 0) {
-                                      newAsig[index].numeroGrupos = 1;
-                                    }
-                                    if (horasLaboratorio <= 0) {
-                                      newAsig[index].numeroGrupos = 0;
-                                    }
-                                    onChange(newAsig);
-                                  }}
-                                />
-                              </Tooltip>
-                            </Box>
-                            <Box sx={{ minWidth: 0 }}>
-                              <Tooltip title="Solo aplica cuando hay horas de laboratorio">
-                                <TextField
-                                  fullWidth
-                                  size="small"
-                                  type="number"
-                                  label="N° Grupos Lab"
-                                  value={asig.numeroGrupos ?? 0}
-                                  disabled={Number(asig.horasLaboratorio ?? 0) <= 0}
-                                  inputProps={{ min: 1, max: 4 }}
-                                  onChange={(e) => {
-                                    const newAsig = [...value];
-                                    newAsig[index].numeroGrupos = e.target.value === '' ? 0 : Number(e.target.value);
-                                    onChange(newAsig);
-                                  }}
-                                />
-                              </Tooltip>
-                            </Box>
-                            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                              <IconButton 
-                                color="error" 
-                                onClick={() => {
-                                  const newAsig = value.filter((_: any, i: number) => i !== index);
-                                  onChange(newAsig);
-                                }}
-                              >
-                                <DeleteIcon />
-                              </IconButton>
-                            </Box>
-                          </Box>
-                        </Paper>
-                      ))}
-                      
-                      <Button
-                        startIcon={<AddIcon />}
-                        variant="outlined"
-                        size="small"
-                        onClick={() => {
-                          const currentCiclo = ciclos.find(c => c.esActual) || ciclos.find(c => c.nombre.includes('2026')) || ciclos[0];
-                          onChange([
-                            ...(value || []),
-                            {
-                              cursoId: '',
-                              cicloId: currentCiclo?.id || '',
-                                horasTeoria: 0,
-                                horasPractica: 0,
-                                horasLaboratorio: 0,
-                                numeroGrupos: 0,
-                            }
-                          ]);
-                        }}
-                        disabled={carrerasSeleccionadas.length === 0}
-                      >
-                        Añadir Asignación
-                      </Button>
-                      {carrerasSeleccionadas.length === 0 && (
-                        <Typography variant="caption" color="error" sx={{ ml: 2 }}>
-                          Primero seleccione una carrera
-                        </Typography>
-                      )}
-                    </Box>
                   )}
                 />
               </Grid>

@@ -316,7 +316,8 @@ export default function DashboardEstadisticas() {
             id: asignacion.curso?.id ?? asignacion.id,
             nombre: asignacion.curso?.nombre ?? 'Curso',
             codigo: asignacion.curso?.codigo ?? '-',
-            ciclo: asignacion.ciclo?.nombre ?? '-',
+            ciclo: asignacion.curso?.cicloAcademico ? `${asignacion.curso.cicloAcademico} Ciclo` : (asignacion.ciclo?.nombre ?? '-'),
+            tipoClase: asignacion.tipoClase,
           }));
           setMisCursos(cursosNormalizados);
           setEstadoSeleccion(estadoRes.data);
@@ -428,11 +429,22 @@ export default function DashboardEstadisticas() {
 
     const proximasClases = misHorarios.length;
     const ambientesDistintos = new Set(misHorarios.map(h => h.aula?.nombre)).size;
+
+    // Agrupar cursos para la sección lateral
+    const misCursosAgrupados = misCursos.reduce((acc: any[], current: any) => {
+      const existing = acc.find(c => c.id === current.id);
+      if (existing) {
+        // Si el curso ya existe, solo nos aseguramos de no duplicar tipos si los estuviéramos guardando
+        return acc;
+      }
+      return [...acc, current];
+    }, []);
+
     return (
       <Box>
         <Grid container spacing={3} sx={{ mb: 5 }}>
           {[
-            { label: 'Mis Cursos', value: misCursos.length, icon: <BookIcon />, color: '#6366f1', bg: 'rgba(99, 102, 241, 0.1)', trend: 'Ciclo Actual' },
+            { label: 'Mis Cursos', value: misCursosAgrupados.length, icon: <BookIcon />, color: '#6366f1', bg: 'rgba(99, 102, 241, 0.1)', trend: 'Ciclo Actual' },
             { label: 'Horas Semanales', value: totalHoras, icon: <CalendarIcon />, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)', trend: 'Carga Lectiva' },
             { label: 'Clases Programadas', value: proximasClases, icon: <ChartIcon />, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)', trend: 'Total Semanal' },
             { label: 'Ambientes / Aulas', value: ambientesDistintos, icon: <MeetingRoomIcon />, color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)', trend: 'Ubicaciones' },
@@ -512,23 +524,43 @@ export default function DashboardEstadisticas() {
             <Paper sx={{ p: 3, borderRadius: 5, border: '1px solid #e2e8f0', boxShadow: 'none', height: '100%' }}>
               <Typography variant="h6" sx={{ fontWeight: 800, mb: 3, color: '#1e293b' }}>Mis Cursos Asignados</Typography>
               <List sx={{ p: 0 }}>
-                {misCursos.map((curso, i) => (
-                  <React.Fragment key={curso.id}>
-                    <ListItem sx={{ px: 0, py: 2 }}>
-                      <ListItemIcon>
-                        <Avatar sx={{ bgcolor: 'rgba(0, 51, 102, 0.1)', color: '#003366', borderRadius: 2 }}>
-                          <BookIcon />
-                        </Avatar>
-                      </ListItemIcon>
-                      <ListItemText 
-                        primary={curso.nombre} 
-                        secondary={`${curso.codigo} • ${curso.ciclo} Ciclo`}
-                        primaryTypographyProps={{ fontWeight: 700, color: '#1e293b' }}
-                      />
-                    </ListItem>
-                    {i < misCursos.length - 1 && <Divider sx={{ opacity: 0.5 }} />}
-                  </React.Fragment>
-                ))}
+                {misCursosAgrupados.map((curso, i) => {
+                  // Obtener tipos de clase para este curso específico
+                  const tipos = (misCursos || [])
+                    .filter(c => c.id === curso.id)
+                    .map(c => c.tipoClase?.charAt(0).toUpperCase())
+                    .filter(Boolean)
+                    .join(', ');
+
+                  return (
+                    <React.Fragment key={curso.id}>
+                      <ListItem sx={{ px: 0, py: 2 }}>
+                        <ListItemIcon>
+                          <Avatar sx={{ bgcolor: 'rgba(0, 51, 102, 0.1)', color: '#003366', borderRadius: 2 }}>
+                            <BookIcon />
+                          </Avatar>
+                        </ListItemIcon>
+                        <ListItemText 
+                          primary={curso.nombre} 
+                          secondary={
+                            <Box component="span" sx={{ display: 'block' }}>
+                              <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b', display: 'block' }}>
+                                {curso.codigo} • {curso.ciclo}
+                              </Typography>
+                              {tipos && (
+                                <Typography variant="caption" sx={{ fontWeight: 800, color: '#003366', mt: 0.5, display: 'block' }}>
+                                  Tipos: {tipos}
+                                </Typography>
+                              )}
+                            </Box>
+                          }
+                          primaryTypographyProps={{ fontWeight: 700, color: '#1e293b', fontSize: '0.95rem' }}
+                        />
+                      </ListItem>
+                      {i < misCursosAgrupados.length - 1 && <Divider sx={{ opacity: 0.5 }} />}
+                    </React.Fragment>
+                  );
+                })}
               </List>
             </Paper>
           </Grid>

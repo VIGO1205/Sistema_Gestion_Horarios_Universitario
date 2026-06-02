@@ -1,29 +1,6 @@
 import { IsString, IsEnum, IsNumber, Min, Max, IsBoolean, IsOptional, IsArray, ValidateNested, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class AsignacionDocenteDto {
-  @IsNumber({}, { message: 'El curso seleccionado no es válido' })
-  cursoId: number;
-
-  @IsNumber({}, { message: 'El ciclo seleccionado no es válido' })
-  cicloId: number;
-
-  @IsEnum(['teoria', 'practica', 'laboratorio'], { message: 'El tipo de clase debe ser teoría, práctica o laboratorio' })
-  tipoClase: 'teoria' | 'practica' | 'laboratorio';
-
-  @IsNumber({}, { message: 'Las horas semanales deben ser un número válido' })
-  @Min(1, { message: 'Las horas semanales deben ser al menos 1' })
-  horasSemanales: number;
-
-  @IsOptional()
-  @IsNumber({}, { message: 'El número de grupos debe ser un número válido' })
-  numeroGrupos?: number;
-
-  @IsOptional()
-  @IsNumber({}, { message: 'El índice de la asignación debe ser un número válido' })
-  clientAsignacionIndex?: number;
-}
-
 export class CreateDocenteDto {
   @IsString({ message: 'El nombre completo debe ser un texto válido' })
   @Matches(/^[\p{L}\s]+$/u, { message: 'El nombre solo puede contener letras y espacios' })
@@ -72,10 +49,4 @@ export class CreateDocenteDto {
   @IsArray()
   @IsOptional()
   carreraIds?: number[];
-
-  @IsArray()
-  @IsOptional()
-  @ValidateNested({ each: true })
-  @Type(() => AsignacionDocenteDto)
-  asignaciones?: AsignacionDocenteDto[];
 }
