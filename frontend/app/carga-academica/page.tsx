@@ -39,6 +39,8 @@ import {
   TableCell,
   Checkbox,
   OutlinedInput,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import {
   School as SchoolIcon,
@@ -63,10 +65,16 @@ import api from '@/lib/api';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
+import { useAuth } from '@/components/providers/AuthProvider';
+import CargaAcademicaDocente from '@/components/CargaAcademicaDocente';
+import ValidacionCargaNoLectiva from '@/components/ValidacionCargaNoLectiva';
 
 const MySwal = withReactContent(Swal);
 
 export default function CargaAcademicaPage() {
+  const { usuario } = useAuth();
+  const esDocente = usuario?.rol === 'docente';
+  const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [ciclos, setCiclos] = useState<any[]>([]);
   const [carreras, setCarreras] = useState<any[]>([]);
@@ -537,6 +545,10 @@ export default function CargaAcademicaPage() {
 
   if (loading) return <LoadingSpinner />;
 
+  if (esDocente) {
+    return <CargaAcademicaDocente docente={usuario} ciclos={ciclos} />;
+  }
+
   return (
     <Box sx={{ flexGrow: 1, p: { xs: 1, md: 3 } }}>
       <Typography variant="h4" sx={{ fontWeight: 800, color: '#003366', mb: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -546,8 +558,21 @@ export default function CargaAcademicaPage() {
         Administra la asignación de docentes y grupos por curso.
       </Typography>
 
-      {/* Filtros */}
-      <Paper elevation={0} sx={{ p: 3, mb: 4, borderRadius: 4, border: '1px solid #eef2f6' }}>
+      {!esDocente && (
+        <Tabs 
+          value={activeTab} 
+          onChange={(_, v) => setActiveTab(v)}
+          sx={{ mb: 4, borderBottom: 1, borderColor: 'divider' }}
+        >
+          <Tab label="Gestión de Carga Lectiva" sx={{ fontWeight: 700, textTransform: 'none' }} />
+          <Tab label="Validación de Carga No Lectiva" sx={{ fontWeight: 700, textTransform: 'none' }} />
+        </Tabs>
+      )}
+
+      {activeTab === 0 ? (
+        <>
+          {/* Filtros */}
+          <Paper elevation={0} sx={{ p: 3, mb: 4, borderRadius: 4, border: '1px solid #eef2f6' }}>
         <Grid container spacing={3}>
           <Grid item xs={12} md={4}>
             <FormControl fullWidth size="small">
@@ -887,6 +912,10 @@ export default function CargaAcademicaPage() {
           )}
         </Grid>
       </Grid>
+      </>
+      ) : (
+        <ValidacionCargaNoLectiva cicloId={Number(filtros.cicloId)} />
+      )}
 
       {/* Diálogo de Programación */}
       <Dialog

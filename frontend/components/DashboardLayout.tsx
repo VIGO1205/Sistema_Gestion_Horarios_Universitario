@@ -57,7 +57,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', roles: ['admin', 'coordinador', 'docente'] },
-  { text: 'Carga Académica', icon: <AssignmentIcon />, path: '/carga-academica', roles: ['admin', 'coordinador'] },
+  { text: 'Carga Académica', icon: <AssignmentIcon />, path: '/carga-academica', roles: ['admin', 'coordinador', 'docente'] },
   { text: 'Horarios', icon: <CalendarIcon />, path: '/horarios', roles: ['admin', 'coordinador', 'docente'] },
   { text: 'Docentes', icon: <PeopleIcon />, path: '/docentes', roles: ['admin', 'coordinador'] },
   { text: 'Carreras', icon: <SchoolIcon />, path: '/carreras', roles: ['admin'] },

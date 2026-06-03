@@ -1171,32 +1171,8 @@ export default function HorariosPage() {
     return <LoadingSpinner />;
   }
 
-  if (esDocente && showDashboard) {
-    return (
-      <DashboardDocente
-        docente={usuario}
-        estadoSeleccion={estadoSeleccion}
-        ciclos={ciclos}
-        onEnterGrilla={(soloLectura) => {
-          setModoLectura(soloLectura);
-          setShowDashboard(false);
-        }}
-      />
-    );
-  }
-
   return (
     <Box sx={{ flexGrow: 1 }}>
-      {/* Botón Volver al Dashboard (solo para docentes) */}
-      {esDocente && (
-        <Button
-          startIcon={<ChevronLeftIcon />}
-          onClick={() => setShowDashboard(true)}
-          sx={{ mb: 2, color: '#003366', fontWeight: 700 }}
-        >
-          Volver al Portal del Docente
-        </Button>
-      )}
       {/* Cabecera */}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <Box>

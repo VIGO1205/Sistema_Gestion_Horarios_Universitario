@@ -69,6 +69,7 @@ export default function DocentesPage() {
     tipoContrato: 'todos',
     categoria: 'todos',
     carreraId: 'todos',
+    dedicacion: 'todos',
   });
 
   // Estado para la paginación
@@ -99,6 +100,29 @@ export default function DocentesPage() {
     { id: 'nombrado', nombre: 'Nombrado' },
     { id: 'contratado', nombre: 'Contratado' }
   ];
+  const dedicacionesDocente = [
+    'DEDICACION EXCLUSIVA',
+    'TIEMPO COMPLETO 40 H',
+    'TIEMPO PARCIAL',
+    'TIEMPO PARCIAL 10 HR',
+    'TIEMPO PARCIAL 20 HR',
+    'TIEMPO PARCIAL 12 HR',
+    'TIEMPO PARCIAL 8 HR',
+    'TIEMPO PARCIAL 16 HR'
+  ];
+
+  const normalizeDedicacion = (val: string) => {
+    if (!val) return 'TIEMPO COMPLETO 40 H';
+    const normalized = val.toUpperCase().trim();
+    // Intentar encontrar una coincidencia exacta en el array
+    const match = dedicacionesDocente.find(d => d === normalized);
+    if (match) return match;
+    
+    // Si no hay coincidencia exacta (ej. "Tiempo Parcial 10 Hr" vs "TIEMPO PARCIAL 10 HR")
+    // Intentamos una comparación más flexible
+    const flexibleMatch = dedicacionesDocente.find(d => d.replace(/\s/g, '') === normalized.replace(/\s/g, ''));
+    return flexibleMatch || 'TIEMPO COMPLETO 40 H';
+  };
 
   const { control, handleSubmit, reset, watch, formState: { errors } } = useForm({
     defaultValues: {
@@ -106,6 +130,7 @@ export default function DocentesPage() {
       dni: '',
       tipoContrato: 'nombrado',
       categoria: 'principal',
+      dedicacion: 'TIEMPO COMPLETO 40 H',
       fechaIngreso: '',
       telefono: '',
       emailPersonal: '',
@@ -123,7 +148,7 @@ export default function DocentesPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [filtros.search, filtros.tipoContrato, filtros.categoria, filtros.carreraId]);
+  }, [filtros.search, filtros.tipoContrato, filtros.categoria, filtros.carreraId, filtros.dedicacion]);
 
   const fetchCarreras = async () => {
     try {
@@ -155,13 +180,14 @@ export default function DocentesPage() {
       const coincideBusqueda = !filtros.search || texto.includes(filtros.search.toLowerCase());
       const coincideTipo = filtros.tipoContrato === 'todos' || docente.tipoContrato === filtros.tipoContrato;
       const coincideCategoria = filtros.categoria === 'todos' || docente.categoria === filtros.categoria;
+      const coincideDedicacion = filtros.dedicacion === 'todos' || docente.dedicacion === filtros.dedicacion;
 
       const coincideCarrera =
         filtros.carreraId === 'todos' ||
         (Array.isArray(docente.carreras) &&
           docente.carreras.some((rel: any) => Number(rel?.carrera?.id) === Number(filtros.carreraId)));
 
-      return coincideBusqueda && coincideTipo && coincideCategoria && coincideCarrera;
+      return coincideBusqueda && coincideTipo && coincideCategoria && coincideCarrera && coincideDedicacion;
     });
   }, [docentes, filtros]);
 
@@ -180,6 +206,7 @@ export default function DocentesPage() {
           dni: docenteRes.data?.dni ?? docente.dni ?? '',
           tipoContrato: docenteRes.data?.tipoContrato ?? docente.tipoContrato ?? 'nombrado',
           categoria: docenteRes.data?.categoria ?? docente.categoria ?? 'principal',
+          dedicacion: normalizeDedicacion(docenteRes.data?.dedicacion || docente.dedicacion),
           fechaIngreso: docenteRes.data?.fechaIngreso ? new Date(docenteRes.data.fechaIngreso).toISOString().split('T')[0] : '',
           telefono: docenteRes.data?.telefono ?? '',
           emailPersonal: docenteRes.data?.emailPersonal ?? '',
@@ -194,6 +221,7 @@ export default function DocentesPage() {
           dni: docente.dni ?? '',
           tipoContrato: docente.tipoContrato ?? 'nombrado',
           categoria: docente.categoria ?? 'principal',
+          dedicacion: normalizeDedicacion(docente.dedicacion),
           fechaIngreso: docente.fechaIngreso ? new Date(docente.fechaIngreso).toISOString().split('T')[0] : '',
           telefono: docente.telefono ?? '',
           emailPersonal: docente.emailPersonal ?? '',
@@ -210,6 +238,7 @@ export default function DocentesPage() {
         dni: '',
         tipoContrato: 'nombrado',
         categoria: 'principal',
+        dedicacion: 'TIEMPO COMPLETO 40 H',
         fechaIngreso: '',
         telefono: '',
         emailPersonal: '',
@@ -362,7 +391,8 @@ export default function DocentesPage() {
                     search: '',
                     tipoContrato: 'todos',
                     categoria: 'todos',
-                    carreraId: 'todos'
+                    carreraId: 'todos',
+                    dedicacion: 'todos'
                   });
                 }}
                 sx={{ borderRadius: 2, fontWeight: 600, color: '#666', borderColor: '#ddd' }}
@@ -389,7 +419,7 @@ export default function DocentesPage() {
 
           {showAdvancedFilters && (
             <>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Categoría</InputLabel>
                   <Select
@@ -404,7 +434,7 @@ export default function DocentesPage() {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Tipo de Contrato</InputLabel>
                   <Select
@@ -419,7 +449,7 @@ export default function DocentesPage() {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Carrera</InputLabel>
                   <Select
@@ -432,6 +462,21 @@ export default function DocentesPage() {
                       <MenuItem key={carrera.id} value={carrera.id}>
                         {carrera.nombre}
                       </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Dedicación</InputLabel>
+                  <Select
+                    value={filtros.dedicacion}
+                    label="Dedicación"
+                    onChange={(e) => setFiltros({ ...filtros, dedicacion: e.target.value })}
+                  >
+                    <MenuItem value="todos">Todas las Dedicaciones</MenuItem>
+                    {dedicacionesDocente.map(ded => (
+                      <MenuItem key={ded} value={ded}>{ded}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -664,8 +709,8 @@ export default function DocentesPage() {
                 />
               </Grid>
 
-              {/* Fila 3: Telegram, Categoría y Tipo de Contrato */}
-              <Grid item xs={12} md={4}>
+              {/* Fila 3: Telegram y Dedicación */}
+              <Grid item xs={12} md={6}>
                 <Controller
                   name="telegramId"
                   control={control}
@@ -687,7 +732,25 @@ export default function DocentesPage() {
                   )}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={6}>
+                <Controller
+                  name="dedicacion"
+                  control={control}
+                  render={({ field }) => (
+                    <FormControl fullWidth>
+                      <InputLabel>Dedicación</InputLabel>
+                      <Select {...field} label="Dedicación">
+                        {dedicacionesDocente.map(ded => (
+                          <MenuItem key={ded} value={ded}>{ded}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
+                />
+              </Grid>
+
+              {/* Fila 4: Categoría y Tipo de Contrato */}
+              <Grid item xs={12} md={6}>
                 <Controller
                   name="categoria"
                   control={control}
@@ -703,7 +766,7 @@ export default function DocentesPage() {
                   )}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={6}>
                 <Controller
                   name="tipoContrato"
                   control={control}

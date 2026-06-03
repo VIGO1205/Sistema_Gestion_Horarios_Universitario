@@ -17,6 +17,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { ProgramacionesModule } from './modules/programaciones/programaciones.module';
 import { VentanasModule } from './modules/ventanas/ventanas.module';
 import { NotificacionesModule } from './modules/notificaciones/notificaciones.module';
+import { CargaNoLectivaModule } from './modules/carga-no-lectiva/carga-no-lectiva.module';
 import { Usuario } from './entities/usuario.entity';
 import { Docente } from './entities/docente.entity';
 import { Curso } from './entities/curso.entity';
@@ -30,6 +31,7 @@ import { Carrera } from './entities/carrera.entity';
 import { DocenteCarrera } from './entities/docente-carrera.entity';
 import { VentanaAtencion } from './entities/ventana-atencion.entity';
 import { Notificacion } from './entities/notificacion.entity';
+import { CargaNoLectiva } from './entities/carga-no-lectiva.entity';
 
 @Module({
   imports: [
@@ -54,7 +56,7 @@ import { Notificacion } from './entities/notificacion.entity';
           return {
             type: 'postgres',
             url: databaseUrl,
-            entities: [Usuario, Docente, Curso, Aula, CicloAcademico, Horario, AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, Carrera, DocenteCarrera, VentanaAtencion, Notificacion],
+            entities: [Usuario, Docente, Curso, Aula, CicloAcademico, Horario, AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, Carrera, DocenteCarrera, VentanaAtencion, Notificacion, CargaNoLectiva],
             synchronize: nodeEnv !== 'production', // True solo si no es producción
             ssl: isRender || configService.get<string>('DB_SSL') === 'true' ? { rejectUnauthorized: false } : false,
           };
@@ -68,7 +70,7 @@ import { Notificacion } from './entities/notificacion.entity';
           username: configService.get<string>('DB_USER') || 'postgres',
           password: configService.get<string>('DB_PASSWORD') || 'password',
           database: configService.get<string>('DB_NAME') || 'horarios_unt',
-          entities: [Usuario, Docente, Curso, Aula, CicloAcademico, Horario, AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, Carrera, DocenteCarrera, VentanaAtencion, Notificacion],
+          entities: [Usuario, Docente, Curso, Aula, CicloAcademico, Horario, AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, Carrera, DocenteCarrera, VentanaAtencion, Notificacion, CargaNoLectiva],
           synchronize: true,
           logging: false,
         };
@@ -88,6 +90,7 @@ import { Notificacion } from './entities/notificacion.entity';
     ProgramacionesModule,
     VentanasModule,
     NotificacionesModule,
+    CargaNoLectivaModule,
   ],
   controllers: [AppController],
   providers: [AppService],

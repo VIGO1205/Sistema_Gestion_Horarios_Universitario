@@ -1,0 +1,95 @@
+import { IsNumber, IsOptional, IsString, Min, IsEnum } from 'class-validator';
+import { EstadoCargaNoLectiva } from '../../../entities/carga-no-lectiva.entity';
+
+export class CreateCargaNoLectivaDto {
+  @IsNumber()
+  docenteId: number;
+
+  @IsNumber()
+  cicloId: number;
+
+  @IsEnum(EstadoCargaNoLectiva)
+  @IsOptional()
+  estado?: EstadoCargaNoLectiva;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  horasPreparacion?: number;
+
+  @IsString()
+  @IsOptional()
+  detallePreparacion?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  horasTutoria?: number;
+
+  @IsString()
+  @IsOptional()
+  detalleTutoria?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  horasInvestigacion?: number;
+
+  @IsString()
+  @IsOptional()
+  detalleInvestigacion?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  horasCapacitacion?: number;
+
+  @IsString()
+  @IsOptional()
+  detalleCapacitacion?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  horasGobierno?: number;
+
+  @IsString()
+  @IsOptional()
+  detalleGobierno?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  horasAdministracion?: number;
+
+  @IsString()
+  @IsOptional()
+  detalleAdministracion?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  horasAsesoria?: number;
+
+  @IsString()
+  @IsOptional()
+  detalleAsesoria?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  horasResponsabilidadSocial?: number;
+
+  @IsString()
+  @IsOptional()
+  detalleResponsabilidadSocial?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  horasComites?: number;
+
+  @IsString()
+  @IsOptional()
+  detalleComites?: string;
+}
