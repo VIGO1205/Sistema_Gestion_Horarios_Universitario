@@ -67,7 +67,7 @@ import { ConfiguracionGrilla } from './entities/configuracion-grilla.entity';
             type: 'postgres',
             url: databaseUrl,
             entities,
-            synchronize: nodeEnv !== 'production', // True solo si no es producción
+            synchronize: true, // Habilitado temporalmente para crear tablas
             ssl: isRender || configService.get<string>('DB_SSL') === 'true' ? { rejectUnauthorized: false } : false,
           };
         }
