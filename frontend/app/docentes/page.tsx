@@ -135,6 +135,7 @@ export default function DocentesPage() {
       telefono: '',
       emailPersonal: '',
       telegramId: '',
+      codigoIBM: '0000',
       antiguedadAnios: 0,
       activo: true,
       carreraIds: [] as number[]
@@ -211,6 +212,7 @@ export default function DocentesPage() {
           telefono: docenteRes.data?.telefono ?? '',
           emailPersonal: docenteRes.data?.emailPersonal ?? '',
           telegramId: docenteRes.data?.telegramId ?? '',
+          codigoIBM: docenteRes.data?.codigoIBM ?? '0000',
           antiguedadAnios: docenteRes.data?.antiguedadAnios ?? docente.antiguedadAnios ?? 0,
           activo: docenteRes.data?.activo ?? docente.activo ?? true,
           carreraIds,
@@ -226,6 +228,7 @@ export default function DocentesPage() {
           telefono: docente.telefono ?? '',
           emailPersonal: docente.emailPersonal ?? '',
           telegramId: docente.telegramId ?? '',
+          codigoIBM: docente.codigoIBM ?? '0000',
           antiguedadAnios: docente.antiguedadAnios ?? 0,
           activo: docente.activo ?? true,
           carreraIds: docente.carreras?.map((rel: any) => rel.carrera?.id).filter(Boolean) || [],
@@ -243,6 +246,7 @@ export default function DocentesPage() {
         telefono: '',
         emailPersonal: '',
         telegramId: '',
+        codigoIBM: '0000',
         antiguedadAnios: 0,
         activo: true,
         carreraIds: [],
@@ -709,8 +713,8 @@ export default function DocentesPage() {
                 />
               </Grid>
 
-              {/* Fila 3: Telegram y Dedicación */}
-              <Grid item xs={12} md={6}>
+              {/* Fila 3: Telegram, Dedicación y Código IBM */}
+              <Grid item xs={12} md={4}>
                 <Controller
                   name="telegramId"
                   control={control}
@@ -732,7 +736,7 @@ export default function DocentesPage() {
                   )}
                 />
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={4}>
                 <Controller
                   name="dedicacion"
                   control={control}
@@ -745,6 +749,37 @@ export default function DocentesPage() {
                         ))}
                       </Select>
                     </FormControl>
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Controller
+                  name="codigoIBM"
+                  control={control}
+                  rules={{ 
+                    pattern: {
+                      value: /^[0-9]{4}$/,
+                      message: 'El Código IBM debe tener 4 dígitos'
+                    }
+                  }}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      label="Código IBM"
+                      placeholder="0000"
+                      error={!!errors.codigoIBM}
+                      helperText={errors.codigoIBM?.message as string}
+                      inputProps={{ maxLength: 4 }}
+                      InputLabelProps={{ shrink: true }}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <BadgeIcon color="primary" />
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
                   )}
                 />
               </Grid>

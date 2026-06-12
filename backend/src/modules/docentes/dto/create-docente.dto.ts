@@ -33,6 +33,10 @@ export class CreateDocenteDto {
   dedicacion?: string;
 
   @IsOptional()
+  @IsString({ message: 'El código IBM debe ser un texto válido' })
+  codigoIBM?: string;
+
+  @IsOptional()
   @IsString({ message: 'El Telegram ID debe ser un texto válido' })
   telegramId?: string;
 

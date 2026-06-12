@@ -67,4 +67,10 @@ export class DocentesController {
   ) {
     return this.docentesService.findCourses(+id, cicloId ? +cicloId : undefined);
   }
+
+  @Get(':id/validar-carga')
+  @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR, RolUsuario.DOCENTE)
+  validarCarga(@Param('id') id: string) {
+    return this.docentesService.validarCargaCompleta(+id);
+  }
 }

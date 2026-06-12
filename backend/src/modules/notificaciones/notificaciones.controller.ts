@@ -33,4 +33,16 @@ export class NotificacionesController {
   readAll(@Req() req: any) {
     return this.notificacionesService.markAllAsRead(req.user.docenteId);
   }
+
+  @Post('mark-all-read')
+  @Roles(RolUsuario.DOCENTE)
+  markAllRead(@Req() req: any) {
+    return this.notificacionesService.markAllAsRead(req.user.docenteId);
+  }
+
+  @Post(':id/delete')
+  @Roles(RolUsuario.DOCENTE)
+  remove(@Param('id') id: string) {
+    return this.notificacionesService.remove(+id);
+  }
 }

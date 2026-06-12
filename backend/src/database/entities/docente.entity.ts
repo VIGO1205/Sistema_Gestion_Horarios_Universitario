@@ -73,6 +73,12 @@ export class Docente {
   @Column({ type: 'varchar', length: 100, nullable: true, default: 'TIEMPO COMPLETO 40 H' })
   dedicacion: string;
 
+  @Column({ type: 'varchar', length: 10, nullable: true, default: '0000', name: 'codigo_ibm' })
+  codigoIBM: string;
+
+  @Column({ type: 'text', nullable: true, name: 'firma_base64' })
+  firmaBase64: string;
+
   @Column({ name: 'ventana_id', type: 'integer', nullable: true })
   ventanaId: number | null;
 

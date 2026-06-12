@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Res, UseGuards, Patch, Query } from '@nestjs/common';
 import { Response } from 'express';
 import { ReportesService } from './reportes.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -11,6 +11,48 @@ import { RolUsuario } from '../../database/entities/usuario.entity';
 @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR, RolUsuario.DOCENTE)
 export class ReportesController {
   constructor(private reportesService: ReportesService) {}
+
+  @Get()
+  async getReportes(
+    @Query('docenteId') docenteId?: string,
+    @Query('cicloId') cicloId?: string,
+  ) {
+    return this.reportesService.findAll(
+      docenteId ? +docenteId : undefined,
+      cicloId ? +cicloId : undefined
+    );
+  }
+
+  @Patch(':id/firmar')
+  async firmarReporte(@Param('id') id: string) {
+    return this.reportesService.firmar(+id);
+  }
+
+  @Get('descargar/:id')
+  async descargarReporte(
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const { pdf, filename } = await this.reportesService.generarPDFReporte(+id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    res.send(pdf);
+  }
+
+  @Get('descargar-excel/:id')
+  async descargarReporteExcel(
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const { excel, filename } = await this.reportesService.generarExcelReporte(+id);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    res.send(excel);
+  }
 
   @Get('operacional/:cicloId/:tipo')
   async generarOperacional(

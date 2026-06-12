@@ -9,6 +9,19 @@ export enum TipoClaseHorario {
   TEORIA = 'teoria',
   PRACTICA = 'practica',
   LABORATORIO = 'laboratorio',
+  NO_LECTIVA = 'no_lectiva',
+}
+
+export enum ActividadNoLectiva {
+  PREPARACION = 'PREPARACIÓN Y EVALUACIÓN',
+  TUTORIA = 'TUTORÍA Y ORIENTACIÓN',
+  INVESTIGACION = 'INVESTIGACIÓN',
+  CAPACITACION = 'CAPACITACIÓN',
+  GOBIERNO = 'GOBIERNO UNIVERSITARIO',
+  ADMINISTRACION = 'ADMINISTRACIÓN ACADÉMICA',
+  ASESORIA = 'ASESORÍA A ESTUDIANTES',
+  RESPONSABILIDAD_SOCIAL = 'RESPONSABILIDAD SOCIAL',
+  COMITES = 'COMITÉS TÉCNICOS',
 }
 
 @Entity('horarios')
@@ -24,10 +37,10 @@ export class Horario {
   @Column({ type: 'integer' })
   docenteId: number;
 
-  @Column({ type: 'integer' })
+  @Column({ type: 'integer', nullable: true })
   cursoId: number;
 
-  @Column({ type: 'integer' })
+  @Column({ type: 'integer', nullable: true })
   aulaId: number;
 
   @Column({ type: 'integer' })
@@ -35,6 +48,9 @@ export class Horario {
 
   @Column({ type: 'enum', enum: TipoClaseHorario })
   tipoClase: TipoClaseHorario;
+
+  @Column({ type: 'enum', enum: ActividadNoLectiva, nullable: true })
+  actividadNoLectiva: ActividadNoLectiva;
 
   @Column({ type: 'integer', default: 1 })
   diaSemana: number; // 1=Lunes, 7=Domingo

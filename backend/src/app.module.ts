@@ -32,6 +32,9 @@ import { DocenteCarrera } from './entities/docente-carrera.entity';
 import { VentanaAtencion } from './entities/ventana-atencion.entity';
 import { Notificacion } from './entities/notificacion.entity';
 import { CargaNoLectiva } from './entities/carga-no-lectiva.entity';
+import { Reporte } from './entities/reporte.entity';
+import { CargaAcademica } from './entities/carga-academica.entity';
+import { ConfiguracionGrilla } from './entities/configuracion-grilla.entity';
 
 @Module({
   imports: [
@@ -48,6 +51,13 @@ import { CargaNoLectiva } from './entities/carga-no-lectiva.entity';
         
         console.log(`Iniciando App en modo: ${nodeEnv}`);
         
+        const entities = [
+          Usuario, Docente, Curso, Aula, CicloAcademico, Horario, 
+          AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, 
+          Carrera, DocenteCarrera, VentanaAtencion, Notificacion, 
+          CargaNoLectiva, CargaAcademica, Reporte, ConfiguracionGrilla
+        ];
+        
         // Si hay DATABASE_URL (Render), la usamos directamente con SSL opcional
         if (databaseUrl) {
           console.log('Usando DATABASE_URL para la conexión');
@@ -56,7 +66,7 @@ import { CargaNoLectiva } from './entities/carga-no-lectiva.entity';
           return {
             type: 'postgres',
             url: databaseUrl,
-            entities: [Usuario, Docente, Curso, Aula, CicloAcademico, Horario, AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, Carrera, DocenteCarrera, VentanaAtencion, Notificacion, CargaNoLectiva],
+            entities,
             synchronize: nodeEnv !== 'production', // True solo si no es producción
             ssl: isRender || configService.get<string>('DB_SSL') === 'true' ? { rejectUnauthorized: false } : false,
           };
@@ -70,7 +80,7 @@ import { CargaNoLectiva } from './entities/carga-no-lectiva.entity';
           username: configService.get<string>('DB_USER') || 'postgres',
           password: configService.get<string>('DB_PASSWORD') || 'password',
           database: configService.get<string>('DB_NAME') || 'horarios_unt',
-          entities: [Usuario, Docente, Curso, Aula, CicloAcademico, Horario, AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, Carrera, DocenteCarrera, VentanaAtencion, Notificacion, CargaNoLectiva],
+          entities,
           synchronize: true,
           logging: false,
         };

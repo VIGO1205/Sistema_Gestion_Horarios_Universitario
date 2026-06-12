@@ -1,6 +1,6 @@
  'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -31,6 +31,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TablePagination,
 } from '@mui/material';
 import {
   Description as DescriptionIcon,
@@ -45,6 +46,13 @@ import {
   Warning as WarningIcon,
   CalendarMonth as CalendarIcon,
   DeleteOutline as DeleteIcon,
+  Refresh as RefreshIcon,
+  Draw as SignIcon,
+  AccessTime as WaitIcon,
+  CheckCircle as SuccessIcon,
+  Search as SearchIcon,
+  GetApp as DownloadIcon,
+  TableChart as ExcelIcon,
 } from '@mui/icons-material';
 import api from '@/lib/api';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -53,6 +61,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import Swal from 'sweetalert2';
 
 // Tipos de reportes
 const REPORTES_OPERACIONALES = [
@@ -67,6 +76,15 @@ const REPORTES_GESTION = [
   { id: 'carga_academica', nombre: 'Resumen de Carga Académica', icon: <AssignmentIcon />, desc: 'Estadísticas de horas dictadas vs requeridas.' },
   { id: 'eficiencia_aulas', nombre: 'Eficiencia de Espacios', icon: <AssessmentIcon />, desc: 'Porcentaje de uso y optimización de ambientes.' },
   { id: 'cumplimiento_ciclo', nombre: 'Cumplimiento del Ciclo', icon: <DescriptionIcon />, desc: 'Estado de avance de la programación académica.' },
+];
+
+// Orden de reportes oficiales
+const ORDEN_REPORTES_OFICIALES = [
+  '(FORMATO # 1) Carga Horaria Asignada (Sede Central)',
+  '(FORMATO # 2) Declaración Jurada (Sede Central)',
+  '(FORMATO # 1) Carga Horaria Asignada (Sedes Desconcentradas)',
+  '(FORMATO # 2) Declaración Jurada (Sedes Desconcentradas)',
+  '(FORMATO # 3) Horario Semanal del Docente',
 ];
 
 const DIAS_MAP: Record<number, string> = {
@@ -109,6 +127,126 @@ export default function ReportesPage() {
 
   const [misHorarios, setMisHorarios] = useState<any[]>([]);
   const [cargandoHorario, setCargandoHorario] = useState(false);
+
+  // --- ESTADOS PARA CRUD DOCENTE ---
+  const [reportes, setReportes] = useState<any[]>([]);
+  const [reportesSearch, setReportesSearch] = useState('');
+  const [reportesPage, setReportesPage] = useState(0);
+  const [reportesRowsPerPage, setReportesRowsPerPage] = useState(10);
+  const [loadingReportes, setLoadingReportes] = useState(false);
+  const [mostrarFiltrosSecundarios, setMostrarFiltrosSecundarios] = useState(false);
+  const [filtrosCRUD, setFiltrosCRUD] = useState({
+    sede: 'Todas las Sedes',
+    estado: 'Todos los Estados',
+  });
+
+  const fetchReportes = async () => {
+    if (!usuario?.docenteId || !filtros.cicloId) return;
+    setLoadingReportes(true);
+    try {
+      const res = await api.get('/reportes', { 
+        params: { 
+          docenteId: usuario.docenteId,
+          cicloId: filtros.cicloId 
+        } 
+      });
+      setReportes(res.data);
+    } catch (error) {
+      console.error('Error fetching reportes:', error);
+    } finally {
+      setLoadingReportes(false);
+    }
+  };
+
+  useEffect(() => {
+    if (usuario?.rol === 'docente') {
+      fetchReportes();
+    }
+  }, [usuario, filtros.cicloId]);
+
+  const handleFirmar = async (id: number) => {
+    const result = await Swal.fire({
+      title: '¿Firmar documento?',
+      text: 'Esta acción aplicará tu firma digital al formato seleccionado.',
+      icon: 'info',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, firmar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0b3a75',
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await api.patch(`/reportes/${id}/firmar`);
+        Swal.fire('¡Firmado!', 'El reporte ha sido firmado exitosamente.', 'success');
+        fetchReportes();
+      } catch (error: any) {
+        Swal.fire('Error', error.response?.data?.message || 'No se pudo firmar', 'error');
+      }
+    }
+  };
+
+  const handleDescargarReporteOficial = async (id: number, nombre: string) => {
+    try {
+      const res = await api.get(`/reportes/descargar/${id}`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', nombre);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      Swal.fire('Error', 'No se pudo descargar el archivo', 'error');
+    }
+  };
+
+  const handleDescargarReporteOficialExcel = async (id: number, nombre: string) => {
+    try {
+      const res = await api.get(`/reportes/descargar-excel/${id}`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', nombre);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      Swal.fire('Error', 'No se pudo descargar el archivo Excel', 'error');
+    }
+  };
+
+  const filteredReportes = useMemo(() => {
+    let filtered = reportes.filter(r => 
+      r.formato.toLowerCase().includes(reportesSearch.toLowerCase())
+    );
+
+    // Filtros secundarios
+    if (filtrosCRUD.sede && filtrosCRUD.sede !== 'Todas las Sedes') {
+      filtered = filtered.filter(r => r.sede === filtrosCRUD.sede);
+    }
+    if (filtrosCRUD.estado && filtrosCRUD.estado !== 'Todos los Estados') {
+      filtered = filtered.filter(r => r.estado === filtrosCRUD.estado);
+    }
+    
+    // Ordenar según el orden específico de reportes oficiales
+    return filtered.sort((a, b) => {
+      const indexA = ORDEN_REPORTES_OFICIALES.indexOf(a.formato);
+      const indexB = ORDEN_REPORTES_OFICIALES.indexOf(b.formato);
+      
+      // Si ambos están en el orden oficial, usar ese orden
+      if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
+      }
+      
+      // Si solo uno está en el orden oficial, ponerlo primero
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+      
+      // Si ninguno está en el orden oficial, mantener el orden original (createdAt DESC)
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [reportes, reportesSearch, filtrosCRUD]);
 
   const getCarreraIngenieriaSistemas = (listaCarreras: any[]) => {
     return listaCarreras.find((carrera) => {
@@ -1351,24 +1489,48 @@ export default function ReportesPage() {
   if (usuario?.rol === 'docente') {
     return (
       <Box sx={{ p: { xs: 2, md: 4 }, bgcolor: '#f8fafc', minHeight: '100vh' }}>
-        <Box sx={{ mb: 5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+        <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: 900, color: '#0f172a', mb: 1 }}>Mis Reportes Oficiales</Typography>
+            <Typography variant="h4" sx={{ fontWeight: 900, color: '#0b3a75', mb: 1 }}>
+              Mis Reportes Oficiales
+            </Typography>
             <Typography variant="body1" sx={{ color: '#64748b', fontWeight: 500 }}>
-              Genera y descarga tu horario oficial de clases en formato formal PDF.
+              Gestión de formatos oficiales, declaraciones juradas y firma digital.
             </Typography>
           </Box>
-          
-          {/* Filtro a la derecha */}
-          <Box sx={{ minWidth: 280 }}>
-            <Paper elevation={0} sx={{ p: 1, borderRadius: 3, border: '1px solid #eef2f6', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+          <IconButton 
+            onClick={fetchReportes} 
+            sx={{ 
+              bgcolor: 'white', 
+              boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+              '&:hover': { bgcolor: '#f1f5f9' }
+            }}
+          >
+            <RefreshIcon sx={{ color: '#64748b' }} />
+          </IconButton>
+        </Box>
+
+        {/* Panel de Filtros Estilo Gestión de Docentes */}
+        <Paper 
+          elevation={0} 
+          sx={{ 
+            p: 2.5, 
+            mb: 4, 
+            borderRadius: 4, 
+            border: '1px solid #eef2f6', 
+            boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
+            bgcolor: 'white'
+          }}
+        >
+          <Grid container spacing={2} alignItems="center">
+            {/* Filtro Periodo Académico (Izquierda) */}
+            <Grid item xs={12} md={1.5}>
               <FormControl fullWidth size="small">
-                <InputLabel>Periodo Académico</InputLabel>
+                <InputLabel>Periodo</InputLabel>
                 <Select
                   value={filtros.cicloId}
-                  label="Periodo Académico"
+                  label="Periodo"
                   onChange={(e) => setFiltros({ ...filtros, cicloId: e.target.value })}
-                  startAdornment={<InputAdornment position="start"><CalendarIcon fontSize="small" color="primary" /></InputAdornment>}
                   sx={{ borderRadius: 2 }}
                 >
                   {ciclos.map(c => (
@@ -1378,129 +1540,232 @@ export default function ReportesPage() {
                   ))}
                 </Select>
               </FormControl>
-            </Paper>
-          </Box>
-        </Box>
+            </Grid>
 
-        <Grid container spacing={4}>
-          <Grid item xs={12}>
-            <Card sx={{ 
-              borderRadius: 6, 
-              border: '1px solid #e2e8f0',
-              overflow: 'hidden',
-              boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)',
-              transition: 'all 0.3s ease',
-              width: '100%'
-            }}>
-              <Box sx={{ bgcolor: '#003366', p: 5, color: 'white', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: 90, height: 90 }}>
-                  <PdfIcon sx={{ fontSize: 45 }} />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>Horario Oficial de Clases</Typography>
-                  <Typography variant="h6" sx={{ opacity: 0.8, fontWeight: 400 }}>
-                    Documento institucional con validez académica para el periodo lectivo seleccionado.
-                  </Typography>
-                </Box>
-              </Box>
-              
-              <CardContent sx={{ p: 6 }}>
-                <Grid container spacing={6} alignItems="center">
-                  <Grid item xs={12} md={7}>
-                    <Box>
-                      <Typography variant="overline" sx={{ color: '#64748b', fontWeight: 800, letterSpacing: '0.1em' }}>INFORMACIÓN DEL REPORTE</Typography>
-                      <Divider sx={{ my: 2, borderColor: '#e2e8f0' }} />
-                      
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <Box sx={{ p: 1.5, bgcolor: '#f1f5f9', borderRadius: 2, color: '#003366' }}>
-                            <PersonIcon />
-                          </Box>
-                          <Box>
-                            <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 700 }}>DOCENTE ASIGNADO</Typography>
-                            <Typography variant="h6" sx={{ fontWeight: 800, color: '#1e293b' }}>{usuario.nombre?.toUpperCase()}</Typography>
-                          </Box>
-                        </Box>
+            {/* Buscador con Label y Icono */}
+            <Grid item xs={12} md={6.5}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Buscar Formato por Nombre"
+                placeholder="Escribe el nombre del formato..."
+                value={reportesSearch}
+                onChange={(e) => setReportesSearch(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ color: '#0b3a75', fontSize: 20 }} />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 2,
+                  }
+                }}
+              />
+            </Grid>
 
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <Box sx={{ p: 1.5, bgcolor: '#f1f5f9', borderRadius: 2, color: '#003366' }}>
-                            <CalendarIcon />
-                          </Box>
-                          <Box>
-                            <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 700 }}>PERIODO ACADÉMICO SELECCIONADO</Typography>
-                            <Typography variant="h6" sx={{ fontWeight: 800, color: '#1e293b' }}>
-                              {ciclos.find(c => String(c.id) === String(filtros.cicloId))?.nombre || '2026-I'}
-                            </Typography>
-                          </Box>
-                        </Box>
+            {/* Botón Limpiar */}
+            <Grid item xs={6} md={2}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<DeleteIcon />}
+                onClick={() => {
+                  setReportesSearch('');
+                  setFiltrosCRUD({ sede: 'Todas las Sedes', estado: 'Todos los Estados' });
+                }}
+                sx={{ 
+                  borderRadius: 2, 
+                  height: 40,
+                  fontWeight: 700, 
+                  color: '#64748b', 
+                  borderColor: '#e2e8f0',
+                  textTransform: 'uppercase',
+                  '&:hover': {
+                    borderColor: '#cbd5e1',
+                    bgcolor: '#f8fafc'
+                  }
+                }}
+              >
+                Limpiar
+              </Button>
+            </Grid>
 
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <Box sx={{ p: 1.5, bgcolor: '#f1f5f9', borderRadius: 2, color: '#003366' }}>
-                            <SchoolIcon />
-                          </Box>
-                          <Box>
-                            <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 700 }}>ESTADO DE CARGA</Typography>
-                            <Typography variant="h6" sx={{ fontWeight: 800, color: '#10b981' }}>PROGRAMACIÓN VIGENTE</Typography>
-                          </Box>
-                        </Box>
-                      </Box>
-                    </Box>
+            {/* Botón Filtros */}
+            <Grid item xs={6} md={2}>
+              <Button
+                fullWidth
+                variant={mostrarFiltrosSecundarios ? 'contained' : 'outlined'}
+                startIcon={<FilterIcon />}
+                onClick={() => setMostrarFiltrosSecundarios(!mostrarFiltrosSecundarios)}
+                sx={{ 
+                  borderRadius: 2, 
+                  height: 40,
+                  fontWeight: 700,
+                  bgcolor: mostrarFiltrosSecundarios ? '#0b3a75' : 'transparent',
+                  borderColor: '#0b3a75',
+                  color: mostrarFiltrosSecundarios ? 'white' : '#0b3a75',
+                  textTransform: 'uppercase',
+                  '&:hover': {
+                    bgcolor: mostrarFiltrosSecundarios ? '#082d5a' : 'rgba(11, 58, 117, 0.04)',
+                    borderColor: '#0b3a75',
+                  }
+                }}
+              >
+                Filtros
+              </Button>
+            </Grid>
+
+            {/* Filtros Secundarios (Se muestran en la misma caja abajo) */}
+            {mostrarFiltrosSecundarios && (
+              <>
+                <Grid item xs={12} md={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Tipo de Sede</InputLabel>
+                      <Select
+                        value={filtrosCRUD.sede}
+                        label="Tipo de Sede"
+                        onChange={(e) => setFiltrosCRUD({ ...filtrosCRUD, sede: e.target.value })}
+                      >
+                        <MenuItem value="Todas las Sedes">Todas las Sedes</MenuItem>
+                        <MenuItem value="Sede Central">Sede Central</MenuItem>
+                        <MenuItem value="Sedes Desconcentradas">Sedes Desconcentradas</MenuItem>
+                      </Select>
+                    </FormControl>
                   </Grid>
-
-                  <Grid item xs={12} md={5}>
-                    <Paper elevation={0} sx={{ p: 4, bgcolor: 'rgba(0, 51, 102, 0.03)', borderRadius: 4, border: '1px dashed #003366' }}>
-                      <Typography variant="body2" sx={{ color: '#475569', mb: 4, textAlign: 'center', fontWeight: 500, lineHeight: 1.6 }}>
-                        Al descargar este documento, obtendrá un archivo PDF o Excel formal con el sello institucional de la UNT, detallando sus cursos, horarios y ambientes asignados.
-                      </Typography>
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <Button 
-                          fullWidth 
-                          variant="contained" 
-                          size="large"
-                          startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <DescriptionIcon sx={{ fontSize: 28 }} />}
-                          onClick={generateHorarioPersonalPDF}
-                          disabled={loading}
-                          sx={{ 
-                            bgcolor: '#003366', 
-                            borderRadius: 4,
-                            py: 2,
-                            fontSize: '1.1rem',
-                            fontWeight: 900,
-                            boxShadow: '0 8px 16px -2px rgba(0, 51, 102, 0.3)',
-                            '&:hover': { bgcolor: '#002244', transform: 'scale(1.02)' },
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          {loading ? 'PROCESANDO...' : 'DESCARGAR PDF'}
-                        </Button>
-                        <Button 
-                          fullWidth 
-                          variant="outlined" 
-                          color="success"
-                          size="large"
-                          startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <AssessmentIcon sx={{ fontSize: 28 }} />}
-                          onClick={generateHorarioPersonalExcel}
-                          disabled={loading}
-                          sx={{ 
-                            borderRadius: 4,
-                            py: 2,
-                            fontSize: '1.1rem',
-                            fontWeight: 900,
-                            borderWidth: 2,
-                            '&:hover': { borderWidth: 2, transform: 'scale(1.02)' },
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          {loading ? 'PROCESANDO...' : 'DESCARGAR EXCEL'}
-                        </Button>
-                      </Box>
-                    </Paper>
-                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Estado</InputLabel>
+                      <Select
+                        value={filtrosCRUD.estado}
+                        label="Estado"
+                        onChange={(e) => setFiltrosCRUD({ ...filtrosCRUD, estado: e.target.value })}
+                      >
+                        <MenuItem value="Todos los Estados">Todos los Estados</MenuItem>
+                        <MenuItem value="pendiente">Pendiente</MenuItem>
+                        <MenuItem value="firmado">Firmado</MenuItem>
+                        <MenuItem value="standby">Standby</MenuItem>
+                      </Select>
+                    </FormControl>
                 </Grid>
-              </CardContent>
-            </Card>
+              </>
+            )}
           </Grid>
-        </Grid>
+        </Paper>
+
+        <Paper elevation={0} sx={{ p: 3, borderRadius: 4, border: '1px solid #eef2f6', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
+          <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid #e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#0b3a75' }}>
+                  <TableCell sx={{ color: 'white', fontWeight: 700, width: 60 }}>N°</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 700 }}>FORMATO</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 700 }}>SEDE</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 700 }}>ESTADO</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 700 }} align="center">ACCIONES</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {loadingReportes ? (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center" sx={{ py: 10 }}>
+                      <CircularProgress size={40} />
+                    </TableCell>
+                  </TableRow>
+                ) : filteredReportes.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center" sx={{ py: 10, color: '#64748b' }}>
+                      No se encontraron reportes generados.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredReportes
+                    .slice(reportesPage * reportesRowsPerPage, reportesPage * reportesRowsPerPage + reportesRowsPerPage)
+                    .map((reporte, index) => (
+                      <TableRow key={reporte.id} hover>
+                        <TableCell sx={{ fontWeight: 600 }}>{reportesPage * reportesRowsPerPage + index + 1}</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: '#1e293b' }}>{reporte.formato}</TableCell>
+                        <TableCell sx={{ fontWeight: 500 }}>{reporte.sede}</TableCell>
+                        <TableCell>
+                          <Chip 
+                            label={reporte.estado.toUpperCase()} 
+                            size="small"
+                            icon={reporte.estado === 'firmado' ? <SuccessIcon /> : <WaitIcon />}
+                            sx={{ 
+                              fontWeight: 800,
+                              bgcolor: reporte.estado === 'firmado' ? '#dcfce7' : reporte.estado === 'standby' ? '#f1f5f9' : '#fff7ed',
+                              color: reporte.estado === 'firmado' ? '#166534' : reporte.estado === 'standby' ? '#64748b' : '#9a3412',
+                              borderRadius: 2,
+                              px: 1
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell align="center">
+                          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
+                            <Tooltip title="Firmar Documento">
+                              <span>
+                                <IconButton 
+                                  size="small" 
+                                  color="primary"
+                                  onClick={() => handleFirmar(reporte.id)}
+                                  disabled={reporte.estado === 'firmado' || reporte.estado === 'standby'}
+                                  sx={{ bgcolor: 'rgba(11, 58, 117, 0.05)', '&:hover': { bgcolor: 'rgba(11, 58, 117, 0.1)' } }}
+                                >
+                                  <SignIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            
+                            <Tooltip title="Descargar PDF">
+                              <span>
+                                <IconButton 
+                                  size="small" 
+                                  color="secondary"
+                                  onClick={() => handleDescargarReporteOficial(reporte.id, `${reporte.formato}.pdf`)}
+                                  disabled={reporte.estado === 'standby'}
+                                  sx={{ bgcolor: 'rgba(156, 39, 176, 0.05)', '&:hover': { bgcolor: 'rgba(156, 39, 176, 0.1)' } }}
+                                >
+                                  <PdfIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Descargar Excel">
+                              <span>
+                                <IconButton 
+                                  size="small" 
+                                  color="success"
+                                  onClick={() => handleDescargarReporteOficialExcel(reporte.id, `${reporte.formato}.xlsx`)}
+                                  disabled={reporte.estado === 'standby'}
+                                  sx={{ bgcolor: 'rgba(22, 163, 74, 0.05)', '&:hover': { bgcolor: 'rgba(22, 163, 74, 0.1)' } }}
+                                >
+                                  <ExcelIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <TablePagination
+            rowsPerPageOptions={[5, 10, 25]}
+            component="div"
+            count={filteredReportes.length}
+            rowsPerPage={reportesRowsPerPage}
+            page={reportesPage}
+            onPageChange={(_, newPage) => setReportesPage(newPage)}
+            onRowsPerPageChange={(e) => {
+              setReportesRowsPerPage(parseInt(e.target.value, 10));
+              setReportesPage(0);
+            }}
+            labelRowsPerPage="Filas por página"
+          />
+        </Paper>
       </Box>
     );
   }

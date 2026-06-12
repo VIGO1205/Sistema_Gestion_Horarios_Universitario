@@ -40,4 +40,8 @@ export class NotificacionesService {
       where: { docenteId, leido: false },
     });
   }
+
+  async remove(id: number) {
+    return await this.notificacionRepo.delete(id);
+  }
 }

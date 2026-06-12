@@ -120,6 +120,13 @@ export class ProgramacionesService {
     return await this.programacionRepo.save(prog);
   }
 
+  async findAssignmentsByDocente(docenteId: number, cicloId: number): Promise<AsignacionDocenteCurso[]> {
+    return await this.asignacionRepo.find({
+      where: { docenteId, cicloId },
+      relations: ['curso', 'grupos', 'grupos.horarios', 'grupos.horarios.aula'],
+    });
+  }
+
   async bulkCreateOrUpdate(items: any[]): Promise<any> {
     const results: ProgramacionCursoCiclo[] = [];
     const errors: Array<{ cursoId: number; message: string }> = [];

@@ -37,6 +37,7 @@ export interface ReportData {
     detalleResponsabilidadSocial: string;
     horasComites: number;
     detalleComites: string;
+    firma?: string;
   };
   totalHoras: number;
 }
@@ -225,6 +226,16 @@ export const generateFormato1PDF = async (data: ReportData) => {
   const firmaWidth = 50;
   const firmaY = footerY + 25;
 
+  // --- INSERTAR FIRMA SI EXISTE ---
+  if (data.cargaNoLectiva.firma) {
+    try {
+      // La firma se guarda como DataURL (base64)
+      doc.addImage(data.cargaNoLectiva.firma, 'PNG', margin, firmaY - 20, firmaWidth, 20);
+    } catch (e) {
+      console.error('Error al insertar firma en PDF:', e);
+    }
+  }
+
   // Línea Firma Profesor
   doc.setLineWidth(0.2);
   doc.line(margin, firmaY, margin + firmaWidth, firmaY);
@@ -247,7 +258,13 @@ export const generateFormato1PDF = async (data: ReportData) => {
     doc.text(`Página ${i} de ${pageCount} - Generado por Sistema de Horarios UNT`, pageWidth / 2, 290, { align: 'center' });
   }
 
-  doc.save(`(FORMATO # 1) Carga Horaria Asignada (Sede Central).pdf`);
+  const blob = doc.output('blob');
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `(FORMATO # 1) Carga Horaria Asignada - ${data.docente.nombreCompleto}.pdf`;
+  anchor.click();
+  window.URL.revokeObjectURL(url);
 };
 
 export const generateFormato1Excel = async (data: ReportData) => {
@@ -255,100 +272,115 @@ export const generateFormato1Excel = async (data: ReportData) => {
   const worksheet = workbook.addWorksheet('Formato N° 1');
   const AZUL_UNT_HEX = '003366';
   const BLANCO_HEX = 'FFFFFF';
-  const GRIS_CLARO_HEX = 'F8FAFC';
+  const GRIS_BORDE = 'E2E8F0';
 
-  // Configuración de columnas
+  // Configuración de columnas con anchos optimizados
   worksheet.columns = [
-    { width: 15 }, { width: 45 }, { width: 8 }, { width: 20 }, { width: 8 }, 
-    { width: 8 }, { width: 8 }, { width: 8 }, { width: 8 }, { width: 8 }, { width: 8 }
+    { width: 12 }, // CODIGO
+    { width: 45 }, // NOMBRE CURSO
+    { width: 8 },  // CUR
+    { width: 15 }, // ESCUELA
+    { width: 6 },  // CIC
+    { width: 6 },  // SEC
+    { width: 8 },  // N AL
+    { width: 10 }, // HT
+    { width: 10 }, // HP
+    { width: 10 }, // HL
+    { width: 12 }  // TOTAL
   ];
 
-  // --- CABECERA INSTITUCIONAL ---
+  // --- CABECERA INSTITUCIONAL ESTILO WEB ---
   worksheet.mergeCells('A1:K1');
-  const inst1 = worksheet.getCell('A1');
-  inst1.value = 'UNIVERSIDAD NACIONAL DE TRUJILLO';
-  inst1.font = { bold: true, size: 16, color: { argb: BLANCO_HEX } };
-  inst1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_UNT_HEX } };
-  inst1.alignment = { horizontal: 'center', vertical: 'middle' };
-  worksheet.getRow(1).height = 30;
+  const headerRow1 = worksheet.getCell('A1');
+  headerRow1.value = 'UNIVERSIDAD NACIONAL DE TRUJILLO';
+  headerRow1.font = { bold: true, size: 16, color: { argb: BLANCO_HEX }, name: 'Arial' };
+  headerRow1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_UNT_HEX } };
+  headerRow1.alignment = { horizontal: 'center', vertical: 'middle' };
+  worksheet.getRow(1).height = 35;
 
   worksheet.mergeCells('A2:K2');
-  const inst2 = worksheet.getCell('A2');
-  inst2.value = 'Sistema de Gestión de Horarios Académicos';
-  inst2.font = { bold: true, size: 11, color: { argb: BLANCO_HEX } };
-  inst2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_UNT_HEX } };
-  inst2.alignment = { horizontal: 'center', vertical: 'middle' };
+  const headerRow2 = worksheet.getCell('A2');
+  headerRow2.value = 'Sistema de Gestión de Horarios Académicos - Facultad de Ingeniería';
+  headerRow2.font = { bold: true, size: 10, color: { argb: BLANCO_HEX }, name: 'Arial' };
+  headerRow2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_UNT_HEX } };
+  headerRow2.alignment = { horizontal: 'center', vertical: 'middle' };
   worksheet.getRow(2).height = 20;
 
-  // Títulos del Formato
+  // --- TÍTULOS ---
   worksheet.addRow([]);
   worksheet.mergeCells('A4:K4');
-  const title1 = worksheet.getCell('A4');
-  title1.value = 'FORMATO N° 1';
-  title1.alignment = { horizontal: 'center' };
-  title1.font = { bold: true, size: 12 };
+  const t1 = worksheet.getCell('A4');
+  t1.value = 'FORMATO N° 1';
+  t1.font = { bold: true, size: 12, color: { argb: AZUL_UNT_HEX } };
+  t1.alignment = { horizontal: 'center' };
 
   worksheet.mergeCells('A5:K5');
-  const title2 = worksheet.getCell('A5');
-  title2.value = 'DECLARACION DE CARGA HORARIA ASIGNADA';
-  title2.alignment = { horizontal: 'center' };
-  title2.font = { bold: true, size: 12 };
-
-  // Datos Profesor
+  const t2 = worksheet.getCell('A5');
+  t2.value = 'DECLARACION DE CARGA HORARIA ASIGNADA';
+  t2.font = { bold: true, size: 13, color: { argb: AZUL_UNT_HEX } };
+  t2.alignment = { horizontal: 'center' };
   worksheet.addRow([]);
-  worksheet.addRow(['I. DATOS SOBRE LA SITUACION DEL PROFESOR:']);
-  worksheet.getCell(`A${worksheet.lastRow?.number}`).font = { bold: true };
 
-  worksheet.addRow(['FACULTAD:', (data.docente.facultad || 'INGENIERÍA').toUpperCase()]);
-  worksheet.addRow(['DPTO. ACADEMICO:', (data.docente.departamento || 'INGENIERÍA DE SISTEMAS').toUpperCase()]);
-
+  // --- I. DATOS DEL PROFESOR (Estilo Cards) ---
+  const subTitle = worksheet.addRow(['I. DATOS SOBRE LA SITUACIÓN DEL PROFESOR:']);
+  subTitle.getCell(1).font = { bold: true, size: 10, color: { argb: AZUL_UNT_HEX } };
   worksheet.addRow([]);
-  const headerRow = worksheet.addRow(['NOMBRE COMPLETO', '', '', 'CONDICION', '', 'CATEGORIA', '', 'MODALIDAD']);
-  worksheet.mergeCells(`A${headerRow.number}:C${headerRow.number}`);
-  worksheet.mergeCells(`D${headerRow.number}:E${headerRow.number}`);
-  worksheet.mergeCells(`F${headerRow.number}:G${headerRow.number}`);
-  worksheet.mergeCells(`H${headerRow.number}:K${headerRow.number}`);
-  headerRow.eachCell(cell => {
-    cell.font = { bold: true, size: 9 };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F1F5F9' } };
-    cell.alignment = { horizontal: 'center' };
+
+  const rowFac = worksheet.addRow(['FACULTAD:', data.docente.facultad?.toUpperCase() || 'INGENIERÍA']);
+  rowFac.getCell(1).font = { bold: true, size: 9 };
+  const rowDpto = worksheet.addRow(['DPTO. ACADÉMICO:', data.docente.departamento?.toUpperCase() || 'INGENIERÍA DE SISTEMAS']);
+  rowDpto.getCell(1).font = { bold: true, size: 9 };
+  worksheet.addRow([]);
+
+  // Header de Datos Docente (Azul)
+  const docHeader = worksheet.addRow(['NOMBRE COMPLETO', '', '', 'CONDICIÓN', '', 'CATEGORÍA', '', 'MODALIDAD']);
+  worksheet.mergeCells(`A${docHeader.number}:C${docHeader.number}`);
+  worksheet.mergeCells(`D${docHeader.number}:E${docHeader.number}`);
+  worksheet.mergeCells(`F${docHeader.number}:G${docHeader.number}`);
+  worksheet.mergeCells(`H${docHeader.number}:K${docHeader.number}`);
+  docHeader.eachCell(cell => {
+    cell.font = { bold: true, size: 9, color: { argb: BLANCO_HEX } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_UNT_HEX } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
     cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
   });
 
-  const dataRow = worksheet.addRow([data.docente.nombreCompleto.toUpperCase(), '', '', data.docente.condicion.toUpperCase(), '', data.docente.categoria.toUpperCase(), '', data.docente.modalidad.toUpperCase()]);
-  worksheet.mergeCells(`A${dataRow.number}:C${dataRow.number}`);
-  worksheet.mergeCells(`D${dataRow.number}:E${dataRow.number}`);
-  worksheet.mergeCells(`F${dataRow.number}:G${dataRow.number}`);
-  worksheet.mergeCells(`H${dataRow.number}:K${dataRow.number}`);
-  dataRow.eachCell(cell => {
-    cell.alignment = { horizontal: 'center' };
-    cell.font = { size: 9 };
+  const docData = worksheet.addRow([data.docente.nombreCompleto.toUpperCase(), '', '', data.docente.condicion.toUpperCase(), '', data.docente.categoria.toUpperCase(), '', data.docente.modalidad.toUpperCase()]);
+  worksheet.mergeCells(`A${docData.number}:C${docData.number}`);
+  worksheet.mergeCells(`D${docData.number}:E${docData.number}`);
+  worksheet.mergeCells(`F${docData.number}:G${docData.number}`);
+  worksheet.mergeCells(`H${docData.number}:K${docData.number}`);
+  docData.eachCell(cell => {
+    cell.font = { size: 9, bold: true };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
     cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
   });
+  worksheet.getRow(docData.number).height = 25;
 
   // Ciclo y Fechas
   worksheet.addRow([]);
-  const infoRow = worksheet.addRow([
-    'AÑO ACADEMICO:', data.ciclo.nombre.split('-')[0], 
-    'CICLO(SEM):', data.ciclo.nombre.split('-')[1], 
-    '', '', '', '', '', 
-    `INICIO: ${data.ciclo.fechaInicio}`, `FINAL: ${data.ciclo.fechaFinal}`
+  const cicloRow = worksheet.addRow([
+    'AÑO ACADÉMICO:', data.ciclo.nombre.split('-')[0], 
+    'CICLO:', data.ciclo.nombre.split('-')[1], 
+    '', '', '', 
+    `INICIO: ${data.ciclo.fechaInicio}`, '', '', `FINAL: ${data.ciclo.fechaFinal}`
   ]);
-  infoRow.font = { size: 9 };
-  infoRow.getCell(1).font = { bold: true };
-  infoRow.getCell(3).font = { bold: true };
+  cicloRow.eachCell(c => c.font = { size: 9 });
+  cicloRow.getCell(1).font = { bold: true };
+  cicloRow.getCell(3).font = { bold: true };
 
-  // Tabla Lectiva
+  // --- 1. TRABAJO LECTIVO ---
   worksheet.addRow([]);
-  const tableHeader = worksheet.addRow(['1. TRABAJO LECTIVO.- Datos completos y con claridad']);
-  worksheet.mergeCells(`A${tableHeader.number}:K${tableHeader.number}`);
-  tableHeader.getCell(1).font = { bold: true, size: 10 };
-  tableHeader.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F1F5F9' } };
+  const lectivaHeader = worksheet.addRow(['1. TRABAJO LECTIVO.- Datos completos y con claridad']);
+  worksheet.mergeCells(`A${lectivaHeader.number}:K${lectivaHeader.number}`);
+  lectivaHeader.getCell(1).font = { bold: true, size: 10, color: { argb: BLANCO_HEX } };
+  lectivaHeader.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_UNT_HEX } };
 
-  const subHeader = worksheet.addRow(['CODIGO', 'NOMBRE DEL CURSO', 'CUR.', 'ESCUELA PROF.', 'CIC.', 'SEC.', 'N° AL.', 'H.T.', 'H.P.', 'H.L.', 'Total']);
-  subHeader.eachCell(cell => {
-    cell.font = { bold: true, size: 8 };
-    cell.alignment = { horizontal: 'center' };
+  const lectivaCols = worksheet.addRow(['CÓDIGO', 'NOMBRE DEL CURSO', 'CUR.', 'ESCUELA', 'CIC.', 'SEC.', 'N° AL.', 'H.T.', 'H.P.', 'H.L.', 'TOTAL']);
+  lectivaCols.eachCell(cell => {
+    cell.font = { bold: true, size: 8, color: { argb: AZUL_UNT_HEX } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F1F5F9' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
     cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
   });
 
@@ -359,57 +391,57 @@ export const generateFormato1Excel = async (data: ReportData) => {
         `${curso.horasT}x${curso.gruposT}`, `${curso.horasP}x${curso.gruposP}`, `${curso.horasL}x${curso.gruposL}`, curso.totalHoras
       ]);
       row.eachCell(cell => {
-        cell.alignment = { horizontal: 'center' };
-        cell.font = { size: 8 };
+        cell.font = { size: 9 };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
         cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
       });
-      row.getCell(2).alignment = { horizontal: 'left' };
-    });
-  } else {
-    const row = worksheet.addRow(['-', 'SIN CARGA LECTIVA ASIGNADA', '-', '-', '-', '-', '-', '0', '0', '0', '0']);
-    worksheet.mergeCells(`B${row.number}:G${row.number}`);
-    row.eachCell(cell => {
-      cell.alignment = { horizontal: 'center' };
-      cell.font = { size: 8 };
-      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+      row.getCell(2).alignment = { horizontal: 'left', wrapText: true };
     });
   }
 
-  // Carga No Lectiva
+  // --- CARGA NO LECTIVA (Con ajuste de texto) ---
+  worksheet.addRow([]);
+  const noLectivaHeader = worksheet.addRow(['2. CARGA NO LECTIVA - DECLARACIÓN DE ACTIVIDADES']);
+  worksheet.mergeCells(`A${noLectivaHeader.number}:K${noLectivaHeader.number}`);
+  noLectivaHeader.getCell(1).font = { bold: true, size: 10, color: { argb: BLANCO_HEX } };
+  noLectivaHeader.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_UNT_HEX } };
+
   const sections = [
-    { l: '2. PREPARACION Y EVALUACION (Max 50% de Trabajo Lectivo)', h: data.cargaNoLectiva.horasPreparacion, d: data.cargaNoLectiva.detallePreparacion },
-    { l: '3. CONSEJERIA Y TUTORIA', h: data.cargaNoLectiva.horasTutoria, d: data.cargaNoLectiva.detalleTutoria },
-    { l: '4. INVESTIGACIÓN', h: data.cargaNoLectiva.horasInvestigacion, d: data.cargaNoLectiva.detalleInvestigacion },
-    { l: '5. CAPACITACIÓN', h: data.cargaNoLectiva.horasCapacitacion, d: data.cargaNoLectiva.detalleCapacitacion },
+    { l: '2. PREPARACIÓN Y EVALUACIÓN (Max 50% de Trabajo Lectivo)', h: data.cargaNoLectiva.horasPreparacion, d: data.cargaNoLectiva.detallePreparacion },
+    { l: '3. CONSEJERÍA Y TUTORÍA (Mínimo 01 hora semanal)', h: data.cargaNoLectiva.horasTutoria, d: data.cargaNoLectiva.detalleTutoria },
+    { l: '4. INVESTIGACIÓN (Mínimo 04-05 horas semanales)', h: data.cargaNoLectiva.horasInvestigacion, d: data.cargaNoLectiva.detalleInvestigacion },
+    { l: '5. CAPACITACIÓN (Máximo 05 semanales)', h: data.cargaNoLectiva.horasCapacitacion, d: data.cargaNoLectiva.detalleCapacitacion },
     { l: '6. ACTIVIDADES DE GOBIERNO', h: data.cargaNoLectiva.horasGobierno, d: data.cargaNoLectiva.detalleGobierno },
-    { l: '7. ACTIVIDADES DE ADMINISTRACION', h: data.cargaNoLectiva.horasAdministracion, d: data.cargaNoLectiva.detalleAdministracion },
-    { l: '8. ASESORIA DE TESIS...', h: data.cargaNoLectiva.horasAsesoria, d: data.cargaNoLectiva.detalleAsesoria },
-    { l: '9. RESPONSABILIDAD SOCIAL', h: data.cargaNoLectiva.horasResponsabilidadSocial, d: data.cargaNoLectiva.detalleResponsabilidadSocial },
-    { l: '10. COMITES TECNICOS', h: data.cargaNoLectiva.horasComites, d: data.cargaNoLectiva.detalleComites },
+    { l: '7. ACTIVIDADES DE ADMINISTRACIÓN', h: data.cargaNoLectiva.horasAdministracion, d: data.cargaNoLectiva.detalleAdministracion },
+    { l: '8. ASESORÍA DE TESIS Y EXÁMENES PROFESIONALES', h: data.cargaNoLectiva.horasAsesoria, d: data.cargaNoLectiva.detalleAsesoria },
+    { l: '9. RESPONSABILIDAD SOCIAL UNIVERSITARIA', h: data.cargaNoLectiva.horasResponsabilidadSocial, d: data.cargaNoLectiva.detalleResponsabilidadSocial },
+    { l: '10. COMITÉS TÉCNICOS Y COMISIONES', h: data.cargaNoLectiva.horasComites, d: data.cargaNoLectiva.detalleComites },
   ];
 
   sections.forEach(sec => {
-    const row = worksheet.addRow([sec.l, '', '', sec.d, '', '', '', '', '', '', Math.round(sec.h)]);
-    worksheet.mergeCells(`A${row.number}:C${row.number}`);
-    worksheet.mergeCells(`D${row.number}:J${row.number}`);
+    const row = worksheet.addRow([sec.l, '', '', '', sec.d, '', '', '', '', '', Math.round(sec.h)]);
+    worksheet.mergeCells(`A${row.number}:D${row.number}`);
+    worksheet.mergeCells(`E${row.number}:J${row.number}`);
     row.eachCell(cell => {
       cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-      cell.alignment = { wrapText: true, vertical: 'middle' };
-      cell.font = { size: 8 };
+      cell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left' };
+      cell.font = { size: 8.5 };
     });
-    row.getCell(1).font = { bold: true, size: 8 };
-    row.getCell(11).alignment = { horizontal: 'center' };
+    row.getCell(1).font = { bold: true, size: 8.5, color: { argb: AZUL_UNT_HEX } };
+    row.getCell(11).alignment = { horizontal: 'center', vertical: 'middle' };
+    row.height = 35; // Altura para que el texto respire
   });
 
-  // Total
-  const totalRow = worksheet.addRow(['', '', '', '', '', '', '', '', '', 'TOTAL SEMANAL', Math.round(data.totalHoras)]);
-  totalRow.getCell(10).font = { bold: true, size: 9 };
-  totalRow.getCell(11).font = { bold: true, size: 10 };
+  // Total Final
+  const totalRow = worksheet.addRow(['', '', '', '', '', '', '', '', '', 'TOTAL GENERAL', Math.round(data.totalHoras)]);
+  totalRow.getCell(10).font = { bold: true, size: 10, color: { argb: AZUL_UNT_HEX } };
+  totalRow.getCell(11).font = { bold: true, size: 11, color: { argb: BLANCO_HEX } };
+  totalRow.getCell(11).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_UNT_HEX } };
   totalRow.getCell(11).alignment = { horizontal: 'center' };
-  totalRow.getCell(11).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F1F5F9' } };
   totalRow.getCell(11).border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+  worksheet.getRow(totalRow.number).height = 20;
 
-  // Firmas
+  // Firmas Estilizadas
   worksheet.addRow([]);
   worksheet.addRow([]);
   worksheet.addRow([]);
@@ -417,8 +449,32 @@ export const generateFormato1Excel = async (data: ReportData) => {
   firmaRow.alignment = { horizontal: 'center' };
   const labelRow = worksheet.addRow(['', 'Firma del Profesor', '', '', '', 'Firma del Director', '', '', '', 'V° B° Decano']);
   labelRow.alignment = { horizontal: 'center' };
-  labelRow.font = { size: 8, italic: true };
+  labelRow.font = { size: 9, italic: true, bold: true };
+
+  // --- INSERTAR FIRMA EN EXCEL ---
+  if (data.cargaNoLectiva.firma) {
+    try {
+      const imageId = workbook.addImage({
+        base64: data.cargaNoLectiva.firma,
+        extension: 'png',
+      });
+      
+      // Posicionar sobre la línea de firma del profesor (Columna B)
+      worksheet.addImage(imageId, {
+        tl: { col: 1, row: labelRow.number - 3 },
+        ext: { width: 150, height: 60 }
+      });
+    } catch (e) {
+      console.error('Error al insertar firma en Excel:', e);
+    }
+  }
 
   const buffer = await workbook.xlsx.writeBuffer();
-  saveAs(new Blob([buffer]), `(FORMATO # 1) Carga Horaria Asignada (Sede Central).xlsx`);
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `(FORMATO # 1) Carga Horaria Asignada - ${data.docente.nombreCompleto}.xlsx`;
+  anchor.click();
+  window.URL.revokeObjectURL(url);
 };

@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_USER: universidad_admin
       POSTGRES_PASSWORD: S3cur3P@ssw0rd!
-      POSTGRES_DB: horarios_unt
+      POSTGRES_DB: horarios_unt 
     ports:
       - "5433:5432"
     volumes:  

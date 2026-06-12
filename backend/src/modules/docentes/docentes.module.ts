@@ -5,6 +5,7 @@ import { DocenteCarrera } from '../../entities/docente-carrera.entity';
 import { Carrera } from '../../entities/carrera.entity';
 import { AsignacionDocenteCurso } from '../../entities/asignacion-docente-curso.entity';
 import { Horario } from '../../entities/horario.entity';
+import { CargaAcademica } from '../../entities/carga-academica.entity';
 import { DocentesService } from './docentes.service';
 import { DocentesController } from './docentes.controller';
 import { UsuariosModule } from '../usuarios/usuarios.module';
@@ -17,6 +18,7 @@ import { UsuariosModule } from '../usuarios/usuarios.module';
       Carrera,
       AsignacionDocenteCurso,
       Horario,
+      CargaAcademica,
     ]),
     UsuariosModule,
   ],

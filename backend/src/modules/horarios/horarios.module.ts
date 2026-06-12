@@ -12,6 +12,7 @@ import { Aula } from '../../entities/aula.entity';
 import { Curso } from '../../entities/curso.entity';
 import { AsignacionDocenteCurso } from '../../entities/asignacion-docente-curso.entity';
 import { GrupoDocenteAsignacion } from '../../database/entities/grupo-docente-asignacion.entity';
+import { CargaNoLectiva } from '../../entities/carga-no-lectiva.entity';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { GrupoDocenteAsignacion } from '../../database/entities/grupo-docente-as
       Curso,
       AsignacionDocenteCurso,
       GrupoDocenteAsignacion,
+      CargaNoLectiva,
     ]),
     CiclosModule,
     VentanasModule,

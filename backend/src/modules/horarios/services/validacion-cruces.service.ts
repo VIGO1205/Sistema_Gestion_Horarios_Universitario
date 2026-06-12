@@ -21,7 +21,7 @@ export class ValidacionCrucesService {
 
   async validarSinCruces(
     docenteId: number,
-    aulaId: number,
+    aulaId: number | null,
     diaSemana: number,
     horaInicio: string,
     horaFin: string,
@@ -60,32 +60,34 @@ export class ValidacionCrucesService {
 
       if (this.haySolapamiento(cruce.horaInicio, cruce.horaFin, horaInicio, horaFin)) {
         conflictos.push(
-          `Cruce de docente: Ya tienes clase de ${cruce.curso?.nombre || 'otro curso'} (${cruce.horaInicio.substring(0, 5)}-${cruce.horaFin.substring(0, 5)})`,
+          `Cruce de docente: Ya tienes programada una actividad (${cruce.curso?.nombre || cruce.actividadNoLectiva || 'Otra'}) de ${cruce.horaInicio.substring(0, 5)} a ${cruce.horaFin.substring(0, 5)}`,
         );
       }
     }
 
     // 2. Validar límite de horas diarias
     if (horasHoy > INSTITUCIONAL.HORARIOS.LIMITE_HORAS_DIARIAS) {
-      conflictos.push(`Límite diario excedido: No puedes superar las ${INSTITUCIONAL.HORARIOS.LIMITE_HORAS_DIARIAS} horas de clase por día (Total hoy: ${horasHoy.toFixed(1)}h)`);
+      conflictos.push(`Límite diario excedido: No puedes superar las ${INSTITUCIONAL.HORARIOS.LIMITE_HORAS_DIARIAS} horas programadas por día (Total hoy: ${horasHoy.toFixed(1)}h)`);
     }
 
-    // 3. Validar cruce con ambiente ocupado
-    const query2 = this.horarioRepo.createQueryBuilder('h')
-      .leftJoinAndSelect('h.curso', 'curso')
-      .where('h.aulaId = :aulaId', { aulaId })
-      .andWhere('h.diaSemana = :diaSemana', { diaSemana })
-      .andWhere('h.cicloId = :cicloId', { cicloId });
+    // 3. Validar cruce con ambiente ocupado (Solo si hay aulaId)
+    if (aulaId) {
+      const query2 = this.horarioRepo.createQueryBuilder('h')
+        .leftJoinAndSelect('h.curso', 'curso')
+        .where('h.aulaId = :aulaId', { aulaId })
+        .andWhere('h.diaSemana = :diaSemana', { diaSemana })
+        .andWhere('h.cicloId = :cicloId', { cicloId });
 
-    if (excluirHorarioId) {
-      query2.andWhere('h.id != :excluirHorarioId', { excluirHorarioId });
-    }
+      if (excluirHorarioId) {
+        query2.andWhere('h.id != :excluirHorarioId', { excluirHorarioId });
+      }
 
-    const crucesAula = await query2.getMany();
-    for (const cruce of crucesAula) {
-      if (this.haySolapamiento(cruce.horaInicio, cruce.horaFin, horaInicio, horaFin)) {
-        conflictos.push(`Cruce de ambiente: El aula ya está ocupada por el curso ${cruce.curso?.nombre || ''} (${cruce.horaInicio.substring(0, 5)}-${cruce.horaFin.substring(0, 5)})`);
-        break;
+      const crucesAula = await query2.getMany();
+      for (const cruce of crucesAula) {
+        if (this.haySolapamiento(cruce.horaInicio, cruce.horaFin, horaInicio, horaFin)) {
+          conflictos.push(`Cruce de ambiente: El aula ya está ocupada por ${cruce.curso?.nombre || cruce.actividadNoLectiva || ''} (${cruce.horaInicio.substring(0, 5)}-${cruce.horaFin.substring(0, 5)})`);
+          break;
+        }
       }
     }
 
@@ -121,7 +123,7 @@ export class ValidacionCrucesService {
     // 5. Validar ambiente válido (Tipo de aula vs Tipo de clase)
     // Nota: Esto se valida mejor en el servicio de horarios al recibir el tipoClase,
     // pero podemos hacer una validación básica aquí si tenemos el aulaId.
-    const aula = await this.aulaRepo.findOneBy({ id: aulaId });
+    const aula = aulaId != null ? await this.aulaRepo.findOneBy({ id: aulaId }) : null;
     if (!aula) {
       conflictos.push('Ambiente inválido: El aula seleccionada no existe');
     } else if (!aula.disponible) {

@@ -30,6 +30,7 @@ import {
   Assignment as AssignmentIcon,
 } from '@mui/icons-material';
 import api from '@/lib/api';
+import { getNotificacionesSocket } from '@/lib/socket';
 import FormularioCargaNoLectiva from './FormularioCargaNoLectiva';
 
 interface CargaAcademicaDocenteProps {
@@ -47,6 +48,41 @@ export default function CargaAcademicaDocente({
   );
   const [cargaLectiva, setCargaLectiva] = useState<any[]>([]);
   const [loadingCarga, setLoadingCarga] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState<any>(null);
+
+  const getStatusConfig = (estado: string) => {
+    switch (estado?.toLowerCase()) {
+      case 'validado':
+        return { label: 'VALIDADO', color: '#16a34a', bg: '#f0fdf4' };
+      case 'finalizado':
+        return { label: 'FIRMADO Y FINALIZADO', color: '#003366', bg: '#e0f2fe' };
+      case 'pendiente':
+        return { label: 'PENDIENTE DE VALIDACIÓN', color: '#ca8a04', bg: '#fefce8' };
+      default:
+        return { label: 'BORRADOR', color: '#64748b', bg: '#f8fafc' };
+    }
+  };
+
+  const statusDisplay = useMemo(() => {
+    if (!currentStatus) return null;
+    const config = getStatusConfig(currentStatus);
+    return (
+      <Box sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: 1, 
+        bgcolor: config.bg, 
+        px: 2, 
+        py: 0.5, 
+        borderRadius: 2, 
+        border: `1px solid ${config.color}40` 
+      }}>
+        <Typography sx={{ fontWeight: 900, color: config.color, fontSize: '0.75rem', textTransform: 'uppercase' }}>
+          {config.label}
+        </Typography>
+      </Box>
+    );
+  }, [currentStatus]);
 
   useEffect(() => {
     const fetchFullDocente = async () => {
@@ -67,9 +103,51 @@ export default function CargaAcademicaDocente({
   useEffect(() => {
     const id = docente?.id || docenteProp?.docenteId || docenteProp?.id;
     if (selectedCiclo && id) {
+      // Limpiar datos anteriores antes de cargar los nuevos
+      setCargaLectiva([]);
+      setCurrentStatus(null);
       fetchCargaLectiva(id);
     }
   }, [selectedCiclo, docente?.id, docenteProp?.id]);
+
+  useEffect(() => {
+    const id = docente?.id || docenteProp?.docenteId || docenteProp?.id;
+    if (id) {
+      let mounted = true;
+      let detachSocket: (() => void) | null = null;
+
+      const setupSocket = async () => {
+        try {
+          const socket = await getNotificacionesSocket();
+          if (!mounted) return;
+
+          const handler = (data: any) => {
+            if (!mounted) return;
+            if (Number(data.docenteId) === Number(id)) {
+              if (Number(data.cicloId) === Number(selectedCiclo)) {
+                setCurrentStatus(data.estado);
+              }
+              // Mostrar notificación visual
+              console.log('[CargaAcademicaDocente] socket update', data);
+            }
+          };
+
+          socket.on('notificaciones:estado-carga', handler);
+          detachSocket = () => {
+            socket.off('notificaciones:estado-carga', handler);
+          };
+        } catch (err) {
+          console.error('Error connecting CargaAcademicaDocente to socket', err);
+        }
+      };
+
+      setupSocket();
+      return () => {
+        mounted = false;
+        if (detachSocket) detachSocket();
+      };
+    }
+  }, [docente?.id, docenteProp?.id, selectedCiclo]);
 
   const fetchCargaLectiva = async (id: number) => {
     setLoadingCarga(true);
@@ -269,12 +347,15 @@ export default function CargaAcademicaDocente({
               color: 'white',
               display: 'flex', 
               alignItems: 'center', 
-              gap: 1.5
+              justifyContent: 'space-between'
             }}>
-              <BookIcon sx={{ color: '#FFD700', fontSize: 28 }} />
-              <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                Declaración de Carga Horaria Asignada
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <BookIcon sx={{ color: '#FFD700', fontSize: 28 }} />
+                <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                  Declaración de Carga Horaria Asignada
+                </Typography>
+              </Box>
+              {statusDisplay}
             </Box>
 
             <Box sx={{ p: 4 }}>
@@ -378,6 +459,7 @@ export default function CargaAcademicaDocente({
                 }}
                 cicloData={ciclos.find(c => c.id === Number(selectedCiclo))}
                 cargaLectivaAgrupada={cargaLectivaAgrupada}
+                onStatusChange={(status) => setCurrentStatus(status)}
               />
             </Box>
           </Paper>

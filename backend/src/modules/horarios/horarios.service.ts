@@ -1,12 +1,13 @@
 import { Injectable, Logger, ConflictException, BadRequestException, Inject, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In, EntityManager } from 'typeorm';
-import { Horario } from '../../entities/horario.entity';
+import { Horario, ActividadNoLectiva } from '../../database/entities/horario.entity';
 import { Aula } from '../../entities/aula.entity';
 import { Curso } from '../../entities/curso.entity';
 import { Docente } from '../../entities/docente.entity';
 import { AsignacionDocenteCurso } from '../../entities/asignacion-docente-curso.entity';
 import { GrupoDocenteAsignacion } from '../../database/entities/grupo-docente-asignacion.entity';
+import { CargaNoLectiva } from '../../database/entities/carga-no-lectiva.entity';
 import { TipoClase } from '../../entities/asignacion-docente-curso.entity';
 import { ValidacionCrucesService } from './services/validacion-cruces.service';
 import { CiclosService } from '../ciclos/ciclos.service';
@@ -30,6 +31,8 @@ export class HorariosService {
     private asignacionRepo: Repository<AsignacionDocenteCurso>,
     @InjectRepository(GrupoDocenteAsignacion)
     private grupoRepo: Repository<GrupoDocenteAsignacion>,
+    @InjectRepository(CargaNoLectiva)
+    private cargaNoLectivaRepo: Repository<CargaNoLectiva>,
     private dataSource: DataSource,
     private validacionService: ValidacionCrucesService,
     private ciclosService: CiclosService,
@@ -41,16 +44,17 @@ export class HorariosService {
 
   async create(data: {
     docenteId: number;
-    cursoId: number;
-    aulaId: number;
+    cursoId?: number;
+    aulaId?: number;
     cicloId: number;
     tipoClase: string;
+    actividadNoLectiva?: string;
     diaSemana: number;
     horaInicio: string;
     horaFin: string;
     grupoId?: number;
   }, user?: any): Promise<Horario> {
-    return await this.dataSource.transaction(async (manager: EntityManager) => {
+    return (await this.dataSource.transaction(async (manager: EntityManager) => {
       // 1. Validar Permisos
       if (user?.rol === RolUsuario.DOCENTE) {
         if (!user.docenteId || Number(user.docenteId) !== Number(data.docenteId)) {
@@ -65,7 +69,7 @@ export class HorariosService {
       // 2. Validar Cruces (GPS de Horarios)
       const validacion = await this.validacionService.validarSinCruces(
         data.docenteId,
-        data.aulaId,
+        data.aulaId ?? null,
         data.diaSemana,
         data.horaInicio,
         data.horaFin,
@@ -76,67 +80,93 @@ export class HorariosService {
         throw new ConflictException(validacion.conflictos.join(', '));
       }
 
-      // 3. Validar Duración y Carga
+      // 3. Validar Duración
       const duracionMin = this.timeToMinutes(data.horaFin) - this.timeToMinutes(data.horaInicio);
       if (duracionMin <= 0) {
         throw new BadRequestException('La hora fin debe ser mayor que la hora inicio');
       }
 
-      // 4. Validar y Resolver Grupos / Carga
-      const asignacion = await manager.getRepository(AsignacionDocenteCurso).findOne({
-        where: {
-          docenteId: data.docenteId,
-          cursoId: data.cursoId,
-          cicloId: data.cicloId,
-          tipoClase: data.tipoClase as any,
-        },
-        relations: ['grupos'],
-      });
+      // 4. Validar y Resolver Grupos / Carga (Solo para LECTIVA)
+      if (data.tipoClase !== 'no_lectiva') {
+        if (!data.cursoId) throw new BadRequestException('El curso es obligatorio para carga lectiva');
+        if (!data.aulaId) throw new BadRequestException('El aula es obligatoria para carga lectiva');
 
-      if (!asignacion) {
-        throw new BadRequestException(`No existe una asignación de carga académica para este docente, curso y tipo de clase (${data.tipoClase}) en el ciclo seleccionado.`);
-      }
+        const asignacion = await manager.getRepository(AsignacionDocenteCurso).findOne({
+          where: {
+            docenteId: data.docenteId,
+            cursoId: data.cursoId,
+            cicloId: data.cicloId,
+            tipoClase: data.tipoClase as any,
+          },
+          relations: ['grupos'],
+        });
 
-      // Si la asignación tiene grupos definidos, es obligatorio elegir uno
-      if (asignacion.grupos && asignacion.grupos.length > 0) {
-        data.grupoId = await this.validarYResolverGrupo(
+        if (!asignacion) {
+          throw new BadRequestException(`No existe una asignación de carga académica para este docente, curso y tipo de clase (${data.tipoClase}) en el ciclo seleccionado.`);
+        }
+
+        // Si la asignación tiene grupos definidos, es obligatorio elegir uno
+        if (asignacion.grupos && asignacion.grupos.length > 0) {
+          data.grupoId = await this.validarYResolverGrupo(
+            asignacion,
+            data.grupoId,
+            undefined,
+            manager
+          );
+        }
+
+        await this.validarCargaHoraria(
           asignacion,
-          data.grupoId,
+          data.horaInicio,
+          data.horaFin,
+          undefined,
+          manager
+        );
+      } else {
+        // Lógica para NO LECTIVA
+        if (!data.actividadNoLectiva) {
+          throw new BadRequestException('La actividad es obligatoria para carga no lectiva');
+        }
+        
+        await this.validarCargaNoLectiva(
+          data.docenteId,
+          data.cicloId,
+          data.actividadNoLectiva,
+          data.horaInicio,
+          data.horaFin,
           undefined,
           manager
         );
       }
 
-      await this.validarCargaHoraria(
-        asignacion,
-        data.horaInicio,
-        data.horaFin,
-        undefined,
-        manager
-      );
-
       // 5. Guardar Horario
-      const horario = manager.getRepository(Horario).create({
+      const horarioRepo = manager.getRepository(Horario);
+      const horario = horarioRepo.create({
         ...data,
         tipoClase: data.tipoClase as any,
+        actividadNoLectiva: data.actividadNoLectiva as any,
         esAutomatico: false,
-      });
+      } as any);
 
-      const guardado = await manager.getRepository(Horario).save(horario);
+      const guardado = await horarioRepo.save(horario as any) as Horario;
 
       // 6. Emitir actualización
       this.emitUpdate(guardado.cicloId);
 
       return guardado;
-    });
+    })) as Horario;
   }
 
   private async emitUpdate(cicloId: number) {
     try {
-      const lista = await this.findAll({ cicloId });
-      this.horariosGateway?.server?.emit?.('horarios:update', { cicloId, horarios: lista });
+      this.logger.log(`Solicitando emisión de actualización para ciclo: ${cicloId}`);
+      if (this.horariosGateway) {
+        this.horariosGateway.emitUpdate(cicloId);
+      } else {
+        this.logger.warn('HorariosGateway no está disponible para emitir actualización');
+      }
     } catch (e) {
-      this.logger.warn(`[horarios:update emit] ${e.message}`);
+      this.logger.warn(`[horarios:update emit error] ${e.message}`);
     }
   }
 
@@ -485,6 +515,7 @@ export class HorariosService {
       .leftJoinAndSelect('h.curso', 'curso')
       .where('h.cicloId = :cicloId', { cicloId })
       .select([
+        'h.id',
         'h.diaSemana',
         'h.horaInicio',
         'h.horaFin',
@@ -496,7 +527,7 @@ export class HorariosService {
       .getMany();
 
     // Estructura optimizada para el frontend:
-    // { "dia_hora": [ { carreraId, cicloAcademico, docenteId, aulaId }, ... ] }
+    // { "dia_hora": [ { id, carreraId, cicloAcademico, docenteId, aulaId }, ... ] }
     const mapa = {};
 
     horarios.forEach(h => {
@@ -507,6 +538,7 @@ export class HorariosService {
         const key = `${h.diaSemana}_${hora}`;
         if (!mapa[key]) mapa[key] = [];
         mapa[key].push({
+          id: h.id,
           carreraId: h.curso?.carreraId,
           cicloAcademico: h.curso?.cicloAcademico,
           docenteId: h.docenteId,
@@ -547,6 +579,7 @@ export class HorariosService {
       aulaId?: number;
       cicloId?: number;
       tipoClase?: string;
+      actividadNoLectiva?: string;
       diaSemana?: number;
       horaInicio?: string;
       horaFin?: string;
@@ -556,7 +589,10 @@ export class HorariosService {
   ): Promise<Horario> {
     return await this.dataSource.transaction(async (manager: EntityManager) => {
       const horarioRepo = manager.getRepository(Horario);
-      const horario = await horarioRepo.findOne({ where: { id } });
+      const horario = await horarioRepo.findOne({ 
+        where: { id },
+        relations: ['curso', 'aula']
+      });
       
       if (!horario) {
         throw new BadRequestException('Horario no encontrado');
@@ -573,49 +609,49 @@ export class HorariosService {
         }
       }
 
-      // 2. Validar Cruces si cambian campos clave
-      if (
-        data.diaSemana !== undefined ||
-        data.horaInicio !== undefined ||
-        data.horaFin !== undefined ||
-        data.docenteId !== undefined ||
-        data.aulaId !== undefined
-      ) {
-        const docenteId = data.docenteId ?? horario.docenteId;
-        const aulaId = data.aulaId ?? horario.aulaId;
-        const diaSemana = data.diaSemana ?? horario.diaSemana;
-        const horaInicio = data.horaInicio ?? horario.horaInicio;
-        const horaFin = data.horaFin ?? horario.horaFin;
-        const cicloId = data.cicloId ?? horario.cicloId;
+      // 2. Validar Cruces
+      const vDocenteId = data.docenteId ?? horario.docenteId;
+      const vAulaId = data.aulaId !== undefined ? data.aulaId : horario.aulaId;
+      const vDiaSemana = data.diaSemana ?? horario.diaSemana;
+      const vHoraInicio = data.horaInicio ?? horario.horaInicio;
+      const vHoraFin = data.horaFin ?? horario.horaFin;
+      const vCicloId = data.cicloId ?? horario.cicloId;
 
-        const validacion = await this.validacionService.validarSinCruces(
-          docenteId,
-          aulaId,
-          diaSemana,
-          horaInicio,
-          horaFin,
-          cicloId,
-          id,
-        );
+      const validacion = await this.validacionService.validarSinCruces(
+        vDocenteId,
+        vAulaId || null,
+        vDiaSemana,
+        vHoraInicio,
+        vHoraFin,
+        vCicloId,
+        id,
+      );
 
-        if (!validacion.valido) {
-          throw new ConflictException(validacion.conflictos.join(', '));
-        }
+      if (!validacion.valido) {
+        throw new ConflictException(validacion.conflictos.join(', '));
+      }
 
-        // 3. Validar Carga
-        const tipoClaseEffective = (data.tipoClase ?? horario.tipoClase) as any;
+      // 3. Validar Carga y Grupos (Solo si es LECTIVA)
+      const vTipoClase = data.tipoClase ?? horario.tipoClase;
+      if (vTipoClase !== 'no_lectiva') {
+        const vCursoId = data.cursoId ?? horario.cursoId;
+        const vAulaIdFinal = data.aulaId ?? horario.aulaId;
+        
+        if (!vCursoId) throw new BadRequestException('El curso es obligatorio para carga lectiva');
+        if (!vAulaIdFinal) throw new BadRequestException('El aula es obligatoria para carga lectiva');
+
         const asignacion = await manager.getRepository(AsignacionDocenteCurso).findOne({
           where: {
-            docenteId,
-            cursoId: data.cursoId ?? horario.cursoId,
-            cicloId,
-            tipoClase: tipoClaseEffective,
+            docenteId: vDocenteId,
+            cursoId: vCursoId,
+            cicloId: vCicloId,
+            tipoClase: vTipoClase as any,
           },
           relations: ['grupos'],
         });
 
         if (!asignacion) {
-          throw new BadRequestException(`No existe una asignación de carga académica para este docente, curso y tipo de clase (${tipoClaseEffective}) en el ciclo seleccionado.`);
+          throw new BadRequestException(`No existe una asignación de carga académica para este docente, curso y tipo de clase (${vTipoClase}) en el ciclo seleccionado.`);
         }
 
         if (asignacion.grupos && asignacion.grupos.length > 0) {
@@ -629,16 +665,34 @@ export class HorariosService {
 
         await this.validarCargaHoraria(
           asignacion,
-          data.horaInicio ?? horario.horaInicio,
-          data.horaFin ?? horario.horaFin,
+          vHoraInicio,
+          vHoraFin,
+          id,
+          manager
+        );
+      } else {
+        // Validación para NO LECTIVA en Update
+        const vActividad = data.actividadNoLectiva ?? horario.actividadNoLectiva;
+        if (!vActividad) throw new BadRequestException('La actividad es obligatoria para carga no lectiva');
+
+        await this.validarCargaNoLectiva(
+          vDocenteId,
+          vCicloId,
+          vActividad,
+          vHoraInicio,
+          vHoraFin,
           id,
           manager
         );
       }
 
-      Object.assign(horario, data);
+      // 4. Actualizar
+      Object.assign(horario, {
+        ...data,
+        tipoClase: vTipoClase as any,
+      });
+      
       const updated = await horarioRepo.save(horario);
-
       this.emitUpdate(updated.cicloId);
 
       return updated;
@@ -775,6 +829,78 @@ export class HorariosService {
     }
 
     return grupoDisponible.id;
+  }
+
+  private async validarCargaNoLectiva(
+    docenteId: number,
+    cicloId: number,
+    actividad: string,
+    horaInicio: string,
+    horaFin: string,
+    excluirHorarioId?: number,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const cnlRepo = manager ? manager.getRepository(CargaNoLectiva) : this.cargaNoLectivaRepo;
+    const horarioRepo = manager ? manager.getRepository(Horario) : this.horarioRepo;
+
+    // 2. Mapear actividad a campo de la entidad
+    const ACTIVIDAD_TO_FIELD = {
+      [ActividadNoLectiva.PREPARACION]: 'horasPreparacion',
+      [ActividadNoLectiva.TUTORIA]: 'horasTutoria',
+      [ActividadNoLectiva.INVESTIGACION]: 'horasInvestigacion',
+      [ActividadNoLectiva.CAPACITACION]: 'horasCapacitacion',
+      [ActividadNoLectiva.GOBIERNO]: 'horasGobierno',
+      [ActividadNoLectiva.ADMINISTRACION]: 'horasAdministracion',
+      [ActividadNoLectiva.ASESORIA]: 'horasAsesoria',
+      [ActividadNoLectiva.RESPONSABILIDAD_SOCIAL]: 'horasResponsabilidadSocial',
+      [ActividadNoLectiva.COMITES]: 'horasComites',
+    };
+
+    const fieldName = ACTIVIDAD_TO_FIELD[actividad];
+    if (!fieldName) {
+      throw new BadRequestException(`Actividad no lectiva no reconocida: ${actividad}`);
+    }
+
+    // 3. Obtener la declaración de carga no lectiva del docente
+    const cnl = await cnlRepo.findOne({
+      where: { docenteId, cicloId }
+    });
+
+    if (!cnl) {
+      throw new BadRequestException('El docente no tiene una declaración de carga no lectiva para este ciclo.');
+    }
+
+    // Importante: Los valores decimales de Postgres pueden venir como strings
+    const horasDeclaradas = Number(cnl[fieldName] || 0);
+    if (horasDeclaradas <= 0) {
+      throw new ConflictException(`No tienes horas declaradas para la actividad: ${actividad}`);
+    }
+
+    // 3. Calcular horas ya programadas para esta actividad
+    const query = horarioRepo.createQueryBuilder('h')
+      .where('h.docenteId = :docenteId', { docenteId })
+      .andWhere('h.cicloId = :cicloId', { cicloId })
+      .andWhere('h.tipoClase = :tipo', { tipo: 'no_lectiva' })
+      .andWhere('h.actividadNoLectiva = :actividad', { actividad });
+
+    if (excluirHorarioId) {
+      query.andWhere('h.id != :id', { id: excluirHorarioId });
+    }
+
+    const horariosExistentes = await query.getMany();
+    const minutosYaAsignados = horariosExistentes.reduce((total, h) => {
+      return total + (this.timeToMinutes(h.horaFin) - this.timeToMinutes(h.horaInicio));
+    }, 0);
+
+    const duracionNuevaMin = this.timeToMinutes(horaFin) - this.timeToMinutes(horaInicio);
+    const minutosTotales = minutosYaAsignados + duracionNuevaMin;
+
+    if (minutosTotales > horasDeclaradas * 60) {
+      const disponibles = Math.max(0, (horasDeclaradas * 60 - minutosYaAsignados) / 60);
+      throw new ConflictException(
+        `Carga no lectiva excedida para '${actividad}'. Máximo declarado: ${horasDeclaradas}h, ya asignadas: ${minutosYaAsignados/60}h, disponibles: ${disponibles}h.`
+      );
+    }
   }
 
   private timeToMinutes(time: string): number {

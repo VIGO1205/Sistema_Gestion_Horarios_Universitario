@@ -552,7 +552,7 @@ export default function CargaAcademicaPage() {
   return (
     <Box sx={{ flexGrow: 1, p: { xs: 1, md: 3 } }}>
       <Typography variant="h4" sx={{ fontWeight: 800, color: '#003366', mb: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
-        <AssignmentIcon sx={{ fontSize: 40 }} /> Gestión de Carga Académica
+        <AssignmentIcon sx={{ fontSize: 40 }} /> Gestión de la Carga Académica
       </Typography>
       <Typography variant="body1" color="textSecondary" sx={{ mb: 4 }}>
         Administra la asignación de docentes y grupos por curso.
@@ -565,7 +565,7 @@ export default function CargaAcademicaPage() {
           sx={{ mb: 4, borderBottom: 1, borderColor: 'divider' }}
         >
           <Tab label="Gestión de Carga Lectiva" sx={{ fontWeight: 700, textTransform: 'none' }} />
-          <Tab label="Validación de Carga No Lectiva" sx={{ fontWeight: 700, textTransform: 'none' }} />
+          <Tab label="Validación de la Carga Académica" sx={{ fontWeight: 700, textTransform: 'none' }} />
         </Tabs>
       )}
 
@@ -748,7 +748,7 @@ export default function CargaAcademicaPage() {
                         '&:hover': { bgcolor: 'rgba(0, 51, 102, 0.04)', borderColor: '#003366' }
                       }}
                     >
-                      <SettingsIcon size="small" />
+                      <SettingsIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                   <Button

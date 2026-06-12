@@ -121,8 +121,8 @@ export class VentanasController {
 
   @Get('count-docentes')
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
-  countDocentes(@Query('categoria') categoria: string) {
-    return this.ventanasService.countDocentesPorCategoria(categoria);
+  countDocentes(@Query('categoria') categoria: string, @Query('cicloId') cicloId?: string) {
+    return this.ventanasService.countDocentesPorCategoria(categoria, cicloId ? +cicloId : undefined);
   }
 
   @Get('stats')

@@ -10,6 +10,7 @@ import { UsuariosService } from '../usuarios/usuarios.service';
 import { RolUsuario } from '../../entities/usuario.entity';
 import { AsignacionDocenteCurso } from '../../entities/asignacion-docente-curso.entity';
 import { Horario } from '../../entities/horario.entity';
+import { CargaAcademica } from '../../entities/carga-academica.entity';
 
 @Injectable()
 export class DocentesService {
@@ -24,6 +25,8 @@ export class DocentesService {
     private asignacionRepo: Repository<AsignacionDocenteCurso>,
     @InjectRepository(Horario)
     private horarioRepo: Repository<Horario>,
+    @InjectRepository(CargaAcademica)
+    private cargaAcademicaRepo: Repository<CargaAcademica>,
     private usuariosService?: UsuariosService,
   ) {}
 
@@ -186,6 +189,7 @@ export class DocentesService {
       this.samePrimitive(docente.dni ?? null, camposNuevos.dni ?? docente.dni ?? null) &&
       this.samePrimitive(docente.tipoContrato, camposNuevos.tipoContrato ?? docente.tipoContrato) &&
       this.samePrimitive(docente.categoria, camposNuevos.categoria ?? docente.categoria) &&
+      this.samePrimitive(docente.codigoIBM ?? '0000', camposNuevos.codigoIBM ?? docente.codigoIBM ?? '0000') &&
       this.samePrimitive(Number(docente.antiguedadAnios), Number(camposNuevos.antiguedadAnios ?? docente.antiguedadAnios)) &&
       this.samePrimitive(Boolean(docente.activo), camposNuevos.activo ?? docente.activo) &&
       (carrerasNuevas === undefined || this.sameArray(carrerasActuales, carrerasNuevas));
@@ -300,22 +304,108 @@ export class DocentesService {
           docenteId: id,
           cursoId: asig.cursoId,
           cicloId: asig.cicloId,
-          tipoClase: asig.tipoClase as any,
         }
       });
 
-      const minutosAsignados = horarios.reduce((total, h) => {
+      const horariosFiltrados = horarios.filter(h => String(h.tipoClase) === String(asig.tipoClase));
+
+      const minutosAsignados = horariosFiltrados.reduce((total, h) => {
         const [h1, m1] = h.horaInicio.split(':').map(Number);
         const [h2, m2] = h.horaFin.split(':').map(Number);
         return total + ((h2 * 60 + m2) - (h1 * 60 + m1));
       }, 0);
 
+      const gruposConEstado = (asig.grupos || []).map(g => ({
+        ...g,
+        ocupado: horariosFiltrados.some(h => Number(h.grupoId) === Number(g.id))
+      }));
+
       return {
         ...asig,
+        grupos: gruposConEstado,
         horasAsignadas: minutosAsignados / 60,
       };
     }));
 
     return result;
+  }
+
+  async validarCargaCompleta(id: number): Promise<{ completa: boolean; faltantes: any; progreso: any }> {
+    const asignaciones = await this.asignacionRepo.find({ where: { docenteId: id } });
+    const horarios = await this.horarioRepo.find({ where: { docenteId: id } });
+
+    let completa = true;
+    const faltantes: any[] = [];
+    
+    let totalRequeridasLectivas = 0;
+    let totalAsignadasLectivas = 0;
+
+    // Validar carga lectiva
+    for (const asig of asignaciones) {
+      const horasAsignadas = horarios
+        .filter(h => h.cursoId === asig.cursoId && String(h.tipoClase) === String(asig.tipoClase))
+        .reduce((sum, h) => {
+          const [h1, m1] = h.horaInicio.split(':').map(Number);
+          const [h2, m2] = h.horaFin.split(':').map(Number);
+          return sum + ((h2 * 60 + m2) - (h1 * 60 + m1)) / 60;
+        }, 0);
+
+      totalRequeridasLectivas += Number(asig.horasSemanales);
+      totalAsignadasLectivas += horasAsignadas;
+
+      if (horasAsignadas < asig.horasSemanales) {
+        completa = false;
+        faltantes.push({
+          cursoId: asig.cursoId,
+          tipoClase: asig.tipoClase,
+          asignadas: horasAsignadas,
+          requeridas: asig.horasSemanales,
+        });
+      }
+    }
+
+    // Validar carga no lectiva
+    const horariosNoLectivos = horarios.filter(h => h.tipoClase === 'no_lectiva');
+    const horasNoLectivasAsignadas = horariosNoLectivos.reduce((sum, h) => {
+      const [h1, m1] = h.horaInicio.split(':').map(Number);
+      const [h2, m2] = h.horaFin.split(':').map(Number);
+      return sum + ((h2 * 60 + m2) - (h1 * 60 + m1)) / 60;
+    }, 0);
+
+    // Obtener la carga académica del docente para ver los requisitos de carga no lectiva
+    const cargaAcademica = await this.cargaAcademicaRepo.findOne({ 
+      where: { docenteId: id },
+      relations: ['cargaNoLectiva']
+    });
+
+    const totalRequeridasNoLectivas = cargaAcademica?.totalHorasNoLectivas || 0;
+
+    if (totalRequeridasNoLectivas > 0) {
+      if (horasNoLectivasAsignadas < totalRequeridasNoLectivas) {
+        completa = false;
+        faltantes.push({
+          tipo: 'carga_no_lectiva',
+          asignadas: horasNoLectivasAsignadas,
+          requeridas: totalRequeridasNoLectivas,
+        });
+      }
+    }
+
+    return { 
+      completa, 
+      faltantes,
+      progreso: {
+        lectiva: {
+          asignadas: totalAsignadasLectivas,
+          requeridas: totalRequeridasLectivas,
+          porcentaje: totalRequeridasLectivas > 0 ? Math.min(100, Math.round((totalAsignadasLectivas / totalRequeridasLectivas) * 100)) : 100
+        },
+        noLectiva: {
+          asignadas: horasNoLectivasAsignadas,
+          requeridas: totalRequeridasNoLectivas,
+          porcentaje: totalRequeridasNoLectivas > 0 ? Math.min(100, Math.round((horasNoLectivasAsignadas / totalRequeridasNoLectivas) * 100)) : 100
+        }
+      }
+    };
   }
 }

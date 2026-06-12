@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Query, UseGuards, Patch, Param } from '@ne
 import { CargaNoLectivaService } from './carga-no-lectiva.service';
 import { CreateCargaNoLectivaDto } from './dto/create-carga-no-lectiva.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { EstadoCargaNoLectiva } from '../../entities/carga-no-lectiva.entity';
+import { EstadoCargaAcademica } from '../../entities/carga-academica.entity';
 
 @Controller('carga-no-lectiva')
 @UseGuards(JwtAuthGuard)
@@ -23,7 +23,7 @@ export class CargaNoLectivaController {
   }
 
   @Patch(':id/estado')
-  async updateEstado(@Param('id') id: string, @Body('estado') estado: EstadoCargaNoLectiva) {
+  async updateEstado(@Param('id') id: string, @Body('estado') estado: EstadoCargaAcademica) {
     return await this.service.updateEstado(+id, estado);
   }
 }

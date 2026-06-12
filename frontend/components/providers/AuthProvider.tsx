@@ -58,8 +58,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    // Limpiar datos de autenticación
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
+    
+    // Limpiar mensajes de HORUS (todos los usuarios)
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('horus-chat-messages')) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    localStorage.removeItem('horus-chat-detached');
+    
     setIsAuthenticated(false);
     setUsuario(null);
   };

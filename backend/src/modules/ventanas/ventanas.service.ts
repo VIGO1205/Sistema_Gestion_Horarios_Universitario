@@ -7,14 +7,18 @@ import { VentanaAtencion, EstadoVentana, TipoContratoVentana, CategoriaVentana }
 import { Docente, EstadoSeleccion, TipoContrato, Categoria } from '../../database/entities/docente.entity';
 import { CreateVentanaDto } from './dto/create-ventana.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { NotificacionesGateway } from '../notificaciones/notificaciones.gateway';
 import { TipoNotificacion } from '../../database/entities/notificacion.entity';
 import { VentanasGateway } from './ventanas.gateway';
+import { ReportesService } from '../reportes/reportes.service';
+import { CargaAcademica, EstadoCargaAcademica } from '../../database/entities/carga-academica.entity';
 
 @Injectable()
 export class VentanasService implements OnModuleInit {
   private readonly logger = new Logger(VentanasService.name);
   private readonly docentesNotificados = new Set<number>();
   private ventanasGateway: VentanasGateway;
+  private notificacionesGateway: NotificacionesGateway;
 
   private parseVentanaDate(value: string): Date {
     // Si no viene zona horaria (datetime-local), asumimos hora local de Peru (UTC-5).
@@ -31,12 +35,32 @@ export class VentanasService implements OnModuleInit {
     private ventanaRepo: Repository<VentanaAtencion>,
     @InjectRepository(Docente)
     private docenteRepo: Repository<Docente>,
+    @InjectRepository(CargaAcademica)
+    private cargaAcademicaRepo: Repository<CargaAcademica>,
     private notificacionesService: NotificacionesService,
+    private reportesService: ReportesService,
     private moduleRef: ModuleRef,
   ) {}
 
   onModuleInit() {
     this.ventanasGateway = this.moduleRef.get(VentanasGateway, { strict: false });
+    this.notificacionesGateway = this.moduleRef.get(NotificacionesGateway, { strict: false });
+  }
+
+  private async crearNotificacionRealTime(docenteId: number, titulo: string, mensaje: string, tipo: TipoNotificacion) {
+    try {
+      await this.notificacionesService.create(docenteId, titulo, mensaje, tipo);
+      if (this.notificacionesGateway?.server) {
+        this.notificacionesGateway.notifyStatusChange(docenteId, { 
+          titulo, 
+          mensaje, 
+          tipo,
+          refresh: true 
+        });
+      }
+    } catch (error) {
+      this.logger.error(`Error al enviar notificación real-time a docente ${docenteId}: ${error.message}`);
+    }
   }
 
   async create(createVentanaDto: CreateVentanaDto): Promise<{ message: string; ventanas: VentanaAtencion[] }> {
@@ -77,16 +101,24 @@ export class VentanasService implements OnModuleInit {
 
     for (const nivel of jerarquia) {
       // 2. Buscar docentes de este grupo específico
-      const docentesGrupo = await this.docenteRepo.find({
-        where: {
+      // CORRECCIÓN: Solo docentes con carga académica VALIDADA del mismo ciclo
+      const docentesGrupo = await this.docenteRepo
+        .createQueryBuilder('docente')
+        .innerJoin(
+          'carga_academica',
+          'carga',
+          'carga.docente_id = docente.id AND carga.ciclo_id = :cicloId AND carga.estado = :estadoValidado',
+          { cicloId, estadoValidado: EstadoCargaAcademica.VALIDADO }
+        )
+        .where({
           tipoContrato: nivel.tipo,
           categoria: nivel.categoria,
           activo: true,
           ventanaId: IsNull(),
           estadoSeleccion: EstadoSeleccion.EN_ESPERA,
-        },
-        order: { antiguedadAnios: 'DESC' },
-      });
+        })
+        .orderBy('docente.antiguedadAnios', 'DESC')
+        .getMany();
 
       if (docentesGrupo.length === 0) continue;
 
@@ -149,8 +181,16 @@ export class VentanasService implements OnModuleInit {
       }
     }
 
+    // CORRECCIÓN: Validar si se crearon ventanas, si no, dar mensaje claro
+    if (ventanasCreadas.length === 0) {
+      throw new BadRequestException(
+        'No se encontraron docentes con carga académica VALIDADA del ciclo seleccionado. ' +
+        'Por favor, valide que los docentes tengan su carga académica en estado VALIDADO para este ciclo antes de crear ventanas de atención.'
+      );
+    }
+
     return {
-      message: `${ventanasCreadas.length} ventanas generadas para ${totalSinVentana} docentes.`,
+      message: `${ventanasCreadas.length} ventanas generadas para docentes con carga académica VALIDADA.`,
       ventanas: ventanasCreadas,
     };
   }
@@ -246,10 +286,17 @@ export class VentanasService implements OnModuleInit {
       },
     });
 
+    const ahora = new Date();
+
     if (!siguienteDocente) {
       // Si no hay más docentes, finalizamos la ventana
       ventana.estado = EstadoVentana.FINALIZADA;
+      ventana.fechaHoraFin = ahora; // La ventana termina AHORA
       await this.ventanaRepo.save(ventana);
+      
+      // Efecto Dominó: Reprogramar ventanas futuras
+      await this.reprogramarVentanasFuturas(ventana);
+
       this.logger.log(`Ventana ${ventana.id} finalizada automáticamente por falta de docentes`);
       return null;
     }
@@ -257,11 +304,11 @@ export class VentanasService implements OnModuleInit {
     // Actualizar estado de ventana a EN_CURSO si estaba programada
     if (ventana.estado === EstadoVentana.PROGRAMADA) {
       ventana.estado = EstadoVentana.EN_CURSO;
+      ventana.fechaHoraInicio = ahora; // La ventana empieza AHORA
       await this.ventanaRepo.save(ventana);
     }
 
     // Activar el turno del docente
-    const ahora = new Date();
     const fin = new Date(ahora.getTime() + ventana.duracionMinutos * 60000);
 
     siguienteDocente.estadoSeleccion = EstadoSeleccion.EN_ATENCION;
@@ -300,6 +347,14 @@ export class VentanasService implements OnModuleInit {
     docente.estadoSeleccion = EstadoSeleccion.FINALIZADO;
     await this.docenteRepo.save(docente);
 
+    // Notificar al docente que fue saltado
+    await this.crearNotificacionRealTime(
+      docente.id,
+      'Turno Finalizado (Saltado)',
+      'Un administrador ha finalizado tu turno. Si crees que esto es un error, contacta con coordinación.',
+      TipoNotificacion.MENSAJE_SISTEMA
+    );
+
     // Al saltar, el cron job llamará al siguiente en el próximo minuto, 
     // o podemos forzarlo aquí si queremos inmediatez.
     const ventanaActiva = await this.findActive();
@@ -318,7 +373,17 @@ export class VentanasService implements OnModuleInit {
     const nuevoFin = new Date(docente.finAtencion.getTime() + minutos * 60000);
     docente.finAtencion = nuevoFin;
     this.logger.log(`Tiempo extendido para ${docente.nombreCompleto} por ${minutos} min`);
-    return await this.docenteRepo.save(docente);
+    const saved = await this.docenteRepo.save(docente);
+
+    // Notificar al docente la extensión de tiempo
+    await this.crearNotificacionRealTime(
+      docente.id,
+      'Tiempo Extendido',
+      `Un administrador ha extendido tu tiempo de atención por ${minutos} minutos más.`,
+      TipoNotificacion.TURNO_ACTIVO
+    );
+
+    return saved;
   }
 
   async detenerVentana(ventanaId: number): Promise<VentanaAtencion> {
@@ -327,8 +392,13 @@ export class VentanasService implements OnModuleInit {
       throw new NotFoundException('Ventana no encontrada');
     }
 
+    const ahora = new Date();
     ventana.estado = EstadoVentana.FINALIZADA;
+    ventana.fechaHoraFin = ahora; // La ventana termina AHORA al ser detenida
     await this.ventanaRepo.save(ventana);
+
+    // Efecto Dominó: Reprogramar ventanas futuras para que empiecen AHORA
+    await this.reprogramarVentanasFuturas(ventana);
 
     // Liberar cualquier docente en atención (en la cola global)
     const docenteEnAtencion = await this.docenteRepo.findOne({
@@ -342,6 +412,14 @@ export class VentanasService implements OnModuleInit {
       docenteEnAtencion.estadoSeleccion = EstadoSeleccion.FINALIZADO;
       docenteEnAtencion.finAtencion = new Date();
       await this.docenteRepo.save(docenteEnAtencion);
+
+      // Notificar al docente que la ventana fue detenida
+      await this.crearNotificacionRealTime(
+        docenteEnAtencion.id,
+        'Proceso Detenido',
+        'La ventana de atención ha sido finalizada por un administrador. Tu turno ha terminado.',
+        TipoNotificacion.MENSAJE_SISTEMA
+      );
     }
 
     return ventana;
@@ -362,77 +440,61 @@ export class VentanasService implements OnModuleInit {
       docenteActual = await this.docenteRepo.findOne({
         where: { ventanaId: ventanaId, estadoSeleccion: EstadoSeleccion.EN_ATENCION, activo: true }
       }) || undefined;
+
+      if (docenteActual) {
+        await this.crearNotificacionRealTime(
+          docenteActual.id,
+          'Atención Pausada',
+          'El proceso de atención ha sido pausado temporalmente por el administrador. El tiempo no seguirá corriendo.',
+          TipoNotificacion.MENSAJE_SISTEMA
+        );
+      }
       
     } else if (ventana.estado === EstadoVentana.PAUSADA) {
       docenteActual = await this.docenteRepo.findOne({
         where: { ventanaId: ventanaId, estadoSeleccion: EstadoSeleccion.EN_ATENCION, activo: true }
       }) || undefined;
 
-      if (docenteActual && docenteActual.finAtencion && ventana.pausadoEn) {
-        // Calcular exactamente cuánto tiempo estuvo pausada
+      if (ventana.pausadoEn) {
+        // Calcular tiempo restante de pausa (desde el último tick del cron o desde la pausa inicial)
         const msPausados = ahora.getTime() - ventana.pausadoEn.getTime();
         
-        // 1. Compensar al docente actual
-        const nuevaFechaFinDocente = new Date(docenteActual.finAtencion.getTime() + msPausados);
-        docenteActual.finAtencion = nuevaFechaFinDocente;
-        await this.docenteRepo.save(docenteActual);
+        // 1. Compensar al docente actual (el remanente)
+        if (docenteActual && docenteActual.finAtencion) {
+          docenteActual.finAtencion = new Date(docenteActual.finAtencion.getTime() + msPausados);
+          await this.docenteRepo.save(docenteActual);
 
-        // 2. Expandir la ventana actual
+          await this.crearNotificacionRealTime(
+            docenteActual.id,
+            'Atención Reanudada',
+            `El proceso se ha reanudado. Se han compensado los minutos pausados en tu turno.`,
+            TipoNotificacion.TURNO_ACTIVO
+          );
+        }
+
+        // 2. Expandir la ventana actual (el remanente)
         ventana.fechaHoraFin = new Date(ventana.fechaHoraFin.getTime() + msPausados);
 
-        // 3. EFECTO DOMINÓ (mejorado): Encadenar ventanas futuras para que la siguiente
-        // comience justo cuando termine la anterior (preservando duraciones), y
-        // mover al día siguiente si sobrepasa la franja institucional.
-        const ventanasFuturas = await this.ventanaRepo.find({
-          where: {
-            activo: true,
-            estado: In([EstadoVentana.PROGRAMADA, EstadoVentana.EN_CURSO]),
-            id: Not(ventana.id),
-            fechaHoraInicio: MoreThan(ventana.fechaHoraInicio)
-          },
-          order: { fechaHoraInicio: 'ASC' }
-        });
+        // CORRECCIÓN: Validar que la ventana no pase las 13:00 (horario institucional)
+        const peruFin = this.getPeruDate(ventana.fechaHoraFin);
+        const hFin = peruFin.getUTCHours();
 
-        const HORA_INICIO = 7;
-        const HORA_FIN = 13;
+        if (hFin >= 13) {
+          // Limitar a las 13:00 Perú
+          ventana.fechaHoraFin.setHours(13 + 5, 0, 0, 0); // 13:00 Perú = 18:00 UTC
+          this.logger.warn(`Ventana ${ventanaId} limitada a 13:00 por pausa excesiva`);
+        }
 
-        // Usar transacción para evitar estados parciales si algo falla
-        await this.ventanaRepo.manager.transaction(async (manager) => {
-          // referencia inicial: el nuevo fin de la ventana actual (ya compensado)
-          let referencia = new Date(ventana.fechaHoraFin.getTime());
+        await this.ventanaRepo.save(ventana);
 
-          for (const v of ventanasFuturas) {
-            // Duración original de la ventana
-            const duracionMs = v.fechaHoraFin.getTime() - v.fechaHoraInicio.getTime();
+        // 3. Efecto Dominó Final
+        await this.reprogramarVentanasFuturas(ventana);
 
-            // La siguiente ventana debe empezar cuando termine la anterior
-            let nuevoInicio = new Date(referencia.getTime());
-            let nuevoFin = new Date(nuevoInicio.getTime() + duracionMs);
-
-            // Si el nuevo fin sobrepasa la franja institucional, mover al día siguiente
-            const horaFinPeru = nuevoFin.getHours();
-            if (horaFinPeru >= HORA_FIN) {
-              nuevoInicio = new Date(nuevoInicio.getTime());
-              nuevoInicio.setDate(nuevoInicio.getDate() + 1);
-              nuevoInicio.setHours(HORA_INICIO, 0, 0, 0);
-              nuevoFin = new Date(nuevoInicio.getTime() + duracionMs);
-            }
-
-            v.fechaHoraInicio = nuevoInicio;
-            v.fechaHoraFin = nuevoFin;
-            await manager.save(v);
-
-            // Avanzar la referencia al fin de esta ventana para encadenar la siguiente
-            referencia = new Date(v.fechaHoraFin.getTime());
-          }
-        });
-
-        this.logger.log(`Reanudando: Se compensaron ${Math.round(msPausados / 1000)}s y se reprogramaron ${ventanasFuturas.length} ventanas (encadenadas).`);
+        this.logger.log(`Reanudando Ventana ${ventanaId}: Compensados últimos ${Math.round(msPausados / 1000)}s.`);
       }
 
       ventana.estado = EstadoVentana.EN_CURSO;
       ventana.pausadoEn = null;
-      this.logger.log(`Ventana ${ventanaId} REANUDADA.`);
     } else if (ventana.estado === EstadoVentana.PROGRAMADA) {
       ventana.estado = EstadoVentana.PAUSADA;
       ventana.pausadoEn = ahora;
@@ -693,12 +755,35 @@ export class VentanasService implements OnModuleInit {
     return await this.docenteRepo.findOne({ where });
   }
 
-  async countDocentesPorCategoria(categoria: string): Promise<{ count: number }> {
-    const where: any = { activo: true, estadoSeleccion: EstadoSeleccion.EN_ESPERA };
-    if (categoria && categoria !== 'todos') {
-      where.categoria = categoria;
+  async countDocentesPorCategoria(categoria: string, cicloId?: number): Promise<{ count: number }> {
+    if (!cicloId) {
+      const where: any = { activo: true, estadoSeleccion: EstadoSeleccion.EN_ESPERA };
+      if (categoria && categoria !== 'todos') {
+        where.categoria = categoria;
+      }
+      const count = await this.docenteRepo.count({ where });
+      return { count };
     }
-    const count = await this.docenteRepo.count({ where });
+
+    // CORRECCIÓN: Solo contar docentes con carga académica VALIDADA del ciclo
+    const qb = this.docenteRepo
+      .createQueryBuilder('docente')
+      .innerJoin(
+        'carga_academica',
+        'carga',
+        'carga.docente_id = docente.id AND carga.ciclo_id = :cicloId AND carga.estado = :estadoValidado',
+        { cicloId, estadoValidado: EstadoCargaAcademica.VALIDADO }
+      )
+      .where({
+        activo: true,
+        estadoSeleccion: EstadoSeleccion.EN_ESPERA,
+      });
+
+    if (categoria && categoria !== 'todos') {
+      qb.andWhere('docente.categoria = :categoria', { categoria });
+    }
+
+    const count = await qb.getCount();
     return { count };
   }
 
@@ -779,6 +864,68 @@ export class VentanasService implements OnModuleInit {
     };
   }
 
+  private getPeruDate(date: Date): Date {
+    return new Date(date.getTime() - (5 * 60 * 60 * 1000));
+  }
+
+  /**
+   * Efecto Dominó: Reprograma todas las ventanas futuras para que sean consecutivas
+   * y respeten el horario institucional (07:00 - 13:00).
+   */
+  private async reprogramarVentanasFuturas(ventanaReferencia: VentanaAtencion, manager?: any) {
+    const repo = manager ? manager.getRepository(VentanaAtencion) : this.ventanaRepo;
+    
+    const ventanasFuturas = await repo.find({
+      where: {
+        activo: true,
+        estado: In([EstadoVentana.PROGRAMADA, EstadoVentana.EN_CURSO]),
+        id: Not(ventanaReferencia.id),
+        cicloId: ventanaReferencia.cicloId,
+        fechaHoraInicio: MoreThan(ventanaReferencia.fechaHoraInicio)
+      },
+      order: { fechaHoraInicio: 'ASC' }
+    });
+
+    const HORA_INICIO = 7;
+    const HORA_FIN = 13;
+
+    let referencia = new Date(ventanaReferencia.fechaHoraFin.getTime());
+
+    for (const v of ventanasFuturas) {
+      const duracionMs = v.fechaHoraFin.getTime() - v.fechaHoraInicio.getTime();
+      
+      let nuevoInicio = new Date(referencia.getTime());
+      
+      // Validar franja institucional (Perú)
+      const pInicio = this.getPeruDate(nuevoInicio);
+      const hInicio = pInicio.getUTCHours();
+
+      if (hInicio >= HORA_FIN) {
+        nuevoInicio.setDate(nuevoInicio.getDate() + 1);
+        nuevoInicio.setHours(HORA_INICIO + 5, 0, 0, 0); // +5 para compensar el transformer si el server es UTC
+      } else if (hInicio < HORA_INICIO) {
+        nuevoInicio.setHours(HORA_INICIO + 5, 0, 0, 0);
+      }
+
+      let nuevoFin = new Date(nuevoInicio.getTime() + duracionMs);
+      const pFin = this.getPeruDate(nuevoFin);
+      const hFin = pFin.getUTCHours();
+      const mFin = pFin.getUTCMinutes();
+
+      if (hFin >= HORA_FIN || (hFin === HORA_FIN && mFin > 0)) {
+        nuevoInicio.setDate(nuevoInicio.getDate() + 1);
+        nuevoInicio.setHours(HORA_INICIO + 5, 0, 0, 0);
+        nuevoFin = new Date(nuevoInicio.getTime() + duracionMs);
+      }
+
+      v.fechaHoraInicio = nuevoInicio;
+      v.fechaHoraFin = nuevoFin;
+      await repo.save(v);
+
+      referencia = new Date(v.fechaHoraFin.getTime());
+    }
+  }
+
   /**
    * Cron Job que se ejecuta cada minuto para gestionar la automatización total
    */
@@ -787,6 +934,46 @@ export class VentanasService implements OnModuleInit {
     const ahora = new Date();
     const hoy = ahora.toISOString().split('T')[0];
     
+    // 0. GESTIÓN DE PAUSAS EN TIEMPO REAL
+    // Si una ventana está pausada, incrementamos su fecha de fin cada minuto
+    // para que las ventanas futuras se desplacen automáticamente (Efecto Dominó)
+    const ventanasPausadas = await this.ventanaRepo.find({
+      where: { estado: EstadoVentana.PAUSADA, activo: true },
+    });
+
+    for (const ventana of ventanasPausadas) {
+      if (!ventana.pausadoEn) {
+        ventana.pausadoEn = ahora;
+        await this.ventanaRepo.save(ventana);
+        continue;
+      }
+
+      // Calcular ms desde el último tick o desde que se pausó
+      const msTranscurridos = ahora.getTime() - ventana.pausadoEn.getTime();
+      
+      if (msTranscurridos >= 60000) {
+        // Incrementar fin de ventana
+        ventana.fechaHoraFin = new Date(ventana.fechaHoraFin.getTime() + msTranscurridos);
+        ventana.pausadoEn = ahora; // Actualizar para el siguiente tick
+        await this.ventanaRepo.save(ventana);
+        
+        // Desplazar ventanas futuras para mantener la consecutividad
+        await this.reprogramarVentanasFuturas(ventana);
+        
+        // También compensar al docente en atención de esa ventana
+        const docenteActual = await this.docenteRepo.findOne({
+          where: { ventanaId: ventana.id, estadoSeleccion: EstadoSeleccion.EN_ATENCION, activo: true }
+        });
+
+        if (docenteActual && docenteActual.finAtencion) {
+          docenteActual.finAtencion = new Date(docenteActual.finAtencion.getTime() + msTranscurridos);
+          await this.docenteRepo.save(docenteActual);
+        }
+
+        this.logger.log(`Ventana ${ventana.id} PAUSADA: Desplazando tiempos +${Math.round(msTranscurridos/1000)}s`);
+      }
+    }
+
     // 1. AUTO-FINALIZAR TURNOS EXPIRADOS Y LLAMAR SIGUIENTE
     const docentesEnAtencion = await this.docenteRepo.find({
       where: { estadoSeleccion: EstadoSeleccion.EN_ATENCION, activo: true },
@@ -797,7 +984,13 @@ export class VentanasService implements OnModuleInit {
         ? await this.ventanaRepo.findOne({ where: { id: docente.ventanaId } })
         : null;
 
+      // Si la ventana está pausada, el tiempo del docente NO corre
       if (ventanaDocente?.estado === EstadoVentana.PAUSADA) {
+        // Compensamos el fin de atención del docente también en tiempo real
+        if (docente.finAtencion) {
+          docente.finAtencion = new Date(docente.finAtencion.getTime() + 60000);
+          await this.docenteRepo.save(docente);
+        }
         continue;
       }
 
@@ -806,12 +999,40 @@ export class VentanasService implements OnModuleInit {
         docente.estadoSeleccion = EstadoSeleccion.FINALIZADO;
         await this.docenteRepo.save(docente);
 
-        // Intentar llamar al siguiente para la ventana activa (cola global)
-        const ventanaActiva = await this.ventanaRepo.findOne({
-          where: { estado: EstadoVentana.EN_CURSO, activo: true }
-        });
-        if (ventanaActiva) {
-          await this.llamarSiguiente(ventanaActiva.id);
+        // Finalizar Carga Académica y Generar reportes automáticos al expirar el tiempo
+        if (ventanaDocente?.cicloId) {
+          try {
+            // 1. Marcar Carga Académica como FINALIZADO
+            await this.cargaAcademicaRepo.update(
+              { docenteId: docente.id, cicloId: ventanaDocente.cicloId },
+              { 
+                estado: EstadoCargaAcademica.FINALIZADO,
+                fechaFinalizacion: new Date()
+              }
+            );
+            this.logger.log(`Carga Académica auto-finalizada por expiración para docente ${docente.id}`);
+
+            // 2. Crear reportes
+            await this.reportesService.crearReportesAutomaticos(docente.id, ventanaDocente.cicloId);
+            this.logger.log(`Reportes automáticos creados por expiración para docente ${docente.id}`);
+          } catch (err) {
+            this.logger.error(`Error auto-finalizando proceso para docente ${docente.id}: ${err.message}`);
+          }
+        }
+
+        // Notificar por socket el cambio de estado a finalizado
+        if (this.ventanasGateway?.server) {
+          this.ventanasGateway.server.emit('ventanas:mi-estado', {
+            estado: 'finalizado',
+            docenteId: docente.id,
+            motivo: 'tiempo_expirado'
+          });
+        }
+
+        // Llamar al siguiente docente automáticamente al expirar el tiempo
+        if (ventanaDocente?.id) {
+          await this.llamarSiguiente(ventanaDocente.id);
+          this.logger.log(`Llamado automático al siguiente docente tras expiración de turno de ${docente.id}`);
         }
       }
     }
@@ -870,10 +1091,27 @@ export class VentanasService implements OnModuleInit {
             ventana.estado = EstadoVentana.VENCIDA;
             await this.ventanaRepo.save(ventana);
           } else {
-            try {
-              await this.llamarSiguiente(ventana.id);
-            } catch (err) {
-              this.logger.error(`Error al llamar siguiente en ventana ${ventana.id}: ${err.message}`);
+            // CORRECCIÓN: Verificar si hay una ventana anterior activa (EN_CURSO o PAUSADA)
+            const ventanaAnterior = await this.ventanaRepo.findOne({
+              where: {
+                cicloId: ventana.cicloId,
+                estado: In([EstadoVentana.EN_CURSO, EstadoVentana.PAUSADA]),
+                fechaHoraFin: LessThanOrEqual(ventana.fechaHoraInicio),
+                activo: true,
+                id: Not(ventana.id),
+              },
+              order: { fechaHoraFin: 'DESC' }
+            });
+
+            // Solo llamar si no hay ventana anterior activa
+            if (!ventanaAnterior) {
+              try {
+                await this.llamarSiguiente(ventana.id);
+              } catch (err) {
+                this.logger.error(`Error al llamar siguiente en ventana ${ventana.id}: ${err.message}`);
+              }
+            } else {
+              this.logger.log(`Ventana ${ventana.id} espera porque ventana ${ventanaAnterior.id} está ${ventanaAnterior.estado}`);
             }
           }
         }
@@ -940,6 +1178,27 @@ export class VentanasService implements OnModuleInit {
     docente.finAtencion = new Date();
     await this.docenteRepo.save(docente);
 
+    // Finalizar Carga Académica y Crear reportes automáticos
+    if (docente.ventana?.cicloId) {
+      try {
+        // 1. Marcar Carga Académica como FINALIZADO
+        await this.cargaAcademicaRepo.update(
+          { docenteId: docente.id, cicloId: docente.ventana.cicloId },
+          { 
+            estado: EstadoCargaAcademica.FINALIZADO,
+            fechaFinalizacion: new Date()
+          }
+        );
+        this.logger.log(`Carga Académica finalizada para docente ${docente.id}`);
+
+        // 2. Crear reportes
+        await this.reportesService.crearReportesAutomaticos(docente.id, docente.ventana.cicloId);
+        this.logger.log(`Reportes automáticos creados para docente ${docente.id}`);
+      } catch (err) {
+        this.logger.error(`Error finalizando proceso para docente ${docente.id}: ${err.message}`);
+      }
+    }
+
     // Notificar por socket si el gateway está disponible
     if (this.ventanasGateway?.server) {
       this.ventanasGateway.server.emit('ventanas:mi-estado', {
@@ -948,9 +1207,10 @@ export class VentanasService implements OnModuleInit {
       });
     }
 
-    // Llamar al siguiente de inmediato
+    // Llamar al siguiente de inmediato automáticamente tras finalizar turno
     if (docente.ventanaId) {
       await this.llamarSiguiente(docente.ventanaId);
+      this.logger.log(`Llamado automático al siguiente docente tras finalizar turno de ${docente.id}`);
     }
   }
 }

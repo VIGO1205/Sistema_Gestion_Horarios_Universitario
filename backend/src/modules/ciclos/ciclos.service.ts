@@ -1,7 +1,8 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { CicloAcademico } from './entities/ciclo.entity';
+import { ConfiguracionGrilla } from '../../database/entities/configuracion-grilla.entity';
 
 @Injectable()
 export class CiclosService implements OnModuleInit {
@@ -10,6 +11,8 @@ export class CiclosService implements OnModuleInit {
   constructor(
     @InjectRepository(CicloAcademico)
     private readonly cicloRepo: Repository<CicloAcademico>,
+    @InjectRepository(ConfiguracionGrilla)
+    private readonly configRepo: Repository<ConfiguracionGrilla>,
   ) {}
 
   async onModuleInit() {
@@ -65,7 +68,10 @@ export class CiclosService implements OnModuleInit {
         fechaFin,
         esActual: true,
       });
-      await this.cicloRepo.save(ciclo);
+      ciclo = await this.cicloRepo.save(ciclo);
+      
+      // Crear configuración por defecto para el nuevo ciclo
+      await this.crearConfiguracionDefecto(ciclo.id);
     } else if (!ciclo.esActual) {
       this.logger.log(`Activando ciclo académico existente: ${nombreCiclo}`);
       await this.cicloRepo.update({ esActual: true }, { esActual: false });
@@ -76,6 +82,36 @@ export class CiclosService implements OnModuleInit {
     return ciclo;
   }
 
+  private async crearConfiguracionDefecto(cicloId: number) {
+    const config = this.configRepo.create({
+      cicloId,
+      horaInicio: '07:00',
+      horaFin: '22:00',
+      almuerzoInicio: '13:00',
+      almuerzoFin: '14:00',
+      diasActivos: [1, 2, 3, 4, 5, 6], // Lunes a Sábado
+    });
+    return this.configRepo.save(config);
+  }
+
+  async getConfiguracion(cicloId: number): Promise<ConfiguracionGrilla> {
+    let config = await this.configRepo.findOne({ where: { cicloId } });
+    if (!config) {
+      config = await this.crearConfiguracionDefecto(cicloId);
+    }
+    return config;
+  }
+
+  async updateConfiguracion(cicloId: number, data: Partial<ConfiguracionGrilla>): Promise<ConfiguracionGrilla> {
+    let config = await this.configRepo.findOne({ where: { cicloId } });
+    if (!config) {
+      config = this.configRepo.create({ ...data, cicloId });
+    } else {
+      Object.assign(config, data);
+    }
+    return this.configRepo.save(config);
+  }
+
   async getCicloActual(): Promise<CicloAcademico> {
     const ciclo = await this.cicloRepo.findOne({ where: { esActual: true } });
     if (!ciclo) return this.asegurarCicloActual();
@@ -84,5 +120,42 @@ export class CiclosService implements OnModuleInit {
 
   async findAll(): Promise<CicloAcademico[]> {
     return this.cicloRepo.find({ order: { fechaInicio: 'DESC' } });
+  }
+
+  async findOne(id: number): Promise<CicloAcademico> {
+    const ciclo = await this.cicloRepo.findOne({ where: { id } });
+    if (!ciclo) {
+      throw new NotFoundException(`Ciclo con ID ${id} no encontrado`);
+    }
+    return ciclo;
+  }
+
+  async create(data: Partial<CicloAcademico>): Promise<CicloAcademico> {
+    if (data.esActual) {
+      await this.cicloRepo.update({ esActual: true }, { esActual: false });
+    }
+    const ciclo = this.cicloRepo.create(data);
+    const saved = await this.cicloRepo.save(ciclo);
+    await this.crearConfiguracionDefecto(saved.id);
+    return saved;
+  }
+
+  async update(id: number, data: Partial<CicloAcademico>): Promise<CicloAcademico> {
+    const ciclo = await this.findOne(id);
+    
+    if (data.esActual && !ciclo.esActual) {
+      await this.cicloRepo.update({ esActual: true }, { esActual: false });
+    }
+
+    Object.assign(ciclo, data);
+    return this.cicloRepo.save(ciclo);
+  }
+
+  async remove(id: number): Promise<void> {
+    const ciclo = await this.findOne(id);
+    if (ciclo.esActual) {
+      throw new Error('No se puede eliminar el ciclo académico actual');
+    }
+    await this.cicloRepo.remove(ciclo);
   }
 }

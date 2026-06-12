@@ -26,6 +26,13 @@ import {
   Divider,
   IconButton,
   Button,
+  Tabs,
+  Tab,
+  Tooltip,
+  LinearProgress,
+  Select,
+  MenuItem,
+  FormControl,
 } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
 import BookIcon from '@mui/icons-material/Book';
@@ -36,6 +43,10 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import GroupIcon from '@mui/icons-material/Group';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import InfoIcon from '@mui/icons-material/Info';
 import React from 'react';
 import { getVentanasSocket } from '@/lib/socket';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -137,12 +148,18 @@ export default function DashboardEstadisticas() {
   const [estadisticas, setEstadisticas] = useState<EstadisticasResponse | null>(null);
   const [misHorarios, setMisHorarios] = useState<any[]>([]);
   const [misCursos, setMisCursos] = useState<any[]>([]);
+  const [cargaNoLectiva, setCargaNoLectiva] = useState<any>(null);
   const [estadoSeleccion, setEstadoSeleccion] = useState<any>(null);
   const [ventanaActiva, setVentanaActiva] = useState<any>(null);
   const [docenteEnAtencion, setDocenteEnAtencion] = useState<any>(null);
   const [cicloActual, setCicloActual] = useState<{ id: number; nombre: string } | null>(null);
+  const [ciclos, setCiclos] = useState<any[]>([]);
+  const [cicloSeleccionadoId, setCicloSeleccionadoId] = useState<number | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filtroCarga, setFiltroCarga] = useState('todos');
+
+  // Sockets y Toasts
   const prevEstadoRef = useRef<string | null>(null);
   const avisoToastRef = useRef<string | null>(null);
 
@@ -161,22 +178,23 @@ export default function DashboardEstadisticas() {
           toast: true,
           position: 'top',
           showConfirmButton: false,
-          timer: 5000,
+          timer: 6000,
           timerProgressBar: true,
           background: '#ffffff',
           color: '#1e293b',
           width: 'auto',
-          padding: '0.6rem 1.5rem',
           html: `
-            <div style="display: flex; align-items: center; gap: 20px; font-family: 'Inter', sans-serif;">
-              <div style="background: #003366; color: #ffffff; padding: 4px 12px; font-weight: 900; font-size: 0.75rem; border-radius: 6px; letter-spacing: 0.5px;">SGH - UNT</div>
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-weight: 700; font-size: 1rem; color: #003366;">¡Bienvenido!</span>
-                <span style="opacity: 0.2; color: #000;">|</span>
-                <span style="font-weight: 600; font-size: 0.95rem; color: #475569;">${usuario.nombre || usuario.email.split('@')[0]}</span>
+            <div class="welcome-container">
+              <div class="welcome-logo">
+                <span class="logo-text">SGH</span>
+                <span class="logo-subtext">UNT</span>
               </div>
-              <div style="display: flex; align-items: center; gap: 8px; background: rgba(0, 51, 102, 0.05); padding: 4px 15px; border-radius: 20px; border: 1px solid rgba(0, 51, 102, 0.1);">
-                <span style="font-size: 0.7rem; font-weight: 800; text-transform: uppercase; color: #003366;">${usuario.rol}</span>
+              <div class="welcome-content">
+                <div class="welcome-title">¡Bienvenido!</div>
+                <div class="welcome-user">${usuario.nombre || usuario.email.split('@')[0]}</div>
+              </div>
+              <div class="welcome-badge">
+                ${usuario.rol.toUpperCase()}
               </div>
             </div>
           `,
@@ -190,14 +208,78 @@ export default function DashboardEstadisticas() {
             style.innerHTML = `
               .banner-welcome-premium {
                 border-radius: 16px !important;
-                box-shadow: none !important;
+                box-shadow: 0 10px 25px -3px rgba(0,0,0,0.1) !important;
                 border: 1px solid rgba(0, 51, 102, 0.1) !important;
+                padding: 12px 20px !important;
+                max-width: 95vw !important;
                 animation: slideDownFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+              }
+              .welcome-container {
+                display: flex;
+                align-items: center;
+                gap: 16px;
+                font-family: 'Inter', sans-serif;
+              }
+              .welcome-logo {
+                background: #003366;
+                color: white;
+                padding: 8px;
+                border-radius: 10px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-width: 50px;
+              }
+              .logo-text { font-weight: 900; font-size: 14px; line-height: 1; }
+              .logo-subtext { font-weight: 700; font-size: 10px; color: #FFD700; }
+              
+              .welcome-content {
+                text-align: left;
+                flex-grow: 1;
+              }
+              .welcome-title {
+                font-size: 0.8rem;
+                font-weight: 700;
+                color: #64748b;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                line-height: 1;
+              }
+              .welcome-user {
+                font-size: 1.1rem;
+                font-weight: 800;
+                color: #0f172a;
+                line-height: 1.2;
+              }
+              .welcome-badge {
+                background: rgba(0, 51, 102, 0.05);
+                color: #003366;
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-size: 0.7rem;
+                font-weight: 800;
+                border: 1px solid rgba(0, 51, 102, 0.1);
+                white-space: nowrap;
               }
               .banner-timer-premium {
                 background: #FFD700 !important;
                 height: 3px !important;
               }
+
+              @media (max-width: 600px) {
+                .banner-welcome-premium {
+                  padding: 8px 12px !important;
+                }
+                .welcome-container { gap: 10px; }
+                .welcome-logo { min-width: 40px; padding: 6px; }
+                .logo-text { font-size: 11px; }
+                .logo-subtext { font-size: 8px; }
+                .welcome-user { font-size: 0.95rem; }
+                .welcome-badge { display: none; }
+                .welcome-title { font-size: 0.7rem; }
+              }
+
               @keyframes slideDownFade {
                 from { transform: translateY(-20px); opacity: 0; }
                 to { transform: translateY(0); opacity: 1; }
@@ -289,16 +371,32 @@ export default function DashboardEstadisticas() {
   }, [usuario?.rol, estadoSeleccion]);
 
   useEffect(() => {
+    const fetchCiclos = async () => {
+      try {
+        const [ciclosRes, cicloActualRes] = await Promise.all([
+          api.get('/ciclos'),
+          api.get('/ciclos/actual')
+        ]);
+        setCiclos(ciclosRes.data);
+        setCicloActual(cicloActualRes.data);
+        if (!cicloSeleccionadoId) {
+          setCicloSeleccionadoId(cicloActualRes.data.id);
+        }
+      } catch (err) {
+        console.error('Error al cargar ciclos:', err);
+      }
+    };
+    fetchCiclos();
+  }, []);
+
+  useEffect(() => {
     const cargarDatos = async () => {
-      if (!usuario) return; // Esperar a que el usuario esté cargado
+      if (!usuario || !cicloSeleccionadoId) return;
 
       try {
         setCargando(true);
         
-        // 1. Obtener ciclo actual
-        const cicloRes = await api.get('/ciclos/actual');
-        const ciclo = cicloRes.data;
-        setCicloActual(ciclo);
+        const targetCicloId = cicloSeleccionadoId;
 
         if (usuario?.rol === 'docente') {
           if (!usuario.docenteId) {
@@ -306,10 +404,11 @@ export default function DashboardEstadisticas() {
           }
 
           // Datos específicos para el docente
-          const [horariosRes, cursosRes, estadoRes] = await Promise.all([
-            api.get('/horarios', { params: { cicloId: ciclo.id, docenteId: usuario.docenteId } }),
+          const [horariosRes, cursosRes, estadoRes, noLectivaRes] = await Promise.all([
+            api.get('/horarios', { params: { cicloId: targetCicloId, docenteId: usuario.docenteId } }),
             api.get(`/docentes/${usuario.docenteId}/cursos`),
-            api.get('/ventanas/mi-estado')
+            api.get('/ventanas/mi-estado'),
+            api.get('/carga-no-lectiva', { params: { docenteId: usuario.docenteId, cicloId: targetCicloId } })
           ]);
           setMisHorarios(horariosRes.data);
           const cursosNormalizados = (cursosRes.data || []).map((asignacion: any) => ({
@@ -318,14 +417,16 @@ export default function DashboardEstadisticas() {
             codigo: asignacion.curso?.codigo ?? '-',
             ciclo: asignacion.curso?.cicloAcademico ? `${asignacion.curso.cicloAcademico} Ciclo` : (asignacion.ciclo?.nombre ?? '-'),
             tipoClase: asignacion.tipoClase,
+            horasSemanales: asignacion.horasSemanales || 0,
           }));
           setMisCursos(cursosNormalizados);
           setEstadoSeleccion(estadoRes.data);
+          setCargaNoLectiva(noLectivaRes.data);
           setEstadisticas(estadisticasVacias);
         } else {
           // Estadísticas generales para admin/coordinador
           const [statsRes, ventanaRes, atencionRes] = await Promise.all([
-            api.get('/horarios/estadisticas', { params: { cicloId: ciclo.id } }),
+            api.get('/horarios/estadisticas', { params: { cicloId: targetCicloId } }),
             api.get('/ventanas/activa'),
             api.get('/ventanas/en-atencion')
           ]);
@@ -378,7 +479,7 @@ export default function DashboardEstadisticas() {
     };
 
     cargarDatos();
-  }, [usuario]);
+  }, [usuario, cicloSeleccionadoId]);
 
   // Refrescar estado del docente en tiempo real via sockets
   useEffect(() => {
@@ -421,14 +522,76 @@ export default function DashboardEstadisticas() {
   };
 
   const renderDocenteDashboard = () => {
-    const totalHoras = misHorarios.reduce((acc, h) => {
+    // Cálculos de horas para KPIs y Barras de Progreso
+    const totalHorasProgramadas = misHorarios.reduce((acc, h) => {
       const start = parseInt(h.horaInicio.split(':')[0]);
       const end = parseInt(h.horaFin.split(':')[0]);
       return acc + (end - start);
     }, 0);
 
+    const horasLectivasProgramadas = misHorarios
+      .filter(h => h.tipoClase !== 'no_lectiva')
+      .reduce((acc, h) => acc + (parseInt(h.horaFin.split(':')[0]) - parseInt(h.horaInicio.split(':')[0])), 0);
+
+    const horasNoLectivasProgramadas = misHorarios
+      .filter(h => h.tipoClase === 'no_lectiva')
+      .reduce((acc, h) => acc + (parseInt(h.horaFin.split(':')[0]) - parseInt(h.horaInicio.split(':')[0])), 0);
+
+    const horasLectivasAsignadas = misCursos.reduce((acc, c) => acc + (c.horasSemanales || 0), 0);
+    
+    // Calcular total de horas no lectivas asignadas desde el objeto cargaNoLectiva
+    const horasNoLectivasAsignadas = cargaNoLectiva 
+      ? (Number(cargaNoLectiva.horasPreparacion || 0) +
+         Number(cargaNoLectiva.horasTutoria || 0) +
+         Number(cargaNoLectiva.horasInvestigacion || 0) +
+         Number(cargaNoLectiva.horasCapacitacion || 0) +
+         Number(cargaNoLectiva.horasGobierno || 0) +
+         Number(cargaNoLectiva.horasAdministracion || 0) +
+         Number(cargaNoLectiva.horasAsesoria || 0) +
+         Number(cargaNoLectiva.horasResponsabilidadSocial || 0) +
+         Number(cargaNoLectiva.horasComites || 0))
+      : 0;
+
+    const porcentajeLectiva = horasLectivasAsignadas > 0 ? Math.min(100, (horasLectivasProgramadas / horasLectivasAsignadas) * 100) : 0;
+    const porcentajeNoLectiva = horasNoLectivasAsignadas > 0 ? Math.min(100, (horasNoLectivasProgramadas / horasNoLectivasAsignadas) * 100) : 0;
+
     const proximasClases = misHorarios.length;
     const ambientesDistintos = new Set(misHorarios.map(h => h.aula?.nombre)).size;
+
+    // Lógica para "Próxima Clase" (Hoy)
+    const hoyIdx = new Date().getDay(); // 0=Dom, 1=Lun...
+    const diaSemanaActual = hoyIdx === 0 ? 7 : hoyIdx;
+    const horaActualStr = new Date().toLocaleTimeString('es-PE', { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+    const proximaClaseHoy = misHorarios
+      .filter(h => h.diaSemana === diaSemanaActual && h.horaInicio > horaActualStr)
+      .sort((a, b) => a.horaInicio.localeCompare(b.horaInicio))[0];
+
+    // Datos para los gráficos
+    const dataCargaDistribucion = [
+      { name: 'Lectiva', value: horasLectivasProgramadas, color: '#003366' },
+      { name: 'No Lectiva', value: horasNoLectivasProgramadas, color: '#7c3aed' },
+      { name: 'Pendiente', value: Math.max(0, (horasLectivasAsignadas + horasNoLectivasAsignadas) - totalHorasProgramadas), color: '#e2e8f0' }
+    ];
+
+    const dataHorasPorDia = Object.entries(DIAS_MAP).map(([id, nombre]) => {
+      const horasDia = misHorarios
+        .filter(h => h.diaSemana === Number(id))
+        .reduce((acc, h) => acc + (parseInt(h.horaFin.split(':')[0]) - parseInt(h.horaInicio.split(':')[0])), 0);
+      return { name: nombre.substring(0, 3), fullDay: nombre, horas: horasDia };
+    }).filter(d => d.horas > 0 || ['Lun', 'Mar', 'Mie', 'Jue', 'Vie'].includes(d.name));
+
+    const diaMasCargado = [...dataHorasPorDia].sort((a, b) => b.horas - a.horas)[0];
+    const totalHorasSemana = dataHorasPorDia.reduce((acc, d) => acc + d.horas, 0);
+    const promedioHorasDia = totalHorasSemana / (dataHorasPorDia.filter(d => d.horas > 0).length || 1);
+
+    // Filtrar horarios según el tab seleccionado
+    const horariosFiltrados = misHorarios.filter(h => {
+      if (filtroCarga === 'todos') return true;
+      if (filtroCarga === 'lectiva') return h.tipoClase !== 'no_lectiva';
+      if (filtroCarga === 'no_lectiva') return h.tipoClase === 'no_lectiva';
+      return true;
+    });
 
     // Agrupar cursos para la sección lateral
     const misCursosAgrupados = misCursos.reduce((acc: any[], current: any) => {
@@ -444,24 +607,110 @@ export default function DashboardEstadisticas() {
       <Box>
         <Grid container spacing={3} sx={{ mb: 5 }}>
           {[
-            { label: 'Mis Cursos', value: misCursosAgrupados.length, icon: <BookIcon />, color: '#6366f1', bg: 'rgba(99, 102, 241, 0.1)', trend: 'Ciclo Actual' },
-            { label: 'Horas Semanales', value: totalHoras, icon: <CalendarIcon />, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)', trend: 'Carga Lectiva' },
-            { label: 'Clases Programadas', value: proximasClases, icon: <ChartIcon />, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)', trend: 'Total Semanal' },
-            { label: 'Ambientes / Aulas', value: ambientesDistintos, icon: <MeetingRoomIcon />, color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)', trend: 'Ubicaciones' },
+            { 
+              label: 'Mis Cursos', 
+              value: misCursosAgrupados.length, 
+              icon: <BookIcon />, 
+              color: '#6366f1', 
+              bg: 'rgba(99, 102, 241, 0.05)', 
+              borderColor: 'rgba(99, 102, 241, 0.4)', 
+              shadowColor: '99, 102, 241',
+              trend: 'Ciclo Actual',
+              cardBg: 'rgba(99, 102, 241, 0.18)'
+            },
+            { 
+              label: 'Horas Semanales', 
+              value: totalHorasProgramadas, 
+              icon: <CalendarIcon />, 
+              color: '#f59e0b', 
+              bg: 'rgba(245, 158, 11, 0.05)', 
+              borderColor: 'rgba(245, 158, 11, 0.4)', 
+              shadowColor: '245, 158, 11',
+              trend: 'Carga Total',
+              cardBg: 'rgba(245, 158, 11, 0.18)'
+            },
+            { 
+              label: 'Clases Programadas', 
+              value: proximasClases, 
+              icon: <ChartIcon />, 
+              color: '#3b82f6', 
+              bg: 'rgba(59, 130, 246, 0.05)', 
+              borderColor: 'rgba(59, 130, 246, 0.4)', 
+              shadowColor: '59, 130, 246',
+              trend: 'Total Semanal',
+              cardBg: 'rgba(59, 130, 246, 0.18)'
+            },
+            { 
+              label: 'Ambientes / Aulas', 
+              value: ambientesDistintos, 
+              icon: <MeetingRoomIcon />, 
+              color: '#10b981', 
+              bg: 'rgba(16, 185, 129, 0.05)', 
+              borderColor: 'rgba(16, 185, 129, 0.4)', 
+              shadowColor: '16, 185, 129',
+              trend: 'Ubicaciones',
+              cardBg: 'rgba(16, 185, 129, 0.18)'
+            },
           ].map((kpi, i) => (
             <Grid item xs={12} sm={6} md={3} key={i}>
-              <Card sx={{ borderRadius: 5, border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                <CardContent sx={{ p: 3 }}>
+              <Card 
+                sx={{ 
+                  borderRadius: 5, 
+                  border: `2px solid ${kpi.borderColor}`, 
+                  boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+                  bgcolor: kpi.cardBg,
+                  position: 'relative',
+                  overflow: 'hidden',
+                  transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                  '&:hover': {
+                    transform: 'translateY(-6px) scale(1.01)',
+                    boxShadow: `0 15px 30px -5px rgba(${kpi.shadowColor}, 0.2)`,
+                    '& .kpi-avatar': {
+                      transform: 'rotate(15deg) scale(1.15)',
+                      boxShadow: `0 12px 28px rgba(${kpi.shadowColor}, 0.35)`,
+                    },
+                    '& .kpi-number': {
+                      transform: 'scale(1.08) translateY(-2px)',
+                    },
+                  },
+                }}
+              >
+                <CardContent sx={{ p: 3, position: 'relative', zIndex: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <Avatar sx={{ bgcolor: kpi.bg, color: kpi.color, borderRadius: 3, width: 48, height: 48 }}>
+                    <Avatar 
+                      className="kpi-avatar"
+                      sx={{ 
+                        bgcolor: kpi.bg, 
+                        color: kpi.color, 
+                        borderRadius: 3, 
+                        width: 60, 
+                        height: 60,
+                        border: `2px solid ${kpi.borderColor}`,
+                        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                        boxShadow: `0 4px 12px rgba(${kpi.shadowColor}, 0.15)`,
+                      }}
+                    >
                       {kpi.icon}
                     </Avatar>
                   </Box>
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="h4" sx={{ fontWeight: 800, color: '#1e293b' }}>{kpi.value}</Typography>
-                    <Typography variant="body2" sx={{ color: '#64748b', fontWeight: 600 }}>{kpi.label}</Typography>
+                  <Box sx={{ mt: 2.5 }}>
+                    <Typography 
+                      className="kpi-number"
+                      variant="h3" 
+                      sx={{ 
+                        fontWeight: 900, 
+                        color: kpi.color,
+                        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                        letterSpacing: '-0.5px',
+                      }}
+                    >
+                      {kpi.value}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#475569', fontWeight: 700, mt: 0.8, fontSize: '0.9rem' }}>
+                      {kpi.label}
+                    </Typography>
                   </Box>
-                  <Typography variant="caption" sx={{ color: '#10b981', fontWeight: 700, mt: 1, display: 'block' }}>
+                  <Typography variant="caption" sx={{ color: kpi.color, fontWeight: 800, mt: 2, display: 'block', fontSize: '0.78rem' }}>
                     {kpi.trend}
                   </Typography>
                 </CardContent>
@@ -470,47 +719,324 @@ export default function DashboardEstadisticas() {
           ))}
         </Grid>
 
+        <Grid container spacing={4} sx={{ mb: 5 }}>
+          {/* Columna de Estado y Progreso */}
+          <Grid item xs={12} md={7}>
+            <Card sx={{ borderRadius: 5, border: '1px solid #e2e8f0', height: '100%' }}>
+              <CardContent sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ fontWeight: 800, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <AssignmentIcon color="primary" /> Resumen de Cumplimiento de Carga
+                </Typography>
+                
+                <Grid container spacing={4}>
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ mb: 4 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700, color: '#475569' }}>Carga Lectiva (Cursos)</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 800, color: '#003366' }}>
+                          {horasLectivasProgramadas}h / {horasLectivasAsignadas}h
+                        </Typography>
+                      </Box>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={porcentajeLectiva} 
+                        sx={{ height: 10, borderRadius: 5, bgcolor: '#e2e8f0', '& .MuiLinearProgress-bar': { bgcolor: '#003366' } }} 
+                      />
+                      <Typography variant="caption" sx={{ color: '#64748b', mt: 0.5, display: 'block' }}>
+                        {porcentajeLectiva === 100 ? '¡Carga lectiva completada!' : `Faltan ${Math.max(0, horasLectivasAsignadas - horasLectivasProgramadas)} horas`}
+                      </Typography>
+                    </Box>
+
+                    <Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700, color: '#475569' }}>Carga No Lectiva</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 800, color: '#7c3aed' }}>
+                          {horasNoLectivasProgramadas}h / {horasNoLectivasAsignadas}h
+                        </Typography>
+                      </Box>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={porcentajeNoLectiva} 
+                        sx={{ height: 10, borderRadius: 5, bgcolor: '#e2e8f0', '& .MuiLinearProgress-bar': { bgcolor: '#7c3aed' } }} 
+                      />
+                      <Typography variant="caption" sx={{ color: '#64748b', mt: 0.5, display: 'block' }}>
+                        {porcentajeNoLectiva === 100 ? '¡Carga no lectiva completada!' : `Faltan ${Math.max(0, horasNoLectivasAsignadas - horasNoLectivasProgramadas)} horas`}
+                      </Typography>
+                    </Box>
+                  </Grid>
+
+                  {/* Gráfico de Distribución (Pie Chart) */}
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ height: 160, width: '100%', display: 'flex', justifyContent: 'center' }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={dataCargaDistribucion}
+                            innerRadius={50}
+                            outerRadius={70}
+                            paddingAngle={5}
+                            dataKey="value"
+                          >
+                            {dataCargaDistribucion.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <RechartsTooltip />
+                          <Legend verticalAlign="middle" align="right" layout="vertical" wrapperStyle={{ fontSize: '0.75rem', fontWeight: 700 }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </Box>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Columna de Próxima Clase y Estado de Registro */}
+          <Grid item xs={12} md={5}>
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <Card sx={{ borderRadius: 5, border: '1px solid #e2e8f0', bgcolor: proximaClaseHoy ? '#f0f9ff' : '#fff' }}>
+                  <CardContent sx={{ p: 2.5 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 800, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <AccessTimeIcon color="info" /> Próxima Clase
+                    </Typography>
+                    {proximaClaseHoy ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box sx={{ bgcolor: '#003366', color: 'white', p: 1.5, borderRadius: 3, textAlign: 'center', minWidth: 80 }}>
+                          <Typography variant="h6" sx={{ fontWeight: 900, lineHeight: 1 }}>{proximaClaseHoy.horaInicio}</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.8 }}>INICIO</Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#003366', lineHeight: 1.2 }}>
+                            {(proximaClaseHoy.curso?.nombre || proximaClaseHoy.actividadNoLectiva || 'Clase').toUpperCase()}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600 }}>
+                            Aula: {proximaClaseHoy.aula?.nombre || 'S.A.'} • {proximaClaseHoy.tipoClase.replace('_', ' ').toUpperCase()}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    ) : (
+                      <Box sx={{ py: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <CheckCircleIcon color="success" />
+                        <Typography variant="body2" sx={{ color: '#64748b', fontWeight: 600 }}>
+                          Sin clases pendientes hoy.
+                        </Typography>
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Card sx={{ 
+                  borderRadius: 5, 
+                  border: '1px solid',
+                  borderColor: estadoSeleccion?.estado === 'en_atencion' ? '#bbf7d0' : '#e2e8f0',
+                  bgcolor: estadoSeleccion?.estado === 'en_atencion' ? '#f0fdf4' : '#fff'
+                }}>
+                  <CardContent sx={{ p: 2.5 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <InfoIcon color={estadoSeleccion?.estado === 'en_atencion' ? 'success' : 'disabled'} /> Registro
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Box>
+                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 800, display: 'block' }}>
+                          {estadoSeleccion?.estado === 'en_atencion' 
+                            ? 'TURNO ACTIVO' 
+                            : estadoSeleccion?.estado === 'finalizado' 
+                              ? 'REGISTRO FINALIZADO' 
+                              : 'EN ESPERA'}
+                        </Typography>
+                      </Box>
+                      <Button 
+                        variant="contained" 
+                        size="small"
+                        onClick={() => router.push(estadoSeleccion?.estado === 'finalizado' ? '/reportes' : '/horarios')}
+                        sx={{ 
+                          borderRadius: 2, 
+                          textTransform: 'none', 
+                          fontWeight: 700,
+                          bgcolor: estadoSeleccion?.estado === 'en_atencion' ? '#166534' : '#003366',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        {estadoSeleccion?.estado === 'finalizado' ? 'Reportes' : 'Ir a Horarios'}
+                      </Button>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          </Grid>
+        </Grid>
+
+        {/* Gráfico de Barras: Horas por Día */}
+        <Grid container sx={{ mb: 5 }}>
+          <Grid item xs={12}>
+            <Card sx={{ borderRadius: 5, border: '1px solid #e2e8f0' }}>
+              <CardContent sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ fontWeight: 800, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <TrendingUpIcon color="primary" /> Intensidad de Horas por Día
+                </Typography>
+                
+                <Grid container spacing={4} alignItems="center">
+                  {/* Interpretación (1/3) */}
+                  <Grid item xs={12} md={4}>
+                    <Box sx={{ bgcolor: '#f8fafc', p: 3, borderRadius: 4, border: '1px solid #f1f5f9' }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#003366', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <InfoIcon fontSize="small" /> ANÁLISIS DE CARGA
+                      </Typography>
+                      
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                        <Box>
+                          <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 700, display: 'block', mb: 0.5 }}>
+                            DÍA DE MAYOR ACTIVIDAD
+                          </Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 800, color: '#0f172a' }}>
+                            {diaMasCargado?.horas > 0 ? diaMasCargado.fullDay : 'Sin datos'}
+                          </Typography>
+                          {diaMasCargado?.horas > 0 && (
+                            <Typography variant="caption" sx={{ color: '#166534', fontWeight: 700 }}>
+                              {diaMasCargado.horas} horas programadas
+                            </Typography>
+                          )}
+                        </Box>
+
+                        <Box>
+                          <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 700, display: 'block', mb: 0.5 }}>
+                            PROMEDIO DIARIO
+                          </Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 800, color: '#0f172a' }}>
+                            {promedioHorasDia.toFixed(1)} Horas / día
+                          </Typography>
+                        </Box>
+
+                        <Divider sx={{ borderStyle: 'dashed' }} />
+
+                        <Typography variant="body2" sx={{ color: '#475569', fontWeight: 500, fontStyle: 'italic', lineHeight: 1.4 }}>
+                          {diaMasCargado?.horas > 8 
+                            ? `Se observa una alta concentración de actividades el día ${diaMasCargado.fullDay}. Asegúrate de tomar descansos adecuados.`
+                            : 'Tu distribución horaria se mantiene equilibrada durante la semana.'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Grid>
+
+                  {/* Gráfica (2/3) */}
+                  <Grid item xs={12} md={8}>
+                    <Box sx={{ height: 300, width: '100%' }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={dataHorasPorDia}>
+                          <defs>
+                            <linearGradient id="colorHoras" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#003366" stopOpacity={0.1}/>
+                              <stop offset="95%" stopColor="#003366" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontWeight: 700, fill: '#64748b' }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fontWeight: 700, fill: '#64748b' }} />
+                          <RechartsTooltip 
+                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                          />
+                          <Area type="monotone" dataKey="horas" stroke="#003366" strokeWidth={3} fillOpacity={1} fill="url(#colorHoras)" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </Box>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+
         <Grid container spacing={4}>
           <Grid item xs={12} lg={8}>
             <Paper sx={{ p: 3, borderRadius: 5, border: '1px solid #e2e8f0', boxShadow: 'none' }}>
-              <Typography variant="h6" sx={{ fontWeight: 800, mb: 3, color: '#1e293b' }}>Mi Horario Semanal</Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 800, color: '#1e293b' }}>Mi Horario Semanal</Typography>
+                <Tabs 
+                  value={filtroCarga} 
+                  onChange={(_, val) => setFiltroCarga(val)}
+                  sx={{ 
+                    minHeight: 40,
+                    '& .MuiTab-root': { 
+                      minHeight: 40, 
+                      textTransform: 'none', 
+                      fontWeight: 700,
+                      fontSize: '0.85rem',
+                      borderRadius: 2,
+                      px: 2
+                    }
+                  }}
+                >
+                  <Tab label="Todos" value="todos" />
+                  <Tab label="Carga Lectiva" value="lectiva" />
+                  <Tab label="No Lectiva" value="no_lectiva" />
+                </Tabs>
+              </Box>
               <TableContainer>
                 <Table sx={{ minWidth: 650 }}>
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Día</TableCell>
                       <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Hora</TableCell>
-                      <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Curso</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Curso / Actividad</TableCell>
                       <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Tipo</TableCell>
                       <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Aula</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: '#64748b', textAlign: 'center' }}>Acción</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {misHorarios.length > 0 ? (
-                      misHorarios
+                    {horariosFiltrados.length > 0 ? (
+                      horariosFiltrados
                         .sort((a, b) => (a.diaSemana - b.diaSemana) || a.horaInicio.localeCompare(b.horaInicio))
                         .map((h, idx) => (
                           <TableRow key={idx} hover>
                             <TableCell sx={{ fontWeight: 600 }}>{DIAS_MAP[h.diaSemana]}</TableCell>
                             <TableCell>{h.horaInicio.substring(0,5)} - {h.horaFin.substring(0,5)}</TableCell>
-                            <TableCell sx={{ fontWeight: 600, color: '#003366' }}>{h.curso?.nombre}</TableCell>
+                            <TableCell sx={{ fontWeight: 700, color: h.tipoClase === 'no_lectiva' ? '#7c3aed' : '#003366' }}>
+                              {h.tipoClase === 'no_lectiva' 
+                                ? (h.actividadNoLectiva || 'ACTIVIDAD NO LECTIVA').toUpperCase()
+                                : (h.curso?.nombre || 'S.C.').toUpperCase()}
+                            </TableCell>
                             <TableCell>
                               <Box sx={{ 
                                 px: 1.5, py: 0.5, borderRadius: 2, display: 'inline-block',
-                                bgcolor: h.tipoClase === 'teoria' ? 'rgba(99, 102, 241, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                                color: h.tipoClase === 'teoria' ? '#6366f1' : '#f59e0b',
+                                bgcolor: h.tipoClase === 'no_lectiva' 
+                                  ? 'rgba(124, 58, 237, 0.1)' 
+                                  : h.tipoClase === 'teoria' 
+                                    ? 'rgba(99, 102, 241, 0.1)' 
+                                    : 'rgba(245, 158, 11, 0.1)',
+                                color: h.tipoClase === 'no_lectiva' 
+                                  ? '#7c3aed' 
+                                  : h.tipoClase === 'teoria' 
+                                    ? '#6366f1' 
+                                    : '#f59e0b',
                                 fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase'
                               }}>
-                                {h.tipoClase}
+                                {h.tipoClase.replace('_', ' ')}
                               </Box>
                             </TableCell>
-                            <TableCell>{h.aula?.nombre}</TableCell>
+                            <TableCell sx={{ fontWeight: 500 }}>{h.aula?.nombre || '-'}</TableCell>
+                            <TableCell align="center">
+                              <Tooltip title="Gestionar en Horarios">
+                                <IconButton 
+                                  size="small" 
+                                  onClick={() => router.push('/horarios')}
+                                  sx={{ color: '#003366', bgcolor: 'rgba(0, 51, 102, 0.05)', '&:hover': { bgcolor: 'rgba(0, 51, 102, 0.1)' } }}
+                                >
+                                  <CalendarIcon sx={{ fontSize: '1.2rem' }} />
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
                           </TableRow>
                         ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} align="center" sx={{ py: 4, color: '#64748b' }}>
-                          No tienes clases programadas para este ciclo.
+                        <TableCell colSpan={6} align="center" sx={{ py: 4, color: '#64748b' }}>
+                          No se encontraron horarios para este filtro.
                         </TableCell>
                       </TableRow>
                     )}
@@ -591,14 +1117,67 @@ export default function DashboardEstadisticas() {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CalendarIcon sx={{ fontSize: 18, color: '#64748b' }} />
             <Typography variant="body1" sx={{ color: '#64748b', fontWeight: 500 }}>
-              Ciclo Académico {cicloActual?.nombre || '2026-I'}
+              Visualizando: {ciclos.find(c => c.id === cicloSeleccionadoId)?.nombre || cicloActual?.nombre}
             </Typography>
-            <Box sx={{ px: 1, py: 0.2, bgcolor: '#e2e8f0', borderRadius: 1, fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>
-              ACTUAL
-            </Box>
+            {cicloSeleccionadoId === cicloActual?.id && (
+              <Box sx={{ px: 1, py: 0.2, bgcolor: '#e2e8f0', borderRadius: 1, fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>
+                ACTUAL
+              </Box>
+            )}
           </Box>
         </Box>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <Paper
+            elevation={0}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              pl: 1.5,
+              pr: 0.5,
+              py: 0.25,
+              borderRadius: 2.5,
+              border: '1px solid #e2e8f0',
+              bgcolor: 'white',
+              transition: 'border-color 0.2s, box-shadow 0.2s',
+              '&:hover': {
+                borderColor: '#cbd5e1',
+                boxShadow: '0 2px 8px rgba(0, 51, 102, 0.06)',
+              },
+              '&:focus-within': {
+                borderColor: '#003366',
+                boxShadow: '0 0 0 3px rgba(0, 51, 102, 0.08)',
+              },
+            }}
+          >
+            <CalendarIcon sx={{ fontSize: 20, color: '#003366', flexShrink: 0 }} />
+            <FormControl size="small" sx={{ minWidth: { xs: 140, sm: 168 } }}>
+              <Select
+                value={cicloSeleccionadoId || ''}
+                onChange={(e) => setCicloSeleccionadoId(Number(e.target.value))}
+                variant="standard"
+                disableUnderline
+                sx={{
+                  fontWeight: 500,
+                  fontSize: '0.875rem',
+                  color: '#334155',
+                  '& .MuiSelect-select': {
+                    py: 0.85,
+                    pr: '28px !important',
+                    fontWeight: 500,
+                  },
+                  '& .MuiSelect-icon': { color: '#94a3b8', right: 4 },
+                }}
+              >
+                {ciclos.map((c) => (
+                  <MenuItem key={c.id} value={c.id} sx={{ fontWeight: 500, fontSize: '0.875rem' }}>
+                    {c.nombre}{c.id === cicloActual?.id ? ' (Actual)' : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Paper>
+
           <Paper elevation={0} sx={{ p: 1, borderRadius: 2, border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 1 }}>
             <Box sx={{ width: 8, height: 8, bgcolor: '#10b981', borderRadius: '50%' }} />
             <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b' }}>SISTEMA ONLINE</Typography>

@@ -1,5 +1,5 @@
 import { IsNumber, IsOptional, IsString, Min, IsEnum } from 'class-validator';
-import { EstadoCargaNoLectiva } from '../../../entities/carga-no-lectiva.entity';
+import { EstadoCargaAcademica } from '../../../entities/carga-academica.entity';
 
 export class CreateCargaNoLectivaDto {
   @IsNumber()
@@ -8,9 +8,9 @@ export class CreateCargaNoLectivaDto {
   @IsNumber()
   cicloId: number;
 
-  @IsEnum(EstadoCargaNoLectiva)
+  @IsEnum(EstadoCargaAcademica)
   @IsOptional()
-  estado?: EstadoCargaNoLectiva;
+  estado?: EstadoCargaAcademica;
 
   @IsNumber()
   @Min(0)
@@ -92,4 +92,15 @@ export class CreateCargaNoLectivaDto {
   @IsString()
   @IsOptional()
   detalleComites?: string;
+
+  @IsString()
+  @IsOptional()
+  firma?: string;
+
+  @IsOptional()
+  incluirFirmaReportes?: boolean;
+
+  @IsString()
+  @IsOptional()
+  observaciones?: string;
 }

@@ -54,17 +54,20 @@ import {
   KeyboardDoubleArrowRight as ArrowRightIcon,
   Info as InfoIcon,
   TrendingUp as TrendingUpIcon,
+  Search as SearchIcon,
+  FilterList as FilterIcon,
+  RestartAlt as ResetIcon,
 } from '@mui/icons-material';
 import { Edit as EditIcon } from '@mui/icons-material';
 import PauseIcon from '@mui/icons-material/Pause';
 import api from '@/lib/api';
 import Swal from 'sweetalert2';
-import { format } from 'date-fns';
+import { format, isWithinInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAuth } from '@/components/providers/AuthProvider';
 
 export default function VentanasPage() {
-  const { usuario } = useAuth();
+  const { usuario, isValidating } = useAuth();
   const [loading, setLoading] = useState(true);
   const [ventanas, setVentanas] = useState<any[]>([]);
   const [ciclos, setCiclos] = useState<any[]>([]);
@@ -76,6 +79,14 @@ export default function VentanasPage() {
   const [isFadingMonitor, setIsFadingMonitor] = useState(false);
   const [docentesCount, setDocentesCount] = useState<number>(0);
   const [nowMs, setNowMs] = useState(Date.now());
+
+  // Estados para filtros
+  const [cicloFiltroId, setCicloFiltroId] = useState<number | string>('');
+  const [busqueda, setBusqueda] = useState('');
+  const [mostrarFiltros, setMostrarFiltros] = useState(false);
+  const [estadoFiltro, setEstadoFiltro] = useState('todos');
+  const [fechaInicioFiltro, setFechaInicioFiltro] = useState('');
+  const [fechaFinFiltro, setFechaFinFiltro] = useState('');
 
   // Estado para la paginación
   const [page, setPage] = useState(0);
@@ -213,7 +224,8 @@ export default function VentanasPage() {
 
   const updateDocenteCount = async (categoria: string) => {
     try {
-      const res = await api.get(`/ventanas/count-docentes?categoria=${categoria}`);
+      const cicloIdParam = formData.cicloId ? `&cicloId=${formData.cicloId}` : '';
+      const res = await api.get(`/ventanas/count-docentes?categoria=${categoria}${cicloIdParam}`);
       setDocentesCount(res.data.count || 0);
     } catch (error) {
       console.error('Error fetching docente count:', error);
@@ -252,6 +264,12 @@ export default function VentanasPage() {
       setCiclos(ciclosRes.data);
       setVentanas(ventanasRes.data);
       
+      const actualCiclo = ciclosRes.data.find((c: any) => c.esActual) || ciclosRes.data[0];
+      if (actualCiclo) {
+        if (!formData.cicloId) setFormData(prev => ({ ...prev, cicloId: actualCiclo.id }));
+        if (cicloFiltroId === '') setCicloFiltroId(actualCiclo.id);
+      }
+
       // No resetear la selección si ya existe una válida
       if (selectedVentana) {
         const stillExists = ventanasRes.data.find((v: any) => v.id === selectedVentana.id);
@@ -523,12 +541,12 @@ export default function VentanasPage() {
         const res = await api.patch(`/ventanas/${id}/detener`);
         const updatedVentana = res.data;
         
-        setVentanas(prev => prev.map(v => v.id === id ? { ...v, ...updatedVentana } : v));
-        
-        if (selectedVentana?.id === id) {
-          setSelectedVentana(prev => ({ ...prev, ...updatedVentana }));
-          fetchCola(updatedVentana);
-        }
+        setVentanas((prev: any[]) => prev.map(v => v.id === id ? { ...v, ...updatedVentana } : v));
+      
+      if (selectedVentana?.id === id) {
+        setSelectedVentana((prev: any) => ({ ...prev, ...updatedVentana }));
+        fetchCola(updatedVentana);
+      }
         
         Swal.fire('Detenida', 'La ventana ha sido finalizada forzosamente.', 'success');
       } catch (error: any) {
@@ -547,10 +565,10 @@ export default function VentanasPage() {
         setNowMs(new Date(serverTime).getTime());
       }
 
-      setVentanas(prev => prev.map(v => v.id === id ? { ...v, ...updatedVentana } : v));
+      setVentanas((prev: any[]) => prev.map(v => v.id === id ? { ...v, ...updatedVentana } : v));
       
       if (selectedVentana?.id === id) {
-        setSelectedVentana(prev => ({ ...prev, ...updatedVentana }));
+        setSelectedVentana((prev: any) => ({ ...prev, ...updatedVentana }));
         
         if (updatedDocente) {
           setDocenteEnAtencion(updatedDocente);
@@ -563,6 +581,49 @@ export default function VentanasPage() {
       Swal.fire('Error', error.response?.data?.message || 'No se pudo cambiar el estado de pausa', 'error');
     }
   };
+
+  const handleLimpiarFiltros = () => {
+    const cicloActual = ciclos.find(c => c.esActual) || ciclos[0];
+    setCicloFiltroId(cicloActual?.id || '');
+    setBusqueda('');
+    setEstadoFiltro('todos');
+    setFechaInicioFiltro('');
+    setFechaFinFiltro('');
+  };
+
+  const ventanasFiltradas = ventanas.filter(v => {
+    // Filtro por Ciclo
+    if (cicloFiltroId && v.ciclo?.id !== cicloFiltroId) return false;
+
+    // Filtro por Búsqueda (Categoría o Tipo de Contrato)
+    if (busqueda) {
+      const searchLower = busqueda.toLowerCase();
+      const categoria = (v.categoriaDocente || '').toLowerCase().replace(/_/g, ' ');
+      const tipoContrato = (v.tipoContrato || '').toLowerCase();
+      if (!categoria.includes(searchLower) && !tipoContrato.includes(searchLower)) return false;
+    }
+
+    // Filtro por Estado
+    if (estadoFiltro !== 'todos' && v.estado !== estadoFiltro) return false;
+
+    // Filtro por Rango de Fechas
+    if (fechaInicioFiltro || fechaFinFiltro) {
+      const inicioVentana = new Date(v.fechaHoraInicio);
+      const finVentana = new Date(v.fechaHoraFin);
+      
+      if (fechaInicioFiltro) {
+        const fInicio = new Date(fechaInicioFiltro);
+        if (inicioVentana < fInicio) return false;
+      }
+      
+      if (fechaFinFiltro) {
+        const fFin = new Date(fechaFinFiltro);
+        if (finVentana > fFin) return false;
+      }
+    }
+
+    return true;
+  });
 
   const getEstadoChip = (estado: string) => {
     switch (estado) {
@@ -580,6 +641,14 @@ export default function VentanasPage() {
         return <Chip label={estado} size="small" />;
     }
   };
+
+  if (isValidating) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: '#f4f6f8' }}>
+        <CircularProgress sx={{ color: '#003366' }} />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 4, bgcolor: '#f4f6f8', minHeight: '100vh' }}>
@@ -613,6 +682,150 @@ export default function VentanasPage() {
         )}
       </Box>
 
+      {/* Sección de Filtros Estilo Reportes */}
+      <Paper 
+        elevation={0} 
+        sx={{ 
+          p: 2.5, 
+          mb: 4, 
+          borderRadius: 4, 
+          border: '1px solid #e2e8f0',
+          bgcolor: 'white',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        }}
+      >
+        <Grid container spacing={2} alignItems="center">
+          {/* Filtro Principal: Periodo */}
+          <Grid item xs={12} sm={6} md={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel id="select-ciclo-filtro-label">Periodo</InputLabel>
+              <Select
+                labelId="select-ciclo-filtro-label"
+                value={cicloFiltroId}
+                label="Periodo"
+                onChange={(e) => setCicloFiltroId(e.target.value)}
+                sx={{ borderRadius: 2.5 }}
+              >
+                {ciclos.map((c) => (
+                  <MenuItem key={c.id} value={c.id}>
+                    {c.nombre} {c.esActual ? '(Actual)' : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          {/* Filtro Principal: Búsqueda */}
+          <Grid item xs={12} sm={6} md={6}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Escribe la categoría o tipo de contrato..."
+              label="Buscar por Categoría o Tipo de Contrato"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ color: '#003366' }} />
+                  </InputAdornment>
+                ),
+                sx: { borderRadius: 2.5 }
+              }}
+            />
+          </Grid>
+
+          {/* Botones de Acción */}
+          <Grid item xs={12} sm={6} md={2}>
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<DeleteIcon />}
+              onClick={handleLimpiarFiltros}
+              sx={{ 
+                borderRadius: 2.5, 
+                color: '#64748b', 
+                borderColor: '#e2e8f0',
+                '&:hover': { bgcolor: '#f8fafc', borderColor: '#cbd5e1' }
+              }}
+            >
+              LIMPIAR
+            </Button>
+          </Grid>
+
+          <Grid item xs={12} sm={6} md={2}>
+            <Button
+              fullWidth
+              variant="contained"
+              startIcon={<FilterIcon />}
+              onClick={() => setMostrarFiltros(!mostrarFiltros)}
+              sx={{ 
+                borderRadius: 2.5, 
+                bgcolor: '#003366',
+                '&:hover': { bgcolor: '#002244' }
+              }}
+            >
+              FILTROS
+            </Button>
+          </Grid>
+
+          {/* Filtros Secundarios Colapsables */}
+          {mostrarFiltros && (
+            <Grid item xs={12}>
+              <Box sx={{ pt: 2, mt: 1 }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="select-estado-filtro-label">Estado</InputLabel>
+                      <Select
+                        labelId="select-estado-filtro-label"
+                        value={estadoFiltro}
+                        label="Estado"
+                        onChange={(e) => setEstadoFiltro(e.target.value)}
+                        sx={{ borderRadius: 2.5 }}
+                      >
+                        <MenuItem value="todos">Todos los Estados</MenuItem>
+                        <MenuItem value="programada">Programada</MenuItem>
+                        <MenuItem value="en_curso">En Curso</MenuItem>
+                        <MenuItem value="pausada">Pausada</MenuItem>
+                        <MenuItem value="finalizada">Finalizada</MenuItem>
+                        <MenuItem value="vencida">Vencida</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="datetime-local"
+                      label="Rango Inicio (Desde)"
+                      value={fechaInicioFiltro}
+                      onChange={(e) => setFechaInicioFiltro(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                      sx={{ borderRadius: 2.5, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="datetime-local"
+                      label="Rango Fin (Hasta)"
+                      value={fechaFinFiltro}
+                      onChange={(e) => setFechaFinFiltro(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                      sx={{ borderRadius: 2.5, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
+                    />
+                  </Grid>
+                </Grid>
+              </Box>
+            </Grid>
+          )}
+        </Grid>
+      </Paper>
+
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
           <CircularProgress sx={{ color: '#003366' }} />
@@ -634,8 +847,8 @@ export default function VentanasPage() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {ventanas.length > 0 ? (
-                      ventanas
+                    {ventanasFiltradas.length > 0 ? (
+                      ventanasFiltradas
                         .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                         .map((v, index) => (
                           <TableRow
@@ -796,7 +1009,7 @@ export default function VentanasPage() {
               <TablePagination
                 rowsPerPageOptions={[5, 10, 25]}
                 component="div"
-                count={ventanas.length}
+                count={ventanasFiltradas.length}
                 rowsPerPage={rowsPerPage}
                 page={page}
                 onPageChange={handleChangePage}
@@ -960,7 +1173,16 @@ export default function VentanasPage() {
         onClose={() => setOpenDialog(false)}
         maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 4, overflow: 'hidden', maxWidth: 720 } }}
+        PaperProps={{ 
+          sx: { 
+            borderRadius: 4, 
+            overflow: 'hidden', 
+            maxWidth: 720,
+            maxHeight: '90vh', // Limitar altura máxima
+            display: 'flex',
+            flexDirection: 'column'
+          } 
+        }}
       >
         <DialogTitle sx={{
           fontWeight: 900,
@@ -969,7 +1191,8 @@ export default function VentanasPage() {
           display: 'flex',
           alignItems: 'center',
           gap: 2,
-          py: 1.5
+          py: 1.5,
+          flexShrink: 0 // Evitar que el título se encoja
         }}>
           <CalendarIcon fontSize="medium" />
           {editingVentana ? (
@@ -986,10 +1209,10 @@ export default function VentanasPage() {
           )}
         </DialogTitle>
 
-        <DialogContent sx={{ p: 0, overflow: 'hidden' }}>
+        <DialogContent sx={{ p: 0, overflowY: 'auto', flexGrow: 1 }}>
           <Grid container>
             {/* Panel Izquierdo: Configuración */}
-            <Grid item xs={12} md={editingVentana ? 12 : 7} sx={{ p: 3, borderRight: editingVentana ? 'none' : '1px solid #e0e4e8' }}>
+            <Grid item xs={12} md={editingVentana ? 12 : 7} sx={{ p: 3, borderRight: { md: editingVentana ? 'none' : '1px solid #e0e4e8' } }}>
               <Typography variant="caption" sx={{ fontWeight: 900, color: '#003366', mb: 3, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <InfoIcon sx={{ fontSize: 16 }} /> {editingVentana ? 'EDITAR PROGRAMACIÓN' : 'CONFIGURACIÓN BÁSICA'}
               </Typography>
@@ -1023,7 +1246,7 @@ export default function VentanasPage() {
                     label="Inicio de Ventana"
                     type="datetime-local"
                     value={formData.fechaHoraInicio}
-                    onChange={(e) => setFormData(prev => ({ ...prev, fechaHoraInicio: e.target.value }))}
+                    onChange={(e) => setFormData((prev: any) => ({ ...prev, fechaHoraInicio: e.target.value }))}
                     variant="outlined"
                     size="small"
                     InputLabelProps={{ shrink: true }}
@@ -1047,7 +1270,7 @@ export default function VentanasPage() {
                         label="Duración por Docente (minutos)"
                         type="number"
                         value={formData.duracionMinutos}
-                        onChange={(e) => setFormData(prev => ({ ...prev, duracionMinutos: Number(e.target.value) }))}
+                        onChange={(e) => setFormData((prev: any) => ({ ...prev, duracionMinutos: Number(e.target.value) }))}
                         variant="outlined"
                         size="small"
                         InputProps={{
@@ -1186,7 +1409,7 @@ export default function VentanasPage() {
           </Grid>
         </DialogContent>
 
-        <DialogActions sx={{ p: 2, bgcolor: '#fff', borderTop: '1px solid #e0e4e8', justifyContent: 'space-between' }}>
+        <DialogActions sx={{ p: 2, bgcolor: '#fff', borderTop: '1px solid #e0e4e8', justifyContent: 'space-between', flexShrink: 0 }}>
           <Button onClick={() => setOpenDialog(false)} size="small" sx={{ fontWeight: 800, color: '#666' }}>
             CANCELAR
           </Button>

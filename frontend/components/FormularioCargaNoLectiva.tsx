@@ -9,12 +9,31 @@ import {
   Divider,
   CircularProgress,
   Grid,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
-import { Save as SaveIcon, AssignmentLate as NoLectivaIcon, PictureAsPdf as PdfIcon, Assessment as ExcelIcon, Verified as ValidatedIcon, Pending as PendingIcon, EditNote as DraftIcon } from '@mui/icons-material';
+import { 
+  Save as SaveIcon, 
+  AssignmentLate as NoLectivaIcon, 
+  Verified as ValidatedIcon, 
+  Pending as PendingIcon, 
+  EditNote as DraftIcon,
+  Draw as DrawIcon,
+  CloudUpload as UploadIcon,
+  Delete as DeleteIcon,
+  Close as CloseIcon,
+  WarningAmber as WarningIcon,
+  Lock as LockIcon,
+} from '@mui/icons-material';
 import api from '@/lib/api';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
-import { generateFormato1PDF, generateFormato1Excel } from '@/lib/report-utils';
+import SignatureCanvas from 'react-signature-canvas';
 
 const MySwal = withReactContent(Swal);
 
@@ -43,8 +62,12 @@ export default function FormularioCargaNoLectiva({
 }: FormularioCargaNoLectivaProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [openSignature, setOpenReviewSignature] = useState(false);
+  const sigCanvas = React.useRef<SignatureCanvas>(null);
   const [data, setData] = useState<any>({
     estado: 'borrador',
+    firma: '',
+    incluirFirmaReportes: false,
     horasPreparacion: 0,
     detallePreparacion: 'Preparación y evaluación de clases',
     horasTutoria: 0,
@@ -67,6 +90,30 @@ export default function FormularioCargaNoLectiva({
 
   useEffect(() => {
     if (docenteId && cicloId) {
+      // Resetear datos al estado inicial antes de cargar los nuevos del ciclo
+      setData({
+        estado: 'borrador',
+        firma: '',
+        incluirFirmaReportes: false,
+        horasPreparacion: 0,
+        detallePreparacion: 'Preparación y evaluación de clases',
+        horasTutoria: 0,
+        detalleTutoria: '',
+        horasInvestigacion: 0,
+        detalleInvestigacion: '',
+        horasCapacitacion: 0,
+        detalleCapacitacion: '',
+        horasGobierno: 0,
+        detalleGobierno: '',
+        horasAdministracion: 0,
+        detalleAdministracion: '',
+        horasAsesoria: 0,
+        detalleAsesoria: '',
+        horasResponsabilidadSocial: 0,
+        detalleResponsabilidadSocial: '',
+        horasComites: 0,
+        detalleComites: '',
+      });
       fetchCargaNoLectiva();
     }
   }, [docenteId, cicloId]);
@@ -79,6 +126,7 @@ export default function FormularioCargaNoLectiva({
       });
       if (res.data) {
         setData(res.data);
+        if (!readOnly && onStatusChange) onStatusChange(res.data.estado);
       }
     } catch (error) {
       console.error('Error fetching carga no lectiva:', error);
@@ -92,6 +140,26 @@ export default function FormularioCargaNoLectiva({
       ...prev,
       [field]: value,
     }));
+  };
+
+  const handleToggleFirmaReportes = async (checked: boolean) => {
+    // Actualizar localmente primero para feedback instantáneo
+    setData((prev: any) => ({ ...prev, incluirFirmaReportes: checked }));
+
+    try {
+      // Guardar preferencia inmediatamente en la BD para que los reportes se enteren
+      await api.post('/carga-no-lectiva', {
+        docenteId,
+        cicloId,
+        incluirFirmaReportes: checked,
+        // Mandamos el estado actual para no resetearlo
+        estado: data.estado || 'borrador'
+      });
+    } catch (error) {
+      console.error('Error saving signature preference:', error);
+      // Opcional: revertir si falla
+      // setData((prev: any) => ({ ...prev, incluirFirmaReportes: !checked }));
+    }
   };
 
   const totalHorasNoLectivas = 
@@ -110,10 +178,164 @@ export default function FormularioCargaNoLectiva({
   const totalGeneralEntero = horasLectivasEnteras + totalHorasNoLectivasEnteras;
 
   // El docente solo puede editar si el estado es 'borrador'
-  // Si es readOnly (Admin), se ignora esta restricción para los campos (pero el Admin tiene sus propios botones)
-  const isLocked = !readOnly && data.estado !== 'borrador' && data.estado !== undefined;
+  // Si es finalizado, se bloquea todo permanentemente
+  const isFinalizado = data.estado === 'finalizado';
+  const isLocked = !readOnly && (data.estado !== 'borrador' && data.estado !== undefined);
+  const isFullyLocked = !readOnly && (isLocked || isFinalizado);
+
+  const handleSaveFirma = async () => {
+    if (!sigCanvas.current || sigCanvas.current.isEmpty()) {
+      MySwal.fire('Error', 'Por favor realice su firma primero', 'error');
+      return;
+    }
+
+    // --- LÓGICA DE VALIDACIÓN GEOMÉTRICA (Estilo OpenCV) ---
+    const canvas = sigCanvas.current.getCanvas();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const width = canvas.width;
+    const height = canvas.height;
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const pixels = imageData.data;
+    
+    let minX = width, minY = height, maxX = 0, maxY = 0;
+    let pixelesTrazo = 0;
+
+    // 1. Analizar píxeles para encontrar el área ocupada (Bounding Box)
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const index = (y * width + x) * 4;
+        const alpha = pixels[index + 3]; // Opacidad (tinta)
+        
+        if (alpha > 50) { // Si hay trazo
+          pixelesTrazo++;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    const anchoTrazo = maxX - minX;
+    const altoTrazo = maxY - minY;
+
+    // VALIDACIÓN 1: ¿Está vacío o es un punto minúsculo? (Equivalente a pixeles_trazo < 100)
+    if (pixelesTrazo < 100) {
+      MySwal.fire('Firma No Válida', 'La firma está vacía o es demasiado pequeña (posible punto).', 'error');
+      return;
+    }
+
+    // VALIDACIÓN 2: ¿Es un trazo real o solo una línea simple? (Heurística de dimensiones)
+    // Una firma real suele tener un área mínima y no ser solo una línea perfecta
+    if (anchoTrazo < 50 || altoTrazo < 20) {
+      MySwal.fire({
+        icon: 'error',
+        title: 'Trazo no válido',
+        text: 'El trazo no cumple con las dimensiones de una firma válida (muy corto o muy plano).',
+      });
+      return;
+    }
+
+    // Si pasa las validaciones geométricas
+    const firmaBase64 = canvas.toDataURL('image/png');
+    setData((prev: any) => ({ ...prev, firma: firmaBase64 }));
+    
+    // Auto-guardar la firma en el perfil del docente inmediatamente
+    try {
+      await api.post('/carga-no-lectiva', {
+        docenteId,
+        cicloId,
+        firma: firmaBase64,
+        estado: data.estado || 'borrador'
+      });
+    } catch (e) {
+      console.error('Error auto-saving signature:', e);
+    }
+
+    setOpenReviewSignature(false);
+    MySwal.fire({
+      icon: 'success',
+      title: 'Firma Capturada',
+      text: 'La firma ha sido guardada en su perfil.',
+      timer: 1500,
+      showConfirmButton: false
+    });
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = async () => {
+          // Crear un canvas temporal para validar la imagen subida
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = img.width;
+          tempCanvas.height = img.height;
+          const tempCtx = tempCanvas.getContext('2d');
+          if (!tempCtx) return;
+          tempCtx.drawImage(img, 0, 0);
+          
+          const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
+          const pixels = imageData.data;
+          
+          let minX = img.width, minY = img.height, maxX = 0, maxY = 0;
+          let pixelesTrazo = 0;
+
+          for (let y = 0; y < img.height; y++) {
+            for (let x = 0; x < img.width; x++) {
+              const index = (y * img.width + x) * 4;
+              // En imágenes subidas, validamos si no es blanco (r+g+b < 600) y tiene opacidad
+              const r = pixels[index], g = pixels[index+1], b = pixels[index+2], a = pixels[index+3];
+              if (a > 50 && (r + g + b < 600)) {
+                pixelesTrazo++;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+              }
+            }
+          }
+
+          const ancho = maxX - minX;
+          const alto = maxY - minY;
+
+          if (pixelesTrazo < 100 || ancho < 50 || alto < 20) {
+            MySwal.fire('Imagen No Válida', 'La imagen subida no parece contener una firma válida.', 'error');
+            return;
+          }
+
+          const firmaBase64 = e.target?.result as string;
+          setData((prev: any) => ({ ...prev, firma: firmaBase64 }));
+
+          // Auto-guardar la firma en el perfil del docente inmediatamente
+          try {
+            await api.post('/carga-no-lectiva', {
+              docenteId,
+              cicloId,
+              firma: firmaBase64,
+              estado: data.estado || 'borrador'
+            });
+          } catch (err) {
+            console.error('Error auto-saving uploaded signature:', err);
+          }
+
+          setOpenReviewSignature(false);
+          MySwal.fire('Firma cargada', 'La imagen ha sido validada y guardada en su perfil.', 'success');
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleSave = async () => {
+    // Bloquear inmediatamente para evitar doble clic
+    if (saving) return;
+
     // Validación de horas totales vs dedicación
     if (totalGeneralEntero > dedicacionTotal) {
       MySwal.fire({
@@ -140,48 +362,29 @@ export default function FormularioCargaNoLectiva({
 
     setSaving(true);
     try {
+      // Limpiar el objeto de propiedades prohibidas antes de enviar
+      const { id, cargaAcademicaId, cargaNoLectivaId, observaciones, createdAt, updatedAt, docente, ciclo, ...cleanData } = data;
+
       const payload = {
-        ...data,
+        ...cleanData,
         docenteId,
         cicloId,
-        // Al enviar, pasa a pendiente
+        // Al enviar, siempre pasa a estado PENDIENTE para revisión del coordinador
         estado: 'pendiente'
       };
 
       await api.post('/carga-no-lectiva', payload);
-      setData((prev: any) => ({ ...prev, estado: 'pendiente' }));
-
-      // Generar Reportes Automáticos
-      const reportData = {
-        ciclo: {
-          nombre: cicloData?.nombre || '2026-I',
-          fechaInicio: cicloData?.fechaInicio ? new Date(cicloData.fechaInicio).toLocaleDateString('es-PE') : '-',
-          fechaFinal: cicloData?.fechaFin ? new Date(cicloData.fechaFin).toLocaleDateString('es-PE') : '-',
-        },
-        docente: {
-          nombreCompleto: docenteData?.nombreCompleto || 'DOCENTE',
-          facultad: docenteData?.facultad || 'INGENIERÍA',
-          departamento: docenteData?.departamento || 'INGENIERÍA DE SISTEMAS',
-          condicion: docenteData?.condicion || '-',
-          categoria: docenteData?.categoria || '-',
-          modalidad: docenteData?.dedicacion || '-',
-        },
-        cargaLectiva: cargaLectivaAgrupada,
-        cargaNoLectiva: payload,
-        totalHoras: totalGeneralEntero,
-      };
+      const nuevoEstado = 'pendiente';
+      setData((prev: any) => ({ ...prev, estado: nuevoEstado }));
+      if (onStatusChange) onStatusChange(nuevoEstado);
 
       await MySwal.fire({
         icon: 'success',
         title: 'Declaración Enviada',
-        text: 'Se ha generado el Formato N° 1 automáticamente.',
-        timer: 2000,
+        text: 'Su declaración ha sido enviada correctamente al coordinador para su revisión.',
+        timer: 2500,
         showConfirmButton: false,
       });
-
-      // Descargar reportes
-      await generateFormato1PDF(reportData);
-      await generateFormato1Excel(reportData);
 
     } catch (error: any) {
       MySwal.fire({
@@ -198,6 +401,8 @@ export default function FormularioCargaNoLectiva({
     switch (estado?.toLowerCase()) {
       case 'validado':
         return { label: 'VALIDADO', color: '#16a34a', icon: <ValidatedIcon />, bg: '#f0fdf4' };
+      case 'finalizado':
+        return { label: 'FIRMADO Y FINALIZADO', color: '#003366', icon: <ValidatedIcon />, bg: '#e0f2fe' };
       case 'pendiente':
         return { label: 'PENDIENTE DE VALIDACIÓN', color: '#ca8a04', icon: <PendingIcon />, bg: '#fefce8' };
       default:
@@ -232,6 +437,17 @@ export default function FormularioCargaNoLectiva({
     }
   };
 
+  const buttonStyle = {
+    borderRadius: 2,
+    px: 3,
+    height: 48, // Altura fija para todos los botones
+    fontWeight: 800,
+    textTransform: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 1
+  };
+
   if (loading) return <CircularProgress size={24} sx={{ m: 2 }} />;
 
   const rows = [
@@ -248,7 +464,7 @@ export default function FormularioCargaNoLectiva({
 
   return (
     <Box>
-      {/* Título interno para No Lectiva con Estado integrado */}
+      {/* Título interno para No Lectiva */}
       <Box sx={{ 
         display: 'flex', 
         justifyContent: 'space-between', 
@@ -261,23 +477,6 @@ export default function FormularioCargaNoLectiva({
           <NoLectivaIcon sx={{ color: '#003366', fontSize: 24 }} />
           <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#1e293b', textTransform: 'uppercase' }}>
             2. CARGA NO LECTIVA - Declaración de Actividades
-          </Typography>
-        </Box>
-
-        {/* Badge de Estado en el lado derecho */}
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 1, 
-          bgcolor: status.bg, 
-          px: 2, 
-          py: 0.5, 
-          borderRadius: 2, 
-          border: `1px solid ${status.color}40` 
-        }}>
-          <Box sx={{ color: status.color, display: 'flex', transform: 'scale(0.8)' }}>{status.icon}</Box>
-          <Typography sx={{ fontWeight: 900, color: status.color, fontSize: '0.75rem', textTransform: 'uppercase' }}>
-            {status.label}
           </Typography>
         </Box>
       </Box>
@@ -410,71 +609,9 @@ export default function FormularioCargaNoLectiva({
         </Box>
 
       <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
-        {/* Botones de Descarga siempre visibles pero al lado de la acción principal */}
-        <Box sx={{ display: 'flex', gap: 1, mr: 'auto' }}>
-          <Button
-            size="medium"
-            variant="outlined"
-            startIcon={<PdfIcon />}
-            onClick={() => {
-              const reportData = {
-                ciclo: {
-                  nombre: cicloData?.nombre || '2026-I',
-                  fechaInicio: cicloData?.fechaInicio ? new Date(cicloData.fechaInicio).toLocaleDateString('es-PE') : '-',
-                  fechaFinal: cicloData?.fechaFin ? new Date(cicloData.fechaFin).toLocaleDateString('es-PE') : '-',
-                },
-                docente: {
-                  nombreCompleto: docenteData?.nombreCompleto || 'DOCENTE',
-                  facultad: docenteData?.facultad || 'INGENIERÍA',
-                  departamento: docenteData?.departamento || 'INGENIERÍA DE SISTEMAS',
-                  condicion: docenteData?.condicion || '-',
-                  categoria: docenteData?.categoria || '-',
-                  modalidad: docenteData?.dedicacion || '-',
-                },
-                cargaLectiva: cargaLectivaAgrupada,
-                cargaNoLectiva: data,
-                totalHoras: totalGeneralEntero,
-              };
-              generateFormato1PDF(reportData);
-            }}
-            sx={{ color: '#ef4444', borderColor: '#ef4444', fontWeight: 700, textTransform: 'none', '&:hover': { bgcolor: '#ef444410', borderColor: '#b91c1c' } }}
-          >
-            Descargar PDF
-          </Button>
-          <Button
-            size="medium"
-            variant="outlined"
-            startIcon={<ExcelIcon />}
-            onClick={() => {
-              const reportData = {
-                ciclo: {
-                  nombre: cicloData?.nombre || '2026-I',
-                  fechaInicio: cicloData?.fechaInicio ? new Date(cicloData.fechaInicio).toLocaleDateString('es-PE') : '-',
-                  fechaFinal: cicloData?.fechaFin ? new Date(cicloData.fechaFin).toLocaleDateString('es-PE') : '-',
-                },
-                docente: {
-                  nombreCompleto: docenteData?.nombreCompleto || 'DOCENTE',
-                  facultad: docenteData?.facultad || 'INGENIERÍA',
-                  departamento: docenteData?.departamento || 'INGENIERÍA DE SISTEMAS',
-                  condicion: docenteData?.condicion || '-',
-                  categoria: docenteData?.categoria || '-',
-                  modalidad: docenteData?.dedicacion || '-',
-                },
-                cargaLectiva: cargaLectivaAgrupada,
-                cargaNoLectiva: data,
-                totalHoras: totalGeneralEntero,
-              };
-              generateFormato1Excel(reportData);
-            }}
-            sx={{ color: '#16a34a', borderColor: '#16a34a', fontWeight: 700, textTransform: 'none', '&:hover': { bgcolor: '#16a34a10', borderColor: '#15803d' } }}
-          >
-            Descargar EXCEL
-          </Button>
-        </Box>
-
         {readOnly ? (
           <>
-            {data.estado !== 'validado' && (
+            {data.estado !== 'validado' && data.estado !== 'finalizado' && (
               <Button
                 variant="contained"
                 color="success"
@@ -495,36 +632,140 @@ export default function FormularioCargaNoLectiva({
                 disabled={saving}
                 sx={{ borderRadius: 2, px: 4, fontWeight: 800, textTransform: 'none' }}
               >
-                Observar / Devolver
+                {data.estado === 'finalizado' ? 'Anular Firma / Devolver' : 'Observar / Devolver'}
               </Button>
             )}
           </>
         ) : (
-          !isLocked && (
-            <Button
-              variant="contained"
-              size="large"
-              startIcon={<SaveIcon />}
-              onClick={handleSave}
-              disabled={saving}
-              sx={{ 
-                borderRadius: 2, 
-                px: 5, 
-                py: 1.5,
-                fontWeight: 900, 
-                bgcolor: '#003366', 
-                color: '#fff',
-                textTransform: 'none',
-                fontSize: '1rem',
-                boxShadow: '0 4px 12px rgba(0,51,102,0.2)',
-                '&:hover': { bgcolor: '#002244', boxShadow: '0 6px 16px rgba(0,51,102,0.3)' }
-              }}
-            >
-              {saving ? 'Enviando...' : 'Enviar Declaración'}
-            </Button>
+          !isFinalizado && (!isLocked || data.estado === 'validado') && (
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              {data.estado === 'validado' && (
+                 <Button
+                   variant="outlined"
+                   startIcon={data.firma ? <ValidatedIcon /> : <DrawIcon />}
+                   onClick={() => setOpenReviewSignature(true)}
+                   color={data.firma ? "success" : "primary"}
+                   sx={buttonStyle}
+                 >
+                   {data.firma ? "Actualizar Firma" : "Firmar Declaración"}
+                 </Button>
+               )}
+               {data.estado !== 'validado' && (
+                 <Button
+                   variant="contained"
+                   startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+                   onClick={handleSave}
+                   disabled={saving || isLocked}
+                   sx={{ 
+                     ...buttonStyle,
+                     bgcolor: '#003366', 
+                     color: '#fff',
+                     fontSize: '0.8rem',
+                     lineHeight: 1.2,
+                     boxShadow: '0 4px 12px rgba(0,51,102,0.2)',
+                     '&:hover': { bgcolor: '#002244', boxShadow: '0 6px 16px rgba(0,51,102,0.3)' }
+                   }}
+                 >
+                   {saving ? 'Enviando...' : 'Enviar Declaración'}
+                 </Button>
+               )}
+            </Box>
           )
         )}
       </Box>
+
+      {isFinalizado && !readOnly && (
+        <Box sx={{ mt: 3, p: 2, bgcolor: '#f0f9ff', border: '1px solid #00336620', borderRadius: 2, textAlign: 'center' }}>
+          <Typography variant="body2" sx={{ color: '#003366', fontWeight: 800 }}>
+            ✓ DECLARACIÓN FINALIZADA: El documento ha sido firmado digitalmente y se encuentra cerrado.
+          </Typography>
+        </Box>
+      )}
+
+      {/* Diálogo de Firma Digital */}
+      <Dialog open={openSignature} onClose={() => setOpenReviewSignature(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: '#003366', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Firma de Declaración Jurada
+          <IconButton onClick={() => setOpenReviewSignature(false)} sx={{ color: 'white' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 4, pt: 5 }}>
+              <Typography variant="body1" sx={{ color: '#475569', mb: 4, fontWeight: 500 }}>
+                Usted puede realizar su firma directamente en el recuadro o subir una imagen de su firma escaneada.
+              </Typography>
+              
+              <Box sx={{ 
+                border: '2px dashed #00336640', 
+                borderRadius: 2, 
+                bgcolor: '#f8fafc', 
+                mb: 4, 
+                position: 'relative',
+                overflow: 'hidden',
+                '& .sigCanvas': {
+                  cursor: 'url("https://cdn-icons-png.flaticon.com/32/1250/1250615.png") 0 32, crosshair',
+                }
+              }}>
+                <SignatureCanvas
+                  ref={sigCanvas}
+                  penColor="#000000"
+                  canvasProps={{ 
+                    width: 550, 
+                    height: 200, 
+                    className: 'sigCanvas',
+                  }}
+                />
+                <Box sx={{ position: 'absolute', bottom: 10, right: 10 }}>
+                  <Button 
+                    size="small" 
+                    variant="contained"
+                    startIcon={<DeleteIcon />} 
+                    onClick={() => sigCanvas.current?.clear()} 
+                    sx={{ 
+                      bgcolor: '#fee2e2', 
+                      color: '#ef4444',
+                      fontWeight: 700,
+                      '&:hover': { bgcolor: '#fecaca' },
+                      boxShadow: 'none'
+                    }}
+                  >
+                    Limpiar
+                  </Button>
+                </Box>
+              </Box>
+
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              fullWidth
+              variant="contained"
+              startIcon={<ValidatedIcon />}
+              onClick={handleSaveFirma}
+              sx={{ bgcolor: '#003366', py: 1.5, fontWeight: 700 }}
+            >
+              Confirmar Firma Dibujada
+            </Button>
+            
+            <input
+              accept="image/*"
+              style={{ display: 'none' }}
+              id="upload-firma"
+              type="file"
+              onChange={handleFileUpload}
+            />
+            <label htmlFor="upload-firma" style={{ width: '100%' }}>
+              <Button
+                fullWidth
+                component="span"
+                variant="outlined"
+                startIcon={<UploadIcon />}
+                sx={{ py: 1.5, fontWeight: 700, borderColor: '#003366', color: '#003366' }}
+              >
+                Subir Imagen de Firma
+              </Button>
+            </label>
+          </Box>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }

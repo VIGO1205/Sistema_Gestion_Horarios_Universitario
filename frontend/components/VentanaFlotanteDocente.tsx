@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Paper, Typography, Chip, Slide, IconButton, Tooltip, Button } from '@mui/material';
+import { Box, Paper, Typography, Chip, Slide, IconButton, Tooltip, Button, useMediaQuery, useTheme, LinearProgress } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import TimerIcon from '@mui/icons-material/Timer';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -9,10 +9,13 @@ import PlayIcon from '@mui/icons-material/PlayArrow';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PauseIcon from '@mui/icons-material/Pause';
+import SchoolIcon from '@mui/icons-material/School';
+import AssignmentIcon from '@mui/icons-material/Assignment';
 import api from '@/lib/api';
 import { useAuth } from './providers/AuthProvider';
 import { getVentanasSocket } from '@/lib/socket';
 import Swal from 'sweetalert2';
+import { useRouter } from 'next/navigation';
 
 const formatCountdown = (segundos: number) => {
   const total = Math.max(0, Math.floor(segundos));
@@ -24,14 +27,158 @@ const formatCountdown = (segundos: number) => {
 };
 
 export default function VentanaFlotanteDocente() {
+  const router = useRouter();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { usuario, isAuthenticated, isValidating } = useAuth();
   const [estadoSeleccion, setEstadoSeleccion] = useState<any>(null);
   const [nowMs, setNowMs] = useState(Date.now());
   const [isMinimized, setIsMinimized] = useState(false);
   const [estadoSincronizadoMs, setEstadoSincronizadoMs] = useState(Date.now());
+  const [cargaValidada, setCargaValidada] = useState(false);
+  const [progreso, setProgreso] = useState<any>(null);
+  const [modalMostrado, setModalMostrado] = useState(false);
+
+  // Estados para Draggability
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null);
 
   const docenteId = usuario?.docenteId;
   const storageKey = `ventana-flotante-minimizada:${docenteId ?? 'docente'}`;
+
+  // Manejadores de Drag
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Evitar drag si se hace clic en botones o chips
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('.MuiChip-root')) return;
+
+    setIsDragging(true);
+    setDragOffset({
+      x: e.clientX - position.x,
+      y: e.clientY - position.y
+    });
+    
+    // Evitar que el evento se propague o cause comportamientos extraños
+    e.preventDefault();
+  };
+
+  const handleDoubleClick = () => {
+    setPosition({ x: 0, y: 0 });
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging || !containerRef) return;
+      
+      // Calcular nueva posición potencial
+      let newX = e.clientX - dragOffset.x;
+      let newY = e.clientY - dragOffset.y;
+
+      // Límites de la pantalla (Constraints)
+      const rect = containerRef.getBoundingClientRect();
+      const margin = 10; // Margen de seguridad para que no choque exacto con el borde
+
+      // El elemento tiene position: fixed con right y bottom iniciales.
+      // Necesitamos calcular los límites basados en el tamaño de la ventana.
+      const windowWidth = window.innerWidth;
+      const windowHeight = window.innerHeight;
+
+      // Límites para X (horizontal)
+      // El componente inicia en la derecha. Moverlo a la izquierda es X negativo.
+      const minX = -(windowWidth - rect.width - (isMobile ? 12 : 24) - margin);
+      const maxX = (isMobile ? 12 : 24); // Permitir moverlo un poco más a la derecha del original
+
+      // Límites para Y (vertical)
+      // El componente inicia en el fondo. Moverlo hacia arriba es Y negativo.
+      const minY = -(windowHeight - rect.height - (isMobile ? 12 : 24) - margin);
+      const maxY = (isMobile ? 12 : 24); // Permitir moverlo un poco más abajo del original
+      
+      setPosition({ 
+        x: Math.max(minX, Math.min(maxX, newX)), 
+        y: Math.max(minY, Math.min(maxY, newY)) 
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      // Usar capture: true para asegurar que atrapamos el movimiento incluso sobre otros elementos
+      window.addEventListener('mousemove', handleMouseMove, { capture: true });
+      window.addEventListener('mouseup', handleMouseUp, { capture: true });
+      
+      // Desactivar puntero en el body para que no haya interferencias
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'grabbing';
+    } else {
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove, { capture: true });
+      window.removeEventListener('mouseup', handleMouseUp, { capture: true });
+    };
+  }, [isDragging, dragOffset]);
+
+  // Efecto para detectar fin de turno por tiempo
+  useEffect(() => {
+    if (estadoSeleccion?.estado === 'en_atencion' && !estadoSeleccion?.ventanaEstado?.includes('pausada')) {
+      const fin = new Date(estadoSeleccion.finAtencion).getTime();
+      if (nowMs >= fin) {
+        // El tiempo se agotó en el cliente
+        Swal.fire({
+          title: '¡Tiempo agotado!',
+          text: 'Tu ventana de registro ha finalizado. Hemos generado tus reportes con la información registrada.',
+          icon: 'warning',
+          confirmButtonText: 'Ver mis reportes',
+          allowOutsideClick: false,
+        }).then(() => {
+          router.push('/reportes');
+        });
+        setEstadoSeleccion(null); // Ocultar ventana
+      }
+    }
+  }, [nowMs, estadoSeleccion, router]);
+
+  useEffect(() => {
+    const verificarCargaCompleta = async () => {
+      if (!docenteId || estadoSeleccion?.estado !== 'en_atencion') return;
+      try {
+        const res = await api.get(`/docentes/${docenteId}/validar-carga`);
+        const { completa, progreso: p } = res.data;
+        setCargaValidada(completa);
+        setProgreso(p);
+
+        // Si se completó el 100% y no hemos mostrado el modal
+        if (completa && !modalMostrado) {
+          setModalMostrado(true);
+          setIsMinimized(false); // Expandir automáticamente
+          setPosition({ x: 0, y: 0 }); // Regresar a su lugar por defecto (esquina inferior derecha)
+          
+          Swal.fire({
+            title: '¡Carga Completada!',
+            text: 'Has registrado el 100% de tus horas (Lectivas y No Lectivas). Ya puedes finalizar tu turno.',
+            icon: 'success',
+            confirmButtonText: '¡Excelente!',
+            confirmButtonColor: '#166534',
+            timer: 5000
+          });
+        } else if (!completa) {
+          setModalMostrado(false);
+        }
+      } catch (error) {
+        console.error('Error validando carga:', error);
+      }
+    };
+    
+    const interval = setInterval(verificarCargaCompleta, 5000); // Cada 5s para mayor fluidez
+    verificarCargaCompleta();
+    return () => clearInterval(interval);
+  }, [docenteId, estadoSeleccion?.estado, modalMostrado]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -75,6 +222,23 @@ export default function VentanaFlotanteDocente() {
         const handler = (payload: any) => {
           if (!mounted) return;
           if (payload.docenteId && Number(payload.docenteId) !== Number(docenteId)) return;
+          
+          if (payload.estado === 'finalizado') {
+            setEstadoSeleccion(null);
+            if (payload.motivo === 'tiempo_expirado') {
+              Swal.fire({
+                title: '¡Tiempo agotado!',
+                text: 'Tu turno ha finalizado. Tus reportes han sido generados automáticamente.',
+                icon: 'warning',
+                confirmButtonText: 'Ver mis reportes',
+                allowOutsideClick: false
+              }).then(() => {
+                router.push('/reportes');
+              });
+            }
+            return;
+          }
+
           setEstadoSeleccion(payload);
           setEstadoSincronizadoMs(Date.now());
           console.log('[VentanaFlotante] socket update', payload);
@@ -118,20 +282,6 @@ export default function VentanaFlotanteDocente() {
     return () => clearInterval(intervalId);
   }, [estadoSeleccion?.estado]);
 
-  const handleLlamarSiguiente = async () => {
-    try {
-      await api.patch(`/ventanas/llamar-siguiente/${docenteId}`);
-      Swal.fire({
-        title: 'Siguiente docente llamado',
-        icon: 'success',
-        timer: 2000,
-        showConfirmButton: false,
-      });
-    } catch (error: any) {
-      Swal.fire('Error', error.response?.data?.message || 'No se pudo llamar al siguiente docente', 'error');
-    }
-  };
-
   const handleFinalizarTurno = async () => {
     const result = await Swal.fire({
       title: '¿Finalizar tu turno?',
@@ -148,13 +298,15 @@ export default function VentanaFlotanteDocente() {
       try {
         await api.patch(`/ventanas/finalizar-turno/${docenteId}`);
         Swal.fire({
-          title: 'Turno Finalizado',
-          text: 'Gracias por completar tu registro. Se llamará al siguiente docente.',
+          title: '¡Registro Completado!',
+          text: 'Tus reportes han sido generados correctamente. Ahora serás redirigido para revisarlos.',
           icon: 'success',
-          timer: 3000,
-          showConfirmButton: false
+          confirmButtonText: 'Ir a Reportes',
+          allowOutsideClick: false
+        }).then(() => {
+          router.push('/reportes');
         });
-        // El socket o el refresco de la página se encargará de ocultar la ventana
+        setEstadoSeleccion(null);
       } catch (error: any) {
         Swal.fire('Error', error.response?.data?.message || 'No se pudo finalizar el turno', 'error');
       }
@@ -245,25 +397,37 @@ export default function VentanaFlotanteDocente() {
   if (!view.visible) return null;
 
   return (
-    <Slide direction="left" in mountOnEnter unmountOnExit>
-      <Paper
-        elevation={0}
-        sx={{
-          position: 'fixed',
-          right: { xs: 12, md: 24 },
-          bottom: { xs: 12, md: 24 },
-          zIndex: 1400,
-          width: isMinimized ? 'auto' : { xs: 'calc(100vw - 24px)', sm: 320 },
-          maxWidth: 'calc(100vw - 24px)',
-          p: isMinimized ? 1 : 2,
-          borderRadius: isMinimized ? 999 : 4,
-          border: `2px solid ${view.border}`, // Borde un poco más grueso
-          boxShadow: '0 16px 40px rgba(15, 23, 42, 0.18)',
-          bgcolor: estadoSeleccion?.ventanaEstado === 'pausada' ? '#fff7ed' : '#ffffff', // Fondo naranja muy claro si está pausado
-          overflow: 'hidden',
-          transition: 'all 0.3s ease', // Transición suave de colores
-        }}
-      >
+    <Box
+      ref={setContainerRef}
+      onMouseDown={handleMouseDown}
+      onDoubleClick={handleDoubleClick}
+      sx={{
+        position: 'fixed',
+        right: { xs: 12, md: 24 },
+        bottom: { xs: 12, md: 24 },
+        zIndex: 1400,
+        transform: `translate(${position.x}px, ${position.y}px)`,
+        transition: isDragging ? 'none' : 'transform 0.3s ease, right 0.3s ease, bottom 0.3s ease',
+        cursor: isDragging ? 'grabbing' : 'grab',
+        touchAction: 'none',
+        pointerEvents: 'auto',
+      }}
+    >
+      <Slide direction="left" in mountOnEnter unmountOnExit>
+        <Paper
+          elevation={0}
+          sx={{
+            width: isMinimized ? 'auto' : { xs: 'calc(100vw - 24px)', sm: 320 },
+            maxWidth: 'calc(100vw - 24px)',
+            p: isMinimized ? 1 : 2.5,
+            borderRadius: isMinimized ? 999 : 5,
+            border: `2px solid ${view.border}`,
+            boxShadow: '0 16px 40px rgba(15, 23, 42, 0.18)',
+            bgcolor: estadoSeleccion?.ventanaEstado === 'pausada' ? '#fff7ed' : '#ffffff',
+            overflow: 'hidden',
+            userSelect: 'none',
+          }}
+        >
         {isMinimized ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 1, pr: 0.5 }}>
             {estadoSeleccion?.ventanaEstado === 'pausada' && (
@@ -290,7 +454,7 @@ export default function VentanaFlotanteDocente() {
           </Box>
         ) : (
           <Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 0.8 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 1 }}>
               <Box sx={{ width: 34, height: 34, borderRadius: 999, display: 'grid', placeItems: 'center', bgcolor: view.bg }}>
                 {view.icon}
               </Box>
@@ -303,16 +467,6 @@ export default function VentanaFlotanteDocente() {
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Chip
-                  label={estadoSeleccion?.estado === 'en_atencion' ? 'ACTIVO' : 'ESPERA'}
-                  size="small"
-                  sx={{
-                    fontWeight: 800,
-                    bgcolor: view.bg,
-                    color: view.accent,
-                    borderRadius: 999,
-                  }}
-                />
                 <Tooltip title="Minimizar" placement="top">
                   <IconButton size="small" onClick={toggleMinimized} sx={{ color: '#64748b' }}>
                     <ExpandLessIcon fontSize="small" />
@@ -321,20 +475,17 @@ export default function VentanaFlotanteDocente() {
               </Box>
             </Box>
 
-            <Typography variant="body2" sx={{ color: '#475569', fontWeight: 600, mb: 1.25 }}>
-              {view.subtitle}
-            </Typography>
-
             <Box
               sx={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: 1.5,
-                px: 1.25,
-                py: 0.9,
-                borderRadius: 3,
+                px: 2,
+                py: 1.2,
+                borderRadius: 4,
                 bgcolor: view.bg,
+                mb: 2,
               }}
             >
               <Typography variant="caption" sx={{ fontWeight: 900, color: '#64748b', letterSpacing: 0.8 }}>
@@ -345,25 +496,55 @@ export default function VentanaFlotanteDocente() {
               </Typography>
             </Box>
 
+            {/* Barras de Progreso */}
+            {estadoSeleccion?.estado === 'en_atencion' && progreso && (
+              <Box sx={{ mb: 2.5, px: 0.5 }}>
+                <Box sx={{ mb: 1.5 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 800, color: '#003366', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <SchoolIcon sx={{ fontSize: 14 }} /> CARGA LECTIVA
+                    </Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 900, color: '#003366' }}>
+                      {progreso.lectiva.asignadas}/{progreso.lectiva.requeridas}H ({progreso.lectiva.porcentaje}%)
+                    </Typography>
+                  </Box>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={progreso.lectiva.porcentaje} 
+                    sx={{ 
+                      height: 8, 
+                      borderRadius: 4, 
+                      bgcolor: 'rgba(0, 51, 102, 0.1)',
+                      '& .MuiLinearProgress-bar': { bgcolor: '#003366', borderRadius: 4 }
+                    }} 
+                  />
+                </Box>
+
+                <Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 800, color: '#7c3aed', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <AssignmentIcon sx={{ fontSize: 14 }} /> CARGA NO LECTIVA
+                    </Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 900, color: '#7c3aed' }}>
+                      {progreso.noLectiva.asignadas}/{progreso.noLectiva.requeridas}H ({progreso.noLectiva.porcentaje}%)
+                    </Typography>
+                  </Box>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={progreso.noLectiva.porcentaje} 
+                    sx={{ 
+                      height: 8, 
+                      borderRadius: 4, 
+                      bgcolor: 'rgba(124, 58, 237, 0.1)',
+                      '& .MuiLinearProgress-bar': { bgcolor: '#7c3aed', borderRadius: 4 }
+                    }} 
+                  />
+                </Box>
+              </Box>
+            )}
+
             {estadoSeleccion?.estado === 'en_atencion' && (
-              <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  color="success"
-                  startIcon={<PlayIcon />}
-                  onClick={handleLlamarSiguiente}
-                  disabled={estadoSeleccion?.ventanaEstado === 'pausada'}
-                  sx={{
-                    borderRadius: 3,
-                    fontWeight: 900,
-                    textTransform: 'none',
-                    fontSize: '0.8rem',
-                    boxShadow: '0 4px 12px rgba(46, 125, 50, 0.2)',
-                  }}
-                >
-                  Siguiente
-                </Button>
+              <Box>
                 <Button
                   fullWidth
                   variant="contained"
@@ -371,22 +552,38 @@ export default function VentanaFlotanteDocente() {
                   onClick={handleFinalizarTurno}
                   disabled={estadoSeleccion?.ventanaEstado === 'pausada'}
                   sx={{
-                    borderRadius: 3,
+                    borderRadius: 4,
                     fontWeight: 900,
-                    bgcolor: '#166534',
-                    '&:hover': { bgcolor: '#14532d' },
+                    bgcolor: cargaValidada ? '#166534' : '#64748b',
+                    color: '#fff',
+                    '&:hover': { bgcolor: cargaValidada ? '#14532d' : '#475569' },
                     textTransform: 'none',
-                    fontSize: '0.8rem',
-                    boxShadow: '0 4px 12px rgba(22, 101, 52, 0.2)',
+                    fontSize: '0.9rem',
+                    py: 1.2,
+                    boxShadow: cargaValidada ? '0 0 0 4px rgba(22, 101, 52, 0.2)' : 'none',
+                    border: cargaValidada ? '2px solid #ffffff' : 'none',
+                    animation: cargaValidada ? 'pulse-border 2s infinite' : 'none',
+                    '@keyframes pulse-border': {
+                      '0%': { boxShadow: '0 0 0 0px rgba(22, 101, 52, 0.4)' },
+                      '70%': { boxShadow: '0 0 0 10px rgba(22, 101, 52, 0)' },
+                      '100%': { boxShadow: '0 0 0 0px rgba(22, 101, 52, 0)' },
+                    },
+                    transition: 'all 0.3s ease'
                   }}
                 >
-                  Finalizar
+                  {cargaValidada ? '¡LISTO! FINALIZAR REGISTRO' : 'FINALIZAR REGISTRO'}
                 </Button>
+                {!cargaValidada && (
+                  <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 1, color: '#64748b', fontWeight: 600 }}>
+                    Completa tus horas para habilitar este botón
+                  </Typography>
+                )}
               </Box>
             )}
           </Box>
         )}
       </Paper>
     </Slide>
-  );
+  </Box>
+);
 }
