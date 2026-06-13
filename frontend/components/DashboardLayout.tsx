@@ -312,18 +312,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       transition: 'all 0.3s'
     }}>
       <Box sx={{ 
-        width: open ? 60 : 45, 
-        height: open ? 60 : 45, 
-        bgcolor: 'rgba(255,255,255,0.1)', 
+        width: open ? 70 : 50, 
+        height: open ? 70 : 50, 
+        bgcolor: 'white', 
         borderRadius: '20%', 
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'center',
         border: '1px solid rgba(255,215,0,0.3)',
         boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
-        transition: 'all 0.3s'
+        transition: 'all 0.3s',
+        overflow: 'hidden'
       }}>
-        <SchoolIcon sx={{ color: '#FFD700', fontSize: open ? 35 : 28 }} />
+        <img 
+          src="/img/logo-UNT.png" 
+          alt="Logo UNT" 
+          style={{ height: '85%', width: 'auto', objectFit: 'contain' }}
+        />
       </Box>
       {open && (
         <Box sx={{ textAlign: 'center', mt: 1 }}>
@@ -352,7 +357,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const esDocente = usuario?.rol === 'docente';
 
   return (
-    <HorusChatProvider sidebarOpen={open} isMobile={isMobile} enabled={true}>
+    <HorusChatProvider sidebarOpen={open} isMobile={isMobile} enabled={esDocente}>
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f4f7f9' }}>
       {/* Header / AppBar */}
       <AppBar
@@ -384,7 +389,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </IconButton>
             {isMobile && (
               <>
-                <SchoolIcon sx={{ color: '#003366', mr: 1, fontSize: 32 }} />
+                <img 
+                  src="/img/logo-UNT.png" 
+                  alt="Logo UNT" 
+                  style={{ height: 45, width: 'auto', objectFit: 'contain', marginRight: 8 }}
+                />
                 <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 700, color: '#003366' }}>
                   SGH - UNT
                 </Typography>
@@ -620,9 +629,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </List>
           </Box>
 
-          <Box sx={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-            <HorusChatSidebar />
-          </Box>
+          {esDocente && (
+            <Box sx={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+              <HorusChatSidebar />
+            </Box>
+          )}
 
           {open && (
             <Box sx={{ p: 2, pt: 1, textAlign: 'center', flexShrink: 0 }}>
@@ -648,7 +659,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           mt: 8,
         }}
       >
-        <HorusChatFloating />
+        {esDocente && <HorusChatFloating />}
         <VentanaFlotanteDocente />
         {isNavigating ? <LoadingSpinner /> : children}
       </Box>

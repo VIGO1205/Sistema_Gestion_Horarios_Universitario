@@ -28,6 +28,9 @@ export class Curso {
   @Column({ type: 'varchar', length: 20 })
   cicloAcademico: string;
 
+  @Column({ type: 'varchar', length: 100, default: 'General' })
+  departamento: string;
+
   @Column({ name: 'carrera_id', type: 'integer', nullable: true })
   carreraId: number;
 

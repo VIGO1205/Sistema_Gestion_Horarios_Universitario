@@ -51,14 +51,11 @@ const MySwal = withReactContent(Swal);
 // Función auxiliar para formatear fecha sin problemas de zona horaria
 const formatDateDisplay = (dateStr: string) => {
   if (!dateStr) return '-';
-  // parseISO interpreta YYYY-MM-DD como el inicio del día local si no hay Z
-  // Pero para estar seguros y evitar desfases, podemos parsear manualmente o añadir el offset
   const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
   const date = new Date(year, month - 1, day);
   return format(date, 'dd/MM/yyyy', { locale: es });
 };
 
-// Función para preparar fecha para el input type="date"
 const formatDateInput = (dateStr: string) => {
   if (!dateStr) return '';
   return dateStr.split('T')[0];

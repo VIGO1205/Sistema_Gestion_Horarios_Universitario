@@ -45,7 +45,7 @@ export default function LoginPage() {
     if (e) {
       e.preventDefault();
     }
-    
+
     setError('');
     setErrorType('');
 
@@ -73,7 +73,7 @@ export default function LoginPage() {
       const { access_token, usuario } = response.data;
 
       login(access_token, usuario);
-      
+
       // Marcar para mostrar bienvenida en el dashboard
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('showWelcome', 'true');
@@ -83,7 +83,7 @@ export default function LoginPage() {
     } catch (err: any) {
       setLoading(false);
       const message = err.response?.data?.message;
-      
+
       if (err.response?.status === 401) {
         if (message === 'Credenciales Inválidas') {
           setError('Credenciales Inválidas');
@@ -125,18 +125,17 @@ export default function LoginPage() {
         height: '100vh',
         width: '100vw',
         display: 'flex',
-        background: 'white',
         position: 'fixed',
         top: 0,
         left: 0,
         overflow: 'hidden',
-        flexDirection: { xs: 'column', md: 'row' }
+        flexDirection: { xs: 'column', md: 'row' },
       }}
     >
       {/* Lado Izquierdo: Formulario */}
       <Box
         sx={{
-          flex: { xs: '1 1 auto', md: '1 1 50% ' },
+          flex: { xs: '1 1 100%', md: '1 1 50%' },
           p: { xs: 4, md: 10, lg: 15 },
           display: 'flex',
           flexDirection: 'column',
@@ -144,13 +143,16 @@ export default function LoginPage() {
           alignItems: 'center',
           height: '100%',
           bgcolor: 'white',
-          zIndex: 2,
         }}
       >
         <Box sx={{ maxWidth: 450, width: '100%' }}>
           <Box sx={{ mb: 6, textAlign: 'left' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1.5 }}>
-              <SchoolIcon sx={{ fontSize: 50, color: '#003366' }} />
+              <img
+                src="/img/logo-UNT.png"
+                alt="Logo UNT"
+                style={{ height: 70, width: 'auto', objectFit: 'contain' }}
+              />
               <Typography variant="h2" fontWeight="900" color="#003366" sx={{ letterSpacing: -2 }}>
                 SGH - UNT
               </Typography>
@@ -168,11 +170,11 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={handleKeyDown}
-              variant="outlined"
-              placeholder="ejemplo@unt.edu.pe"
-              autoComplete="username"
-              error={errorType === 'email' || errorType === 'general'}
+                onKeyDown={handleKeyDown}
+                variant="outlined"
+                placeholder="ejemplo@unt.edu.pe"
+                autoComplete="username"
+                error={errorType === 'email' || errorType === 'general'}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -277,37 +279,40 @@ export default function LoginPage() {
           justifyContent: 'center',
           alignItems: 'center',
           position: 'relative',
-          background: 'linear-gradient(rgba(0, 51, 102, 0.8), rgba(0, 51, 102, 0.9)), url("https://www.unitru.edu.pe/Recursos/img/slider/slider1.jpg")',
+          backgroundImage: `url(/img/Fondo-UNT.jpg)`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
           p: 8,
           color: 'white',
-          textAlign: 'center'
-        }}
-      >
-        <Box
-          sx={{
+          textAlign: 'center',
+          '&::before': {
+            content: '""',
             position: 'absolute',
             top: 0,
             left: 0,
             width: '100%',
             height: '100%',
-            backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(255, 215, 0, 0.08) 0%, transparent 80%)',
-            pointerEvents: 'none',
-          }}
-        />
-        
-        <Box sx={{ zIndex: 1, maxWidth: 600 }}>
-          <SchoolIcon sx={{ fontSize: 100, color: '#FFD700', mb: 4 }} />
+            background: 'rgba(0, 0, 0, 0.6)',
+            zIndex: 1
+          }
+        }}
+      >
+        <Box sx={{ zIndex: 2, maxWidth: 600 }}>
+          <img
+            src="/img/logo-UNT.png"
+            alt="Logo UNT"
+            style={{ height: 140, width: 'auto', objectFit: 'contain', marginBottom: 24 }}
+          />
           <Typography variant="h2" fontWeight="900" sx={{ mb: 3, letterSpacing: -2, lineHeight: 1 }}>
             Excelencia Académica
           </Typography>
           <Typography variant="h5" sx={{ mb: 6, fontWeight: 300, opacity: 0.9, lineHeight: 1.6, maxWidth: 500, mx: 'auto' }}>
             Plataforma oficial para la gestión y organización de horarios académicos de la Universidad Nacional de Trujillo.
           </Typography>
-          
+
           <Divider sx={{ bgcolor: 'rgba(255,215,0,0.4)', width: '80px', mx: 'auto', mb: 6, height: '4px', borderRadius: 0 }} />
-          
+
           <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: 'rgba(255,255,255,0.1)', px: 3, py: 1.5, borderRadius: 0, border: '1px solid rgba(255,255,255,0.2)' }}>
               <LoginIcon sx={{ fontSize: 20, color: '#FFD700' }} />

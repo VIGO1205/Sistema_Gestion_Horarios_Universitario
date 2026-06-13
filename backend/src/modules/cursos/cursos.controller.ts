@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage, memoryStorage } from 'multer';
 import { CursosService } from './cursos.service';
 import { CreateCursoDto } from './dto/create-curso.dto';
 import { UpdateCursoDto } from './dto/update-curso.dto';
@@ -22,7 +23,7 @@ export class CursosController {
 
   @Post('importar-ia')
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   async importFromIA(
     @UploadedFile() file: Express.Multer.File,
     @Body('carreraId') carreraId: string,
@@ -38,8 +39,14 @@ export class CursosController {
 
   @Get()
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR, RolUsuario.DOCENTE)
-  findAll(@Query('ciclo') ciclo?: string, @Query('carreraId') carreraId?: string) {
-    return this.cursosService.findAll(carreraId ? +carreraId : undefined, ciclo);
+  findAll(@Query('ciclo') ciclo?: string, @Query('carreraId') carreraId?: string, @Query('departamento') departamento?: string) {
+    return this.cursosService.findAll(carreraId ? +carreraId : undefined, ciclo, departamento);
+  }
+
+  @Get('departamentos')
+  @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR, RolUsuario.DOCENTE)
+  findDepartamentos() {
+    return this.cursosService.findUniqueDepartamentos();
   }
 
   @Get(':id')

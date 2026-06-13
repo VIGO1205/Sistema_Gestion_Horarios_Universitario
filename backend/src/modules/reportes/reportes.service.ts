@@ -256,13 +256,9 @@ export class ReportesService {
 
     const formatDatePDF = (date: any) => {
       if (!date) return '-';
-      const d = new Date(date);
-      // Para columnas tipo 'date' en Postgres, TypeORM devuelve objetos Date en medianoche UTC
-      // Usamos los métodos UTC para evitar desfases de zona horaria local del servidor
-      const day = String(d.getUTCDate()).padStart(2, '0');
-      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-      const year = d.getUTCFullYear();
-      return `${day}/${month}/${year}`;
+      const dateStr = String(date);
+      const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
+      return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
     };
 
     const fechaInicioStr = formatDatePDF(reporte.ciclo.fechaInicio);
@@ -844,17 +840,16 @@ export class ReportesService {
     
     const formatDate = (date: any) => {
       if (!date) return '-';
-      const d = new Date(date);
-      const day = String(d.getUTCDate()).padStart(2, '0');
-      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-      const year = d.getUTCFullYear();
-      return `${day}/${month}/${year}`;
+      // Parsear la fecha como string para evitar desfase UTC
+      const dateStr = String(date);
+      const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
+      return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
     };
 
     const fechaInicio = formatDate(ciclo?.fechaInicio);
     const fechaFin = formatDate(ciclo?.fechaFin);
     
-    const headerRow3 = `AÑO ACADEMICO: ${anio}   SEMESTRE: ${semestre}     Fecha de Inicio: ${fechaInicio}   Fecha de término: ${fechaFin}`;
+    const headerRow3 = `AÑO ACADEMICO: ${anio}   SEMESTRE: ${semestre}     INICIO: ${fechaInicio}   -   TÉRMINO: ${fechaFin}`;
     doc.text(headerRow3, pageWidth / 2, currentY + 5, { align: 'center' });
 
     currentY += 8;

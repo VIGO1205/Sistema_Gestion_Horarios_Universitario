@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   title: 'Sistema de Gestión de Horarios - UNT',
   description: 'Escuela de Ingeniería de Sistemas - Universidad Nacional de Trujillo',
   icons: {
-    icon: '/favicon.svg',
+    icon: '/img/logo-UNT.png',
   },
 };
 

@@ -65,7 +65,8 @@ import Swal from 'sweetalert2';
 
 // Tipos de reportes
 const REPORTES_OPERACIONALES = [
-  { id: 'horario_docente', nombre: 'Horario por Docente', icon: <PersonIcon />, desc: 'Detalle semanal de carga horaria por cada docente.' },
+  { id: 'horario_docente_lectiva', nombre: 'Horario por Docente - Carga Lectiva', icon: <PersonIcon />, desc: 'Detalle semanal de carga horaria lectiva por cada docente.' },
+  { id: 'horario_docente_no_lectiva', nombre: 'Horario por Docente - Carga No Lectiva', icon: <PersonIcon />, desc: 'Detalle semanal de carga horaria no lectiva por cada docente.' },
   { id: 'horario_aula', nombre: 'Uso de Ambientes', icon: <RoomIcon />, desc: 'Ocupación de aulas y laboratorios por bloque horario.' },
   { id: 'horario_carrera', nombre: 'Horario por Carrera', icon: <SchoolIcon />, desc: 'Programación completa de cursos por carrera y ciclo.' },
   { id: 'disponibilidad_docente', nombre: 'Disponibilidad Docente', icon: <HistoryIcon />, desc: 'Resumen de horas libres y asignadas por docente.' },
@@ -285,8 +286,7 @@ export default function ReportesPage() {
         setCarreras(carrerasRes.data || []);
         setAmbientes(ambientesRes.data || []);
         
-        // Buscar el ciclo actual (por propiedad 'actual' o por nombre que contenga '2026')
-        const actual = listaCiclos.find((c: any) => c.actual) || 
+        const actual = listaCiclos.find((c: any) => c.esActual) || 
                        listaCiclos.find((c: any) => c.nombre?.includes('2026'));
         const carreraDefault = getCarreraIngenieriaSistemas(carrerasRes.data || []);
         
@@ -345,7 +345,7 @@ export default function ReportesPage() {
   const generatePDF = async (reporteId: string) => {
     setLoading(true);
     try {
-      const doc = reporteId === 'horario_docente'
+      const doc = (reporteId === 'horario_docente_lectiva' || reporteId === 'horario_docente_no_lectiva')
         ? new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' }) as any
         : new jsPDF() as any;
 
@@ -382,7 +382,7 @@ export default function ReportesPage() {
       const reporte = [...REPORTES_OPERACIONALES, ...REPORTES_GESTION].find(r => r.id === reporteId);
 
       // --- CABECERA AZUL INSTITUCIONAL (Para todos los reportes) ---
-      const isLandscape = reporteId === 'horario_docente';
+      const isLandscape = (reporteId === 'horario_docente_lectiva' || reporteId === 'horario_docente_no_lectiva');
       const pageWidth = doc.internal.pageSize.getWidth();
       const headerHeight = isLandscape ? 30 : 40; // Altura reducida para el reporte de docente
       
@@ -396,7 +396,7 @@ export default function ReportesPage() {
       doc.setFontSize(isLandscape ? 11 : 14);
       doc.text('Sistema de Gestión de Horarios Académicos', pageWidth / 2, headerHeight * 0.75, { align: 'center' });
       
-      if (reporteId !== 'horario_docente') {
+      if (reporteId !== 'horario_docente_lectiva' && reporteId !== 'horario_docente_no_lectiva') {
         doc.setTextColor(50, 50, 50);
         doc.setFontSize(16);
         doc.text(reporte?.nombre.toUpperCase() || 'REPORTE', 20, headerHeight + 15);
@@ -439,7 +439,7 @@ export default function ReportesPage() {
             )
           : horariosBase;
 
-      if (reporteId === 'horario_docente') {
+      if (reporteId === 'horario_docente_lectiva') {
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 5;
@@ -473,8 +473,17 @@ export default function ReportesPage() {
         const bottomGridY = topBoxY + topBoxHeight + 5;
 
         const cicloActual = ciclos.find((c: any) => String(c.id) === String(filtros.cicloId));
-        const cicloInicio = cicloActual?.fechaInicio ? new Date(cicloActual.fechaInicio).toLocaleDateString('es-PE') : 'NO REGISTRADO';
-        const cicloFin = cicloActual?.fechaFin ? new Date(cicloActual.fechaFin).toLocaleDateString('es-PE') : 'NO REGISTRADO';
+        
+        // Función para formatear fecha sin desfase horario
+        const formatDateWithoutTZ = (dateStr: any) => {
+          if (!dateStr) return 'NO REGISTRADO';
+          const [year, month, day] = String(dateStr).split('T')[0].split('-').map(Number);
+          const date = new Date(year, month - 1, day);
+          return date.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        };
+        
+        const cicloInicio = formatDateWithoutTZ(cicloActual?.fechaInicio);
+        const cicloFin = formatDateWithoutTZ(cicloActual?.fechaFin);
         const cicloPartes = String(cicloNombre).split('-');
         const anioAcademicoDefault = cicloPartes[0] || cicloNombre;
         const semestreDefault = cicloPartes[1] || 'I';
@@ -535,9 +544,12 @@ export default function ReportesPage() {
         ];
 
         const asignacionesMap = new Map<string, any>();
-        horarios.forEach((h: any) => {
+        const horariosValidos = horarios.filter((h: any) => h.curso && h.curso.nombre);
+        
+        horariosValidos.forEach((h: any) => {
           const docenteNombre = h.docente?.nombreCompleto || 'DOCENTE SIN NOMBRE';
-          const cursoNombre = h.curso?.nombre || 'N/A';
+          const cursoNombre = h.curso.nombre.trim();
+          const departamento = h.curso?.departamento || 'General';
           const key = `${docenteNombre}__${cursoNombre}`;
           const horas = Math.max(
             parseInt(h.horaFin?.substring(0, 2) || '0', 10) - parseInt(h.horaInicio?.substring(0, 2) || '0', 10),
@@ -549,13 +561,13 @@ export default function ReportesPage() {
               key,
               docente: docenteNombre,
               curso: cursoNombre,
+              departamento: departamento,
               ciclos: new Set<string>(),
               teoria: 0,
               practica: 0,
               laboratorio: 0,
-              labGroups: new Set<number>(), // Para contar grupos únicos
+              labGroups: new Set<number>(),
               total: 0,
-              departamento: carreraSeleccionada?.nombre || 'Ing. de Sistemas',
               horarios: [],
             });
           }
@@ -574,7 +586,16 @@ export default function ReportesPage() {
         });
 
         const asignaciones = Array.from(asignacionesMap.values())
-          .sort((a: any, b: any) => a.docente.localeCompare(b.docente) || a.curso.localeCompare(b.curso))
+          .sort((a: any, b: any) => {
+            // Primero ordenar por Departamento alfabético
+            const depCompare = a.departamento.localeCompare(b.departamento);
+            if (depCompare !== 0) return depCompare;
+            // Luego por Profesor
+            const docCompare = a.docente.localeCompare(b.docente);
+            if (docCompare !== 0) return docCompare;
+            // Por último por Asignatura
+            return a.curso.localeCompare(b.curso);
+          })
           .map((item: any, index: number) => {
             const numGrupos = item.labGroups.size;
             return {
@@ -634,10 +655,21 @@ export default function ReportesPage() {
         doc.setTextColor(AZUL_UNT[0], AZUL_UNT[1], AZUL_UNT[2]);
         doc.text(semestre, margin + 75, topBoxY + 32);
 
+        doc.setFontSize(9);
         doc.setTextColor(0, 0, 0);
-        doc.setFontSize(7);
-        doc.text(`Inicio: ${cicloInicio}`, margin + 15, topBoxY + 45, { align: 'left' });
-        doc.text(`Término: ${cicloFin}`, margin + 15, topBoxY + 52, { align: 'left' });
+        doc.text('INICIO:', margin + 15, topBoxY + 45, { align: 'left' });
+        
+        doc.setTextColor(AZUL_UNT[0], AZUL_UNT[1], AZUL_UNT[2]);
+        const anchoInicio = (doc as any).getTextWidth('INICIO:');
+        doc.text(cicloInicio, margin + 15 + anchoInicio + 1, topBoxY + 45, { align: 'left' });
+        
+        doc.setTextColor(0, 0, 0);
+        const anchoFechaInicio = (doc as any).getTextWidth(cicloInicio);
+        doc.text('   -   TÉRMINO:', margin + 15 + anchoInicio + anchoFechaInicio + 2, topBoxY + 45, { align: 'left' });
+        
+        doc.setTextColor(AZUL_UNT[0], AZUL_UNT[1], AZUL_UNT[2]);
+        const anchoTermino = (doc as any).getTextWidth('   -   TÉRMINO:');
+        doc.text(cicloFin, margin + 15 + anchoInicio + anchoFechaInicio + anchoTermino + 3, topBoxY + 45, { align: 'left' });
 
         autoTable(doc, {
           startY: topBoxY,
@@ -744,7 +776,7 @@ export default function ReportesPage() {
           const occupied = new Set<string>();
           const blockBySlot = new Map<string, any>();
 
-          horarios.forEach((h: any) => {
+          horariosValidos.forEach((h: any) => {
             const docenteNombre = h.docente?.nombreCompleto || 'DOCENTE SIN NOMBRE';
             const cursoNombre = h.curso?.nombre || 'N/A';
             const key = `${docenteNombre}__${cursoNombre}`;
@@ -838,26 +870,251 @@ export default function ReportesPage() {
         doc.save(`${reporteId}_${cicloNombre}.pdf`);
         setLoading(false);
         return;
+      } else if (reporteId === 'horario_docente_no_lectiva') {
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = 5;
+        
+        // Filtrar solo horarios no lectivos
+        const horariosNoLectivos = horarios.filter((h: any) => h.tipoClase === 'no_lectiva');
+        
+        // --- CASO SIN DATOS ELEGANTE ---
+        if (horariosNoLectivos.length === 0) {
+          doc.setTextColor(100, 116, 139);
+          doc.setFontSize(14);
+          doc.setFont('helvetica', 'bold');
+          doc.text('REPORTE DE CARGA NO LECTIVA', pageWidth / 2, headerHeight + 30, { align: 'center' });
+          
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'normal');
+          doc.text('No se encontraron cargas no lectivas programadas para los filtros seleccionados.', pageWidth / 2, headerHeight + 45, { align: 'center' });
+          doc.text('Por favor, verifique el Periodo Académico, Carrera o Docente e intente nuevamente.', pageWidth / 2, headerHeight + 52, { align: 'center' });
+          
+          doc.setDrawColor(226, 232, 240);
+          doc.line(margin * 4, headerHeight + 65, pageWidth - margin * 4, headerHeight + 65);
+          
+          doc.save(`${reporteId}_${cicloNombre}.pdf`);
+          setLoading(false);
+          return;
+        }
+
+        // --- CASO CON DATOS ---
+        const headerH = 30;
+        let currentY = headerH + 10;
+        
+        // --- OBTENER DATOS DEL CICLO ---
+        const cicloActual = ciclos.find((c: any) => String(c.id) === String(filtros.cicloId));
+        const formatDateWithoutTZ = (dateStr: any) => {
+          if (!dateStr) return 'NO REGISTRADO';
+          const [year, month, day] = String(dateStr).split('T')[0].split('-').map(Number);
+          const date = new Date(year, month - 1, day);
+          return date.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        };
+        const cicloInicio = formatDateWithoutTZ(cicloActual?.fechaInicio);
+        const cicloFin = formatDateWithoutTZ(cicloActual?.fechaFin);
+        const escuela = (carreraSeleccionada?.nombre || 'INGENIERIA DE SISTEMAS').toUpperCase();
+
+        // --- TÍTULO PRINCIPAL ---
+        doc.setTextColor(AZUL_UNT[0], AZUL_UNT[1], AZUL_UNT[2]);
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('REPORTE DE CARGA NO LECTIVA', pageWidth / 2, currentY, { align: 'center' });
+        currentY += 8;
+
+        // --- DATOS DEL REPORTE (INICIO, FIN, CARRERA) ---
+        doc.setFontSize(9);
+        doc.setTextColor(0, 0, 0);
+        const infoTexto = `Periodo Académico: ${cicloNombre}  |  Inicio: ${cicloInicio}  |  Término: ${cicloFin}  |  Carrera: ${escuela}`;
+        doc.text(infoTexto, pageWidth / 2, currentY, { align: 'center' });
+        currentY += 10;
+
+        doc.setDrawColor(200, 200, 200);
+        doc.line(margin, currentY, pageWidth - margin, currentY);
+        currentY += 10;
+
+        // --- AGRUPAR HORARIOS POR DOCENTE Y ACTIVIDAD ---
+        // Lista de todas las actividades posibles
+        const TODAS_ACTIVIDADES = [
+          'PREPARACIÓN Y EVALUACIÓN',
+          'TUTORÍA Y ORIENTACIÓN',
+          'INVESTIGACIÓN',
+          'CAPACITACIÓN',
+          'GOBIERNO UNIVERSITARIO',
+          'ADMINISTRACIÓN ACADÉMICA',
+          'ASESORÍA A ESTUDIANTES',
+          'RESPONSABILIDAD SOCIAL',
+          'COMITÉS TÉCNICOS'
+        ];
+
+        const docentesMap = new Map<string, any>();
+        horariosNoLectivos.forEach((h: any) => {
+          const docenteId = String(h.docente?.id || 'sin-docente');
+          const docenteNombre = h.docente?.nombreCompleto || 'DOCENTE SIN NOMBRE';
+          // Obtener actividad y asegurarse de que sea un string
+          let actividad: string;
+          if (typeof h.actividadNoLectiva === 'string') {
+            actividad = h.actividadNoLectiva;
+          } else if (h.actividadNoLectiva && typeof h.actividadNoLectiva === 'object') {
+            // Si es un objeto, buscar una propiedad que tenga el nombre
+            actividad = (h.actividadNoLectiva as any).nombre || (h.actividadNoLectiva as any).name || JSON.stringify(h.actividadNoLectiva);
+          } else {
+            actividad = 'ACTIVIDAD NO DEFINIDA';
+          }
+          const horas = Math.max(parseInt(h.horaFin?.substring(0, 2) || '0', 10) - parseInt(h.horaInicio?.substring(0, 2) || '0', 10), 1);
+
+          if (!docentesMap.has(docenteId)) {
+            docentesMap.set(docenteId, {
+              nombre: docenteNombre,
+              actividades: new Map<string, any>(),
+              totalHoras: 0
+            });
+          }
+          
+          const docenteData = docentesMap.get(docenteId);
+          const keyActividad = actividad;
+          
+          if (!docenteData.actividades.has(keyActividad)) {
+            docenteData.actividades.set(keyActividad, {
+              nombre: actividad,
+              dias: new Set<string>(),
+              horarios: [],
+              aulas: new Set<string>(),
+              totalHoras: 0
+            });
+          }
+          
+          const actividadData = docenteData.actividades.get(keyActividad);
+          actividadData.dias.add(DIAS_MAP[h.diaSemana] || 'DÍA');
+          actividadData.horarios.push(`${h.horaInicio.substring(0,5)}-${h.horaFin.substring(0,5)}`);
+          actividadData.aulas.add(h.aula?.nombre || 'SIN AULA');
+          actividadData.totalHoras += horas;
+          docenteData.totalHoras += horas;
+        });
+
+        // --- ORDENAR DOCENTES ---
+        const docentesOrdenados = Array.from(docentesMap.values()).sort((a: any, b: any) => 
+          a.nombre.localeCompare(b.nombre)
+        );
+
+        // --- GENERAR TABLA PARA CADA DOCENTE ---
+        let numDocente = 1;
+        
+        for (const docente of docentesOrdenados) {
+          // --- TÍTULO DEL DOCENTE ---
+          doc.setTextColor(AZUL_UNT[0], AZUL_UNT[1], AZUL_UNT[2]);
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`${numDocente}. DOCENTE: ${docente.nombre.toUpperCase()}`, margin, currentY);
+          currentY += 8;
+
+          // --- PREPARAR DATOS DE LA TABLA (todas las actividades, primero las que tienen datos) ---
+          const actividadesExistentes = new Set(docente.actividades.keys());
+          
+          const actividadesFinales: any[] = [];
+          
+          // 1. Agregar actividades existentes (ordenadas)
+          const existentesOrdenadas = Array.from(docente.actividades.values()).sort((a: any, b: any) => 
+            a.nombre.localeCompare(b.nombre)
+          );
+          actividadesFinales.push(...existentesOrdenadas);
+          
+          // 2. Agregar actividades vacías (que no están en el map)
+          for (const actNombre of TODAS_ACTIVIDADES) {
+            if (!actividadesExistentes.has(actNombre)) {
+              actividadesFinales.push({
+                nombre: actNombre,
+                dias: new Set(),
+                horarios: [],
+                aulas: new Set(),
+                totalHoras: 0
+              });
+            }
+          }
+          
+          const tableData = actividadesFinales.map((actividad: any, index: number) => [
+            index + 1,
+            actividad.nombre,
+            Array.from(actividad.dias).join(', '),
+            Array.from(actividad.horarios).join(', '),
+            Array.from(actividad.aulas).join(', '),
+            actividad.totalHoras
+          ]);
+
+          // Agregar fila TOTAL HORAS
+          tableData.push([
+            '',
+            'TOTAL HORAS',
+            '',
+            '',
+            '',
+            docente.totalHoras
+          ]);
+
+          // --- DIBUJAR TABLA ---
+          (autoTable as any)(doc, {
+            startY: currentY,
+            margin: { left: margin, right: margin, top: margin, bottom: 10 },
+            head: [['N°', 'CARGA NO LECTIVA', 'DÍA(S)', 'HORARIO', 'AULA', 'HORAS']],
+            body: tableData,
+            theme: 'grid',
+            headStyles: {
+              fillColor: AZUL_UNT,
+              textColor: 255,
+              fontSize: 8,
+              fontStyle: 'bold',
+              halign: 'center'
+            },
+            bodyStyles: {
+              fontSize: 7,
+              cellPadding: 2
+            },
+            columnStyles: {
+              0: { cellWidth: 8, halign: 'center' },
+              1: { cellWidth: 'auto', halign: 'left' },
+              2: { cellWidth: 35, halign: 'center' },
+              3: { cellWidth: 30, halign: 'center' },
+              4: { cellWidth: 25, halign: 'center' },
+              5: { cellWidth: 15, halign: 'center' }
+            },
+            didParseCell: (data: any) => {
+              // Estilo para la fila TOTAL HORAS
+              if (data.section === 'body' && data.row.index === tableData.length - 1) {
+                data.cell.styles.fontStyle = 'bold';
+                data.cell.styles.fillColor = [230, 230, 230];
+              }
+            }
+          });
+
+          currentY = (doc as any).lastAutoTable.finalY + 12;
+          numDocente++;
+
+          // --- NUEVA PÁGINA SI ES NECESARIO ---
+          if (currentY > pageHeight - 20) {
+            doc.addPage();
+            currentY = 15;
+          }
+        }
+
+        // --- PIE DE PÁGINA ---
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          try { doc.setFont('Trebuchet'); } catch (e) {}
+          doc.setFontSize(8);
+          doc.setTextColor(150, 150, 150);
+          doc.text(`Página ${i} de ${pageCount} - Generado por el Sistema de Horarios UNT`, pageWidth / 2, pageHeight - 5, { align: 'center' });
+        }
+
+        doc.save(`${reporteId}_${cicloNombre}.pdf`);
+        setLoading(false);
+        return;
       }
 
       // Estructura según el reporte
       let tableData = [];
       let tableHeaders = [];
 
-      if (reporteId === 'horario_docente') {
-        tableHeaders = [['DOCENTE', 'CURSO', 'DÍA', 'HORARIO', 'AULA', 'GRUPO']];
-        tableData = horarios.map((h: any) => [
-          h.docente?.nombreCompleto || 'N/A',
-          h.curso?.nombre || 'N/A',
-          DIAS_MAP[h.diaSemana] || h.dia || 'N/A',
-          `${h.horaInicio?.substring(0, 5)} - ${h.horaFin?.substring(0, 5)}`,
-          h.aula?.nombre || 'N/A',
-          h.grupo?.numeroGrupo ? `G${h.grupo.numeroGrupo}` : '-'
-        ]);
-        if (tableData.length === 0) {
-          tableData = [['-', 'No se encontraron horarios programados para el docente o ciclo seleccionado.', '-', '-', '-', '-']];
-        }
-      } else if (reporteId === 'horario_aula') {
+      if (reporteId === 'horario_aula') {
         tableHeaders = [['AULA', 'TIPO', 'CURSO', 'DOCENTE', 'DÍA', 'HORARIO']];
         tableData = horarios.map((h: any) => [
           h.aula?.nombre || 'N/A',
@@ -1030,26 +1287,457 @@ export default function ReportesPage() {
       let headers: string[] = [];
       let rows: any[] = [];
 
-      if (reporteId === 'horario_docente') {
-        headers = ['PROFESOR', 'ASIGNATURA', 'T', 'P', 'L', 'G', 'T. HORAS', 'DEPARTAMENTO'];
-        
-        const asignacionesMap = new Map<string, any>();
-        horarios.forEach((h: any) => {
-          const key = `${h.docente?.nombreCompleto}__${h.curso?.nombre}`;
-          const horas = Math.max(parseInt(h.horaFin?.substring(0, 2)) - parseInt(h.horaInicio?.substring(0, 2)), 1);
-          if (!asignacionesMap.has(key)) {
-            asignacionesMap.set(key, { docente: h.docente?.nombreCompleto, curso: h.curso?.nombre, t: 0, p: 0, l: 0, g: new Set(), total: 0, dep: carreraSeleccionada?.nombre || 'Sistemas' });
+      if (reporteId === 'horario_docente_lectiva') {
+        const palette = [
+          [190, 240, 190],
+          [240, 200, 200],
+          [200, 220, 240],
+          [240, 230, 180],
+          [220, 200, 240],
+          [180, 240, 230],
+        ];
+
+        const DIAS_MAP: Record<number, string> = {
+          1: 'LUNES', 2: 'MARTES', 3: 'MIÉRCOLES', 4: 'JUEVES',
+          5: 'VIERNES', 6: 'SÁBADO', 7: 'DOMINGO'
+        };
+
+        const timeLabels = [
+          '07:00-08:00', '08:00-09:00', '09:00-10:00', '10:00-11:00', '11:00-12:00', '12:00-13:00',
+          '13:00-14:00', '14:00-15:00', '15:00-16:00', '16:00-17:00', '17:00-18:00', '18:00-19:00',
+        ];
+
+        const dayLabels = [
+          { id: 1, label: 'LUNES' },
+          { id: 2, label: 'MARTES' },
+          { id: 3, label: 'MIÉRCOLES' },
+          { id: 4, label: 'JUEVES' },
+          { id: 5, label: 'VIERNES' },
+          { id: 6, label: 'SÁBADO' }
+        ];
+
+        const formatType = (tipo: string) => {
+          switch (tipo) {
+            case 'teoria': return 'T';
+            case 'practica': return 'P';
+            case 'laboratorio': return 'L';
+            default: return tipo;
           }
-          const item = asignacionesMap.get(key);
-          item.total += horas;
-          if (h.tipoClase === 'teoria') item.t += horas;
-          if (h.tipoClase === 'practica') item.p += horas;
-          if (h.tipoClase === 'laboratorio') { item.l += horas; if (h.grupo?.id) item.g.add(h.grupo.id); }
+        };
+
+        // Agrupar horarios por CICLO (del curso)
+        const horariosPorCiclo = new Map<string, any[]>();
+        const horariosValidos = horarios.filter((h: any) => h.curso && h.curso.nombre && h.curso.cicloAcademico);
+
+        horariosValidos.forEach((h: any) => {
+          const ciclo = String(h.curso.cicloAcademico);
+          if (!horariosPorCiclo.has(ciclo)) {
+            horariosPorCiclo.set(ciclo, []);
+          }
+          horariosPorCiclo.get(ciclo)!.push(h);
         });
 
-        rows = Array.from(asignacionesMap.values()).map(item => [
-          item.docente, item.curso, item.t, item.p, item.l, item.g.size || '-', item.total, item.dep
-        ]);
+        // Ordenar ciclos del 1° al 10°
+        const ciclosOrdenados = Array.from(horariosPorCiclo.keys()).sort((a, b) => Number(a) - Number(b));
+
+        let filaActual = worksheet.rowCount + 1;
+
+        for (const ciclo of ciclosOrdenados) {
+          const horariosCiclo = horariosPorCiclo.get(ciclo)!;
+
+          // TÍTULO DEL CICLO
+          const filaTituloCiclo = worksheet.getRow(filaActual);
+          const celdaTituloCiclo = filaTituloCiclo.getCell(1);
+          celdaTituloCiclo.value = `${ciclo}° CICLO`;
+          celdaTituloCiclo.font = { bold: true, size: 12, color: { argb: AZUL_UNT_HEX } };
+          worksheet.mergeCells(filaActual, 1, filaActual, 8);
+          filaActual++;
+
+          // Ahora, para este ciclo, creamos la lista de asignaciones y la tabla grid
+          const asignacionesMap = new Map<string, any>();
+          horariosCiclo.forEach((h: any) => {
+            const docenteNombre = h.docente?.nombreCompleto || 'DOCENTE SIN NOMBRE';
+            const cursoNombre = h.curso.nombre;
+            const departamento = h.curso?.departamento || 'General';
+            const key = `${docenteNombre}__${cursoNombre}`;
+            const horas = Math.max(parseInt(h.horaFin?.substring(0, 2)) - parseInt(h.horaInicio?.substring(0, 2)), 1);
+            if (!asignacionesMap.has(key)) {
+              asignacionesMap.set(key, { docente: docenteNombre, curso: cursoNombre, t: 0, p: 0, l: 0, g: new Set(), total: 0, dep: departamento });
+            }
+            const item = asignacionesMap.get(key);
+            item.total += horas;
+            if (h.tipoClase === 'teoria') item.t += horas;
+            if (h.tipoClase === 'practica') item.p += horas;
+            if (h.tipoClase === 'laboratorio') { item.l += horas; if (h.grupo?.id) item.g.add(h.grupo.id); }
+          });
+
+          const asignaciones = Array.from(asignacionesMap.values())
+            .sort((a: any, b: any) => {
+              const depCompare = a.dep.localeCompare(b.dep);
+              if (depCompare !== 0) return depCompare;
+              const docCompare = a.docente.localeCompare(b.docente);
+              if (docCompare !== 0) return docCompare;
+              return a.curso.localeCompare(b.curso);
+            })
+            .map((item: any, index: number) => {
+              const numGrupos = item.g.size;
+              return {
+                key: `${item.docente}__${item.curso}`,
+                ...item,
+                numero: index + 1,
+                color: palette[index % palette.length],
+                displayL: numGrupos > 0 ? (item.l / numGrupos) : item.l,
+                displayG: numGrupos > 0 ? String(numGrupos) : '-',
+              };
+            });
+
+          const asignacionLookup = new Map<string, { numero: number; color: [number, number, number] }>();
+          asignaciones.forEach((item: any) => {
+            asignacionLookup.set(item.key, { numero: item.numero, color: item.color });
+          });
+
+          // ---------------------------
+          // SECCIÓN 1: TABLA DE ASIGNACIONES
+          // ---------------------------
+          // Ajustar tamaños de columnas primero (para la sección 1)
+          worksheet.getColumn(1).width = 6; // N°
+          worksheet.getColumn(2).width = 30; // PROFESOR
+          worksheet.getColumn(3).width = 30; // ASIGNATURA
+          worksheet.getColumn(4).width = 6; // T
+          worksheet.getColumn(5).width = 6; // P
+          worksheet.getColumn(6).width = 6; // L
+          worksheet.getColumn(7).width = 6; // G
+          worksheet.getColumn(8).width = 10; // T. HORAS
+          worksheet.getColumn(9).width = 20; // DEPARTAMENTO
+
+          // Header de la tabla
+          const headerAsignaciones = worksheet.addRow(['N°', 'PROFESOR', 'ASIGNATURA', 'T', 'P', 'L', 'G', 'T. HORAS', 'DEPARTAMENTO']);
+          headerAsignaciones.eachCell((cell) => {
+            cell.font = { bold: true, color: { argb: 'FFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_UNT_HEX } };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+          });
+
+          // Filas de datos de asignaciones
+          asignaciones.forEach((item: any) => {
+            const row = worksheet.addRow([
+              String(item.numero),
+              item.docente,
+              item.curso,
+              item.t > 0 ? String(item.t) : '0',
+              item.p > 0 ? String(item.p) : '0',
+              item.displayL > 0 ? String(item.displayL) : '0',
+              item.displayG,
+              String(item.total),
+              item.dep,
+            ]);
+            row.eachCell((cell, colNumber) => {
+              cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+              if (colNumber !== 2 && colNumber !== 3) { // centrar todas excepto profesor y asignatura
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+              } else {
+                cell.alignment = { vertical: 'middle' };
+              }
+            });
+          });
+
+          // ---------------------------
+          // SECCIÓN 2: GRID DE HORARIOS
+          // ---------------------------
+          // Añadir 2 filas vacías entre la sección 1 y el grid
+          worksheet.addRow([]);
+          worksheet.addRow([]);
+
+          // Ajustar tamaños de columnas para el grid
+          worksheet.getColumn(1).width = 14; // HORA
+          worksheet.getColumn(2).width = 20; // LUNES
+          worksheet.getColumn(3).width = 20; // MARTES
+          worksheet.getColumn(4).width = 20; // MIÉRCOLES
+          worksheet.getColumn(5).width = 20; // JUEVES
+          worksheet.getColumn(6).width = 20; // VIERNES
+          worksheet.getColumn(7).width = 20; // SÁBADO
+          worksheet.getColumn(8).width = 14; // HORA
+
+          // Header del grid
+          const gridHeaders = ['HORA', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'HORA'];
+          const rowGridHeaders = worksheet.addRow(gridHeaders);
+          rowGridHeaders.eachCell((cell) => {
+            cell.font = { bold: true, color: { argb: '000000' } };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'E0E0E0' } };
+          });
+
+          // Preparar bloques para el grid
+          const blockBySlot = new Map<string, any>();
+          horariosCiclo.forEach((h: any) => {
+            const docenteNombre = h.docente?.nombreCompleto || 'DOCENTE SIN NOMBRE';
+            const cursoNombre = h.curso?.nombre || 'N/A';
+            const key = `${docenteNombre}__${cursoNombre}`;
+            const asignacion = asignacionLookup.get(key);
+            if (!asignacion) return;
+
+            // Obtener horas de inicio y fin (formato "HH:MM")
+            const startHour = parseInt(h.horaInicio?.substring(0, 2) || '0', 10);
+            const endHour = parseInt(h.horaFin?.substring(0, 2) || '0', 10);
+            const startIndex = startHour - 7;
+            
+            // Calcular el span: el número de filas que ocupará (cada fila es 1 hora)
+            let span = endHour - startHour;
+            // Asegurar que el span sea al menos 1 y no salga del array
+            span = Math.max(span, 1);
+            span = Math.min(span, timeLabels.length - startIndex);
+
+            if (startIndex < 0 || startIndex >= timeLabels.length) return;
+
+            const blockKey = `${h.diaSemana}_${startIndex}`;
+            blockBySlot.set(blockKey, {
+              numero: asignacion.numero,
+              color: asignacion.color,
+              tipo: formatType(h.tipoClase),
+              grupo: h.grupo?.numeroGrupo || null,
+              aula: h.aula?.nombre || 'SIN AULA',
+              span: span,
+              startIndex: startIndex,
+            });
+          });
+
+          // Paso 1: Crear todo el grid primero y guardar referencias a las filas
+          const gridRows: any[] = []; // Para acceder a las filas después
+          const gridStartRow = worksheet.rowCount + 1; // Fila donde empieza el grid
+          const occupied = new Set<string>();
+          for (let rowIndex = 0; rowIndex < timeLabels.length; rowIndex++) {
+            const timeLabel = timeLabels[rowIndex];
+            const rowData: any[] = [timeLabel, '', '', '', '', '', '', timeLabel];
+            const rowExcel = worksheet.addRow(rowData);
+            gridRows.push(rowExcel); // Guardamos la fila
+
+            rowExcel.eachCell((cell, colNumber) => {
+              cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+              if (colNumber === 1 || colNumber === 8) {
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+              }
+            });
+
+            // Si es la fila del almuerzo
+            if (rowIndex === 6) {
+              const rowNumber = gridStartRow + rowIndex;
+              worksheet.mergeCells(rowNumber, 2, rowNumber, 7); // Fusionar LUNES a SÁBADO
+              const celdaAlmuerzo = rowExcel.getCell(2);
+              celdaAlmuerzo.value = 'ALMUERZO';
+              celdaAlmuerzo.font = { bold: true };
+              celdaAlmuerzo.alignment = { horizontal: 'center', vertical: 'middle' };
+              // Poner color a todas las celdas fusionadas
+              for (let col = 2; col <= 7; col++) {
+                rowExcel.getCell(col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF00' } };
+              }
+            }
+
+          }
+
+          // Paso 2: Ahora aplicamos los bloques de horarios al grid
+          for (let rowIndex = 0; rowIndex < timeLabels.length; rowIndex++) {
+            for (let dayIndex = 0; dayIndex < dayLabels.length; dayIndex++) {
+              const day = dayLabels[dayIndex];
+              const slotKey = `${day.id}_${rowIndex}`;
+              const block = blockBySlot.get(slotKey);
+
+              if (occupied.has(slotKey) || !block) continue;
+
+              const colIndex = dayIndex + 2; // Columna correspondiente al día
+              const hexR = block.color[0].toString(16).padStart(2, '0');
+              const hexG = block.color[1].toString(16).padStart(2, '0');
+              const hexB = block.color[2].toString(16).padStart(2, '0');
+              const argbColor = `FF${hexR}${hexG}${hexB}`;
+
+              // Aplicar color a todas las celdas del bloque
+              for (let i = 0; i < block.span; i++) {
+                const targetRow = gridRows[rowIndex + i];
+                const cell = targetRow.getCell(colIndex);
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argbColor } };
+                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                cell.font = { bold: true };
+                // Solo la primera celda del bloque tiene texto
+                if (i === 0) {
+                  const grupoText = block.grupo ? ` G${block.grupo}` : '';
+                  const detailText = `${block.tipo}${grupoText} (${block.aula})`;
+                  cell.value = `${block.numero}\n${detailText}`;
+                }
+              }
+
+              // Fusionar celdas verticalmente si hay más de 1 hora
+              if (block.span > 1) {
+                const startRow = gridStartRow + rowIndex;
+                const endRow = gridStartRow + rowIndex + block.span - 1;
+                worksheet.mergeCells(startRow, colIndex, endRow, colIndex);
+              }
+
+              // Marcar como ocupadas todas las filas del bloque
+              for (let i = 0; i < block.span; i++) {
+                occupied.add(`${day.id}_${rowIndex + i}`);
+              }
+            }
+          }
+
+          // Añadir espacio entre ciclos
+          worksheet.addRow([]);
+        }
+      } else if (reporteId === 'horario_docente_no_lectiva') {
+        // --- LISTA DE TODAS LAS ACTIVIDADES ---
+        const TODAS_ACTIVIDADES_EXCEL = [
+          'PREPARACIÓN Y EVALUACIÓN',
+          'TUTORÍA Y ORIENTACIÓN',
+          'INVESTIGACIÓN',
+          'CAPACITACIÓN',
+          'GOBIERNO UNIVERSITARIO',
+          'ADMINISTRACIÓN ACADÉMICA',
+          'ASESORÍA A ESTUDIANTES',
+          'RESPONSABILIDAD SOCIAL',
+          'COMITÉS TÉCNICOS'
+        ];
+
+        // --- FILTRAR HORARIOS NO LECTIVOS ---
+        const horariosNoLectivos = horarios.filter((h: any) => h.tipoClase === 'no_lectiva');
+
+        // --- AGRUPAR POR DOCENTE Y ACTIVIDAD ---
+        const cnlMap = new Map<string, any>();
+        horariosNoLectivos.forEach((h: any) => {
+          const docenteNombre = h.docente?.nombreCompleto || 'DOCENTE SIN NOMBRE';
+          let actividad: string;
+          if (typeof h.actividadNoLectiva === 'string') {
+            actividad = h.actividadNoLectiva;
+          } else if (h.actividadNoLectiva && typeof h.actividadNoLectiva === 'object') {
+            actividad = (h.actividadNoLectiva as any).nombre || (h.actividadNoLectiva as any).name || JSON.stringify(h.actividadNoLectiva);
+          } else {
+            actividad = 'ACTIVIDAD NO DEFINIDA';
+          }
+          const key = `${docenteNombre}__${actividad}`;
+          const horas = Math.max(parseInt(h.horaFin?.substring(0, 2)) - parseInt(h.horaInicio?.substring(0, 2)), 1);
+
+          if (!cnlMap.has(key)) {
+            cnlMap.set(key, {
+              docente: docenteNombre,
+              actividad,
+              dias: new Set<string>(),
+              horarios: [],
+              aulas: new Set<string>(),
+              totalHoras: 0
+            });
+          }
+          const item = cnlMap.get(key);
+          item.dias.add(DIAS_MAP[h.diaSemana] || 'DÍA');
+          item.horarios.push(`${h.horaInicio.substring(0,5)}-${h.horaFin.substring(0,5)}`);
+          item.aulas.add(h.aula?.nombre || 'SIN AULA');
+          item.totalHoras += horas;
+        });
+
+        // --- AGRUPAR POR DOCENTE ---
+        const porDocente = new Map<string, any[]>();
+        cnlMap.forEach((item: any) => {
+          if (!porDocente.has(item.docente)) {
+            porDocente.set(item.docente, []);
+          }
+          porDocente.get(item.docente)!.push(item);
+        });
+
+        // --- ORDENAR DOCENTES ALFABÉTICAMENTE ---
+        const docentesOrdenadosExcel = Array.from(porDocente.keys()).sort((a: string, b: string) => a.localeCompare(b));
+
+        // --- AGREGAR TABLAS POR CADA DOCENTE ---
+        let filaActual = worksheet.rowCount + 1;
+        const headersLocal = ['N°', 'CARGA NO LECTIVA', 'DÍA(S)', 'HORARIO', 'AULA', 'HORAS'];
+
+        for (const docenteNombre of docentesOrdenadosExcel) {
+          // TÍTULO DEL DOCENTE
+          const filaTitulo = worksheet.getRow(filaActual);
+          filaActual++;
+          const celdaTitulo = filaTitulo.getCell(1);
+          celdaTitulo.value = `${docenteNombre.toUpperCase()}`;
+          celdaTitulo.font = { bold: true, color: { argb: AZUL_UNT_HEX }, size: 12 };
+          worksheet.mergeCells(filaActual - 1, 1, filaActual - 1, 6); // Fusionar A:F
+
+          // HEADER DE LA TABLA
+          const headerRow = worksheet.addRow(headersLocal);
+          headerRow.eachCell((cell, colNumber) => {
+            cell.font = { bold: true, color: { argb: BLANCO_HEX } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_UNT_HEX } };
+            // Centrar todas las columnas excepto CARGA NO LECTIVA (col 2)
+            cell.alignment = { horizontal: 'center' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+          });
+          filaActual++;
+
+          // DATOS DEL DOCENTE
+          const itemsDocente = porDocente.get(docenteNombre)!;
+          const actividadesExistentes = new Set(itemsDocente.map(i => i.actividad));
+          const totalHorasDocente = itemsDocente.reduce((sum, i) => sum + i.totalHoras, 0);
+          let num = 1;
+
+          // 1. Actividades existentes
+          const itemsOrdenados = itemsDocente.sort((a: any, b: any) => a.actividad.localeCompare(b.actividad));
+          for (const item of itemsOrdenados) {
+            const fila = worksheet.addRow([
+              num++,
+              item.actividad,
+              Array.from(item.dias).join(', '),
+              Array.from(item.horarios).join(', '),
+              Array.from(item.aulas).join(', '),
+              item.totalHoras
+            ]);
+            fila.eachCell((cell, colNumber) => {
+              cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+              // Centrar columnas 1,3,4,5 y 6
+              if (colNumber !== 2) {
+                cell.alignment = { horizontal: 'center' };
+              }
+            });
+            filaActual++;
+          }
+
+          // 2. Actividades vacías
+          for (const actNombre of TODAS_ACTIVIDADES_EXCEL) {
+            if (!actividadesExistentes.has(actNombre)) {
+              const fila = worksheet.addRow([
+                num++,
+                actNombre,
+                '',
+                '',
+                '',
+                0
+              ]);
+              fila.eachCell((cell, colNumber) => {
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                // Centrar columnas 1,3,4,5 y 6
+                if (colNumber !== 2) {
+                  cell.alignment = { horizontal: 'center' };
+                }
+              });
+              filaActual++;
+            }
+          }
+
+          // 3. Fila TOTAL HORAS
+          const filaTotal = worksheet.addRow(['', 'TOTAL HORAS', '', '', '', totalHorasDocente]);
+          filaTotal.eachCell((cell, colNumber) => {
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            cell.font = { bold: true };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'E6E6E6' } };
+            if (colNumber !== 2) {
+              cell.alignment = { horizontal: 'center' };
+            }
+          });
+          filaActual++;
+          filaActual++; // Espacio entre docentes
+        }
+
+        // --- AJUSTAR TAMAÑOS DE LAS COLUMNAS ---
+        worksheet.getColumn(1).width = 5;     // N°
+        worksheet.getColumn(2).width = 35;    // CARGA NO LECTIVA
+        worksheet.getColumn(3).width = 14;    // DÍA(S)
+        worksheet.getColumn(4).width = 17;    // HORARIO
+        worksheet.getColumn(5).width = 14;    // AULA
+        worksheet.getColumn(6).width = 12;    // HORAS
       } else if (reporteId === 'horario_aula') {
         headers = ['AULA', 'TIPO', 'CURSO', 'DOCENTE', 'DÍA', 'HORARIO'];
         rows = horarios.map((h: any) => [h.aula?.nombre, h.aula?.tipo?.toUpperCase(), h.curso?.nombre, h.docente?.nombreCompleto, DIAS_MAP[h.diaSemana], `${h.horaInicio.substring(0,5)} - ${h.horaFin.substring(0,5)}`]);
@@ -1074,33 +1762,40 @@ export default function ReportesPage() {
         rows = horarios.map((h: any) => [DIAS_MAP[h.diaSemana], h.horaInicio.substring(0,5), h.curso?.nombre, h.docente?.nombreCompleto, h.aula?.nombre]);
       }
 
-      // --- AGREGAR TABLA ---
-      const headerRow = worksheet.addRow(headers);
-      headerRow.eachCell((cell) => {
-        cell.font = { bold: true, color: { argb: BLANCO_HEX } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_UNT_HEX } };
-        cell.alignment = { horizontal: 'center' };
-        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-      });
-
-      rows.forEach(row => {
-        const r = worksheet.addRow(row);
-        r.eachCell((cell) => {
+      // --- AGREGAR TABLA SOLO SI NO ES EL REPORTE DE CARGA NO LECTIVA ---
+      if (reporteId !== 'horario_docente_no_lectiva') {
+        const headerRow = worksheet.addRow(headers);
+        headerRow.eachCell((cell) => {
+          cell.font = { bold: true, color: { argb: BLANCO_HEX } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_UNT_HEX } };
+          cell.alignment = { horizontal: 'center' };
           cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
         });
-      });
 
-      // Ajustar columnas
-      worksheet.columns.forEach(column => {
-        let maxLen = 0;
-        if (column && column.eachCell) {
-          column.eachCell({ includeEmpty: true }, (cell) => {
-            const len = cell.value ? cell.value.toString().length : 0;
-            if (len > maxLen) maxLen = len;
+        rows.forEach(row => {
+          const r = worksheet.addRow(row);
+          const esFilaTotal = row[2] === 'TOTAL HORAS';
+          r.eachCell((cell) => {
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            if (esFilaTotal) {
+              cell.font = { bold: true };
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'E6E6E6' } };
+            }
           });
-        }
-        column.width = maxLen < 10 ? 10 : maxLen + 2;
-      });
+        });
+
+        // Ajustar columnas
+        worksheet.columns.forEach(column => {
+          let maxLen = 0;
+          if (column && column.eachCell) {
+            column.eachCell({ includeEmpty: true }, (cell) => {
+              const len = cell.value ? cell.value.toString().length : 0;
+              if (len > maxLen) maxLen = len;
+            });
+          }
+          column.width = maxLen < 10 ? 10 : maxLen + 2;
+        });
+      }
 
       // --- DESCARGAR ---
       const buffer = await workbook.xlsx.writeBuffer();
@@ -1809,6 +2504,7 @@ export default function ReportesPage() {
                 label="Ciclo"
                 onChange={(e) => setFiltros({ ...filtros, cicloEstudio: e.target.value })}
                 startAdornment={<InputAdornment position="start"><SchoolIcon fontSize="small" color="primary" /></InputAdornment>}
+                displayEmpty
               >
                 <MenuItem value="">Todos los ciclos</MenuItem>
                 <MenuItem value="1">1° Ciclo</MenuItem>
@@ -1877,6 +2573,7 @@ export default function ReportesPage() {
                 label="Ambiente"
                 onChange={(e) => setFiltros({ ...filtros, ambienteId: e.target.value })}
                 startAdornment={<InputAdornment position="start"><RoomIcon fontSize="small" color="primary" /></InputAdornment>}
+                displayEmpty
               >
                 <MenuItem value="">Todos los Ambientes</MenuItem>
                 {ambientes.map(a => <MenuItem key={a.id} value={a.id}>{a.nombre}</MenuItem>)}

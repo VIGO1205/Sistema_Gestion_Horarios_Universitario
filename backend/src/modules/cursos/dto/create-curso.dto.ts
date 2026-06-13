@@ -17,6 +17,10 @@ export class CreateCursoDto {
   @IsNotEmpty()
   cicloAcademico: string;
 
+  @IsString()
+  @IsNotEmpty()
+  departamento: string;
+
   @IsNumber()
   @IsOptional()
   carreraId?: number;

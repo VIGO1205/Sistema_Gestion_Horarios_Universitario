@@ -29,6 +29,7 @@ import {
   Select,
   MenuItem,
   Checkbox,
+  Autocomplete,
 } from '@mui/material';
 import {
   School as SchoolIcon,
@@ -58,12 +59,14 @@ export default function CursosPage() {
   const [loading, setLoading] = useState(true);
   const [cursos, setCursos] = useState<any[]>([]);
   const [carreras, setCarreras] = useState<any[]>([]);
+  const [departamentos, setDepartamentos] = useState<string[]>([]);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [filtros, setFiltros] = useState({
     search: '',
     ciclo: 'todos',
     creditos: 'todos',
     carreraId: 'todos',
+    departamento: 'todos',
   });
 
   // Opciones para filtros
@@ -82,6 +85,7 @@ export default function CursosPage() {
   const [importing, setImporting] = useState(false);
   const [savingImport, setSavingImport] = useState(false);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [importCarreraId, setImportCarreraId] = useState('');
   const [previewCursos, setPreviewCursos] = useState<any[]>([]);
   const [previewFiltroCiclo, setPreviewFiltroCiclo] = useState('todos');
@@ -138,12 +142,14 @@ export default function CursosPage() {
       codigo: '',
       cicloAcademico: '1',
       creditos: 4,
+      departamento: '',
       carreraId: '',
     }
   });
 
   useEffect(() => {
     fetchCarreras();
+    fetchDepartamentos();
   }, []);
 
   useEffect(() => {
@@ -152,7 +158,7 @@ export default function CursosPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [filtros.search, filtros.ciclo, filtros.creditos, filtros.carreraId]);
+  }, [filtros.search, filtros.ciclo, filtros.creditos, filtros.carreraId, filtros.departamento]);
 
   const fetchCarreras = async () => {
     try {
@@ -163,10 +169,24 @@ export default function CursosPage() {
     }
   };
 
+  const fetchDepartamentos = async () => {
+    try {
+      const response = await api.get('/cursos/departamentos');
+      setDepartamentos(response.data);
+    } catch (error) {
+      console.error('Error fetching departamentos:', error);
+    }
+  };
+
   const fetchCursos = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/cursos');
+      const params = new URLSearchParams();
+      if (filtros.ciclo !== 'todos') params.append('ciclo', filtros.ciclo);
+      if (filtros.carreraId !== 'todos') params.append('carreraId', filtros.carreraId);
+      if (filtros.departamento !== 'todos') params.append('departamento', filtros.departamento);
+      
+      const response = await api.get(`/cursos?${params.toString()}`);
       setCursos(response.data);
     } catch (error) {
       console.error('Error fetching cursos:', error);
@@ -196,8 +216,9 @@ export default function CursosPage() {
       const coincideCiclo = filtros.ciclo === 'todos' || String(curso.cicloAcademico) === String(filtros.ciclo);
       const coincideCreditos = filtros.creditos === 'todos' || Number(curso.creditos) === Number(filtros.creditos);
       const coincideCarrera = filtros.carreraId === 'todos' || Number(curso.carreraId) === Number(filtros.carreraId);
+      const coincideDepartamento = filtros.departamento === 'todos' || curso.departamento === filtros.departamento;
 
-      return coincideBusqueda && coincideCiclo && coincideCreditos && coincideCarrera;
+      return coincideBusqueda && coincideCiclo && coincideCreditos && coincideCarrera && coincideDepartamento;
     });
   }, [cursos, filtros]);
 
@@ -278,6 +299,7 @@ export default function CursosPage() {
         codigo: curso.codigo,
         cicloAcademico: curso.cicloAcademico,
         creditos: curso.creditos,
+        departamento: curso.departamento || '',
         carreraId: curso.carreraId || '',
       });
     } else {
@@ -287,6 +309,7 @@ export default function CursosPage() {
         codigo: '',
         cicloAcademico: '1',
         creditos: 4,
+        departamento: '',
         carreraId: '',
       });
     }
@@ -700,7 +723,7 @@ export default function CursosPage() {
                 fullWidth 
                 variant="outlined" 
                 startIcon={<DeleteSweepIcon />}
-                onClick={() => setFiltros({ search: '', ciclo: 'todos', creditos: 'todos', carreraId: 'todos' })}
+                onClick={() => setFiltros({ search: '', ciclo: 'todos', creditos: 'todos', carreraId: 'todos', departamento: 'todos' })}
                 sx={{ borderRadius: 2, fontWeight: 600, color: '#666', borderColor: '#ddd' }}
               >
                 Limpiar
@@ -725,7 +748,7 @@ export default function CursosPage() {
 
           {showAdvancedFilters && (
             <>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Filtrar por Carrera</InputLabel>
                   <Select
@@ -740,7 +763,7 @@ export default function CursosPage() {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Filtrar por Ciclo</InputLabel>
                   <Select
@@ -755,7 +778,7 @@ export default function CursosPage() {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Filtrar por Créditos</InputLabel>
                   <Select
@@ -770,6 +793,21 @@ export default function CursosPage() {
                   </Select>
                 </FormControl>
               </Grid>
+              <Grid item xs={12} md={3}>
+                <Autocomplete
+                  value={filtros.departamento}
+                  onChange={(_, newValue) => setFiltros({ ...filtros, departamento: newValue || 'todos' })}
+                  options={['todos', ...departamentos]}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Filtrar por Departamento" size="small" fullWidth />
+                  )}
+                  renderOption={(props, option) => (
+                    <MenuItem {...props} value={option}>
+                      {option === 'todos' ? 'TODOS LOS DEP.' : option}
+                    </MenuItem>
+                  )}
+                />
+              </Grid>
             </>
           )}
         </Grid>
@@ -783,6 +821,7 @@ export default function CursosPage() {
               <TableCell sx={{ color: 'white', fontWeight: 700, width: '50px' }}>N°</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CURSO</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CÓDIGO</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 700 }}>DEPARTAMENTO</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CARRERA</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CICLO</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CRÉDITOS</TableCell>
@@ -810,6 +849,7 @@ export default function CursosPage() {
                   <TableCell>
                     <Chip label={curso.codigo} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
                   </TableCell>
+                  <TableCell>{curso.departamento}</TableCell>
                   <TableCell>
                     <Typography variant="body2">{curso.carrera?.nombre || 'No asignada'}</Typography>
                   </TableCell>
@@ -1141,7 +1181,24 @@ export default function CursosPage() {
                   )}
                 />
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={4}>
+                <Controller
+                  name="departamento"
+                  control={control}
+                  rules={{ required: 'El departamento es obligatorio' }}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      label="Departamento"
+                      error={!!errors.departamento}
+                      helperText={errors.departamento?.message as string}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
                 <Controller
                   name="cicloAcademico"
                   control={control}
@@ -1157,7 +1214,7 @@ export default function CursosPage() {
                   )}
                 />
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={4}>
                 <Controller
                   name="creditos"
                   control={control}
@@ -1166,7 +1223,7 @@ export default function CursosPage() {
                       {...field}
                       fullWidth
                       type="number"
-                      label="Total Créditos"
+                      label="Créditos"
                       InputLabelProps={{ shrink: true }}
                     />
                   )}
@@ -1193,7 +1250,7 @@ export default function CursosPage() {
         <DialogContent sx={{ pt: 4 }}>
           <Box sx={{ mb: 3 }}>
             <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-              Sube la malla curricular en formato PDF. Nuestra IA extraerá automáticamente el nombre, código, ciclo y créditos de cada curso.
+              Sube la malla curricular en formato PDF. Nuestra IA extraerá automáticamente el nombre, código, ciclo, créditos y departamento de cada curso.
             </Typography>
             
             <Grid container spacing={3}>
@@ -1220,11 +1277,45 @@ export default function CursosPage() {
                     p: 3, 
                     textAlign: 'center', 
                     borderStyle: 'dashed', 
-                    bgcolor: '#f8fafc',
+                    bgcolor: isDragOver ? '#e3f2fd' : '#f8fafc',
+                    borderColor: isDragOver ? '#003366' : undefined,
                     cursor: importing ? 'default' : 'pointer',
                     '&:hover': { bgcolor: importing ? '#f8fafc' : '#f1f5f9' }
                   }}
                   onClick={() => !importing && document.getElementById('pdf-upload')?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!isDragOver) setIsDragOver(true);
+                  }}
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!isDragOver) setIsDragOver(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDragOver(false);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDragOver(false);
+                    
+                    if (importing) return;
+                    
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0 && files[0].type === 'application/pdf') {
+                      setPdfFile(files[0]);
+                    } else if (files.length > 0) {
+                      MySwal.fire({
+                        icon: 'error',
+                        title: 'Archivo no válido',
+                        text: 'Por favor, selecciona un archivo PDF'
+                      });
+                    }
+                  }}
                 >
                   <input
                     type="file"
@@ -1370,15 +1461,16 @@ export default function CursosPage() {
                   <TableCell sx={{ fontWeight: 700, width: 50 }}>N°</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Código</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Nombre</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: 140 }}>Ciclo</TableCell>
-                  <TableCell sx={{ fontWeight: 700, width: 140 }}>Créditos</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: 160 }}>Departamento</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: 100 }}>Ciclo</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: 100 }}>Créditos</TableCell>
                   <TableCell sx={{ fontWeight: 700, textAlign: 'center', width: 90 }}>Acción</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredPreviewCursos.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} sx={{ textAlign: 'center', py: 3 }}>
+                    <TableCell colSpan={8} sx={{ textAlign: 'center', py: 3 }}>
                       No hay cursos para mostrar con los filtros actuales.
                     </TableCell>
                   </TableRow>
@@ -1430,6 +1522,14 @@ export default function CursosPage() {
                             </Typography>
                           )}
                         </Box>
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          value={curso.departamento || ''}
+                          onChange={(e) => handlePreviewCursoChange(originalIndex, 'departamento', e.target.value)}
+                        />
                       </TableCell>
                       <TableCell>
                         <TextField

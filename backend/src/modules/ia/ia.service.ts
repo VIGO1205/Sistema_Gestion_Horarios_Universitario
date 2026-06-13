@@ -432,6 +432,7 @@ export class IAService {
       - nombre (string)
       - creditos (number)
       - cicloAcademico (string, solo el número, ej: "1", "2", etc.)
+      - departamento (string, el departamento o área al que pertenece el curso, ej: "Ciencias Básicas", "Ingeniería de Sistemas", "General", etc. Si no lo encuentras, usa "General")
 
       REGLAS IMPORTANTES PARA TABLAS:
       - El código del curso debe tener exactamente 4 dígitos numéricos (ej: "1939", "2347").
@@ -444,6 +445,7 @@ export class IAService {
       - Si hay duda entre ciclo y créditos, prioriza el encabezado de la columna de la tabla.
       - Rango esperado de créditos: normalmente entre 1 y 6.
       - Si no puedes inferir créditos con confianza, usa 0 para que luego se corrija en la previsualización.
+      - Para "departamento": busca en el texto menciones a departamentos, áreas o facultades. Si no encuentras información, usa "General".
 
       IMPORTANTE:
       - Responde ÚNICAMENTE con un JSON válido.

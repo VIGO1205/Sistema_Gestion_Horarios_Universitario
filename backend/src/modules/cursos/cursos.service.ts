@@ -60,6 +60,7 @@ export class CursosService {
         !normalized.codigo ||
         !normalized.nombre ||
         !normalized.cicloAcademico ||
+        !normalized.departamento ||
         !Number.isFinite(normalized.creditos) ||
         normalized.creditos < 1;
 
@@ -108,19 +109,32 @@ export class CursosService {
       nombre: String(data?.nombre ?? '').trim(),
       cicloAcademico: String(data?.cicloAcademico ?? '').trim(),
       creditos: Number.isFinite(creditos) ? creditos : NaN,
+      departamento: String(data?.departamento ?? 'General').trim(),
     };
   }
 
-  async findAll(carreraId?: number, cicloAcademico?: string): Promise<Curso[]> {
+  async findAll(carreraId?: number, cicloAcademico?: string, departamento?: string): Promise<Curso[]> {
     const where: any = {};
     if (carreraId) where.carreraId = carreraId;
     if (cicloAcademico) where.cicloAcademico = cicloAcademico;
+    if (departamento && departamento !== 'todos') where.departamento = departamento;
 
     return await this.cursosRepository.find({
       where,
       relations: ['carrera'],
       order: { codigo: 'ASC' },
     });
+  }
+
+  async findUniqueDepartamentos(): Promise<string[]> {
+    const cursos = await this.cursosRepository
+      .createQueryBuilder('curso')
+      .select('DISTINCT curso.departamento', 'departamento')
+      .orderBy('curso.departamento', 'ASC')
+      .limit(10)
+      .getRawMany();
+    
+    return cursos.map(c => c.departamento);
   }
 
   async findByCiclo(cicloAcademico: string): Promise<Curso[]> {
