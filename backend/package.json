@@ -12,7 +12,7 @@
     "start:prod": "node dist/main",
     "build": "nest build",
     "migration:run": "typeorm migration:run -d dist/database/data-source.js",
-    "migration:generate": "typeorm migration:generate src/database/migrations/",
+    "migration:generate": "typeorm migration:generate -d dist/database/data-source.js",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/run-seeds.ts",
     "test": "jest",
     "test:watch": "jest --watch",
