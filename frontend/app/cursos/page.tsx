@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -110,6 +110,146 @@ export default function CursosPage() {
     numeroGrupos: 0 // Mantener por compatibilidad si es necesario
   });
   const [editingProgId, setEditingProgId] = useState<number | null>(null);
+
+  // Componente memoizado para cada fila de la tabla de previsualización
+  const PreviewRow = React.memo(({ 
+    curso, 
+    originalIndex, 
+    index, 
+    onSelect, 
+    onChange, 
+    onRemove 
+  }: any) => {
+    const [localValues, setLocalValues] = React.useState({
+      codigo: curso.codigo || '',
+      nombre: curso.nombre || '',
+      departamento: curso.departamento || '',
+      cicloAcademico: curso.cicloAcademico || '',
+      creditos: curso.creditos ?? '',
+    });
+
+    const debounceTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+
+    const handleChange = useCallback((field: string, value: string) => {
+      setLocalValues((prev: any) => ({ ...prev, [field]: value }));
+      
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      
+      debounceTimerRef.current = setTimeout(() => {
+        onChange(originalIndex, field, value);
+      }, 300);
+    }, [originalIndex, onChange]);
+
+    React.useEffect(() => {
+      setLocalValues({
+        codigo: curso.codigo || '',
+        nombre: curso.nombre || '',
+        departamento: curso.departamento || '',
+        cicloAcademico: curso.cicloAcademico || '',
+        creditos: curso.creditos ?? '',
+      });
+    }, [curso]);
+
+    React.useEffect(() => {
+      return () => {
+        if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current);
+        }
+      };
+    }, []);
+
+    return (
+      <TableRow 
+        key={`${curso.codigo || 'curso'}-${originalIndex}`}
+        sx={{ 
+          bgcolor: curso.__duplicado ? 'rgba(255, 153, 0, 0.05)' : 'inherit',
+          '&:hover': { bgcolor: curso.__duplicado ? 'rgba(255, 153, 0, 0.1)' : '#f8fafc' }
+        }}
+      >
+        <TableCell>
+          <Checkbox
+            checked={Boolean(curso.__selected)}
+            onChange={(e) => onSelect(originalIndex, e.target.checked)}
+            color={curso.__duplicado ? "warning" : "primary"}
+          />
+        </TableCell>
+        <TableCell>{previewPage * previewRowsPerPage + index + 1}</TableCell>
+        <TableCell>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            <TextField
+              fullWidth
+              size="small"
+              value={localValues.codigo}
+              onChange={(e) => handleChange('codigo', e.target.value)}
+              error={curso.__duplicado && curso.__motivoDuplicado?.includes('Código')}
+            />
+            {curso.__duplicado && curso.__motivoDuplicado?.includes('Código') && (
+              <Typography variant="caption" color="warning.main" sx={{ fontWeight: 700 }}>
+                {curso.__motivoDuplicado}
+              </Typography>
+            )}
+          </Box>
+        </TableCell>
+        <TableCell>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            <TextField
+              fullWidth
+              size="small"
+              value={localValues.nombre}
+              onChange={(e) => handleChange('nombre', e.target.value)}
+              error={curso.__duplicado && curso.__motivoDuplicado?.includes('Nombre')}
+            />
+            {curso.__duplicado && curso.__motivoDuplicado?.includes('Nombre') && (
+              <Typography variant="caption" color="warning.main" sx={{ fontWeight: 700 }}>
+                {curso.__motivoDuplicado}
+              </Typography>
+            )}
+          </Box>
+        </TableCell>
+        <TableCell>
+          <TextField
+            fullWidth
+            size="small"
+            value={localValues.departamento}
+            onChange={(e) => handleChange('departamento', e.target.value)}
+          />
+        </TableCell>
+        <TableCell>
+          <TextField
+            fullWidth
+            size="small"
+            value={localValues.cicloAcademico}
+            onChange={(e) => handleChange('cicloAcademico', e.target.value)}
+          />
+        </TableCell>
+        <TableCell>
+          <TextField
+            fullWidth
+            size="small"
+            type="number"
+            inputProps={{ min: 1 }}
+            value={localValues.creditos}
+            onChange={(e) => handleChange('creditos', e.target.value)}
+          />
+        </TableCell>
+        <TableCell align="center">
+          <Tooltip title="Quitar fila">
+            <IconButton color="error" size="small" onClick={() => onRemove(originalIndex)}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </TableCell>
+      </TableRow>
+    );
+  }, (prevProps, nextProps) => {
+    return (
+      prevProps.curso === nextProps.curso &&
+      prevProps.originalIndex === nextProps.originalIndex &&
+      prevProps.index === nextProps.index
+    );
+  });
 
   const filteredPreviewCursos = useMemo(() => {
     return previewCursos
@@ -377,7 +517,7 @@ export default function CursosPage() {
     }
   };
 
-  const handlePreviewCursoChange = (index: number, field: string, value: string) => {
+  const handlePreviewCursoChange = useCallback((index: number, field: string, value: string) => {
     setPreviewCursos((prev) =>
       prev.map((curso, i) => {
         if (i !== index) return curso;
@@ -387,23 +527,23 @@ export default function CursosPage() {
         return { ...curso, [field]: value };
       }),
     );
-  };
+  }, []);
 
-  const handlePreviewCursoSelect = (index: number, selected: boolean) => {
+  const handlePreviewCursoSelect = useCallback((index: number, selected: boolean) => {
     setPreviewCursos((prev) =>
       prev.map((curso, i) => (i === index ? { ...curso, __selected: selected } : curso)),
     );
-  };
+  }, []);
 
-  const handleSelectAllPreviewCursos = () => {
+  const handleSelectAllPreviewCursos = useCallback(() => {
     setPreviewCursos((prev) => prev.map((curso) => ({ ...curso, __selected: true })));
-  };
+  }, []);
 
-  const handleDeselectAllPreviewCursos = () => {
+  const handleDeselectAllPreviewCursos = useCallback(() => {
     setPreviewCursos((prev) => prev.map((curso) => ({ ...curso, __selected: false })));
-  };
+  }, []);
 
-  const handleRemovePreviewCurso = async (index: number) => {
+  const handleRemovePreviewCurso = useCallback(async (index: number) => {
     const result = await MySwal.fire({
       title: '¿Eliminar fila?',
       text: '¿Deseas eliminar esta fila importada? Esta acción no afectará la base de datos hasta que guardes.',
@@ -418,7 +558,7 @@ export default function CursosPage() {
     if (result.isConfirmed) {
       setPreviewCursos((prev) => prev.filter((_, i) => i !== index));
     }
-  };
+  }, []);
 
   const handleRemoveSelectedPreviewCursos = async () => {
     const selectedCount = previewCursos.filter((c) => Boolean(c.__selected)).length;
@@ -1476,87 +1616,15 @@ export default function CursosPage() {
                   </TableRow>
                 ) : (
                   paginatedPreview.map(({ curso, originalIndex }, index) => (
-                    <TableRow 
+                    <PreviewRow
                       key={`${curso.codigo || 'curso'}-${originalIndex}`}
-                      sx={{ 
-                        bgcolor: curso.__duplicado ? 'rgba(255, 153, 0, 0.05)' : 'inherit',
-                        '&:hover': { bgcolor: curso.__duplicado ? 'rgba(255, 153, 0, 0.1)' : '#f8fafc' }
-                      }}
-                    >
-                      <TableCell>
-                        <Checkbox
-                          checked={Boolean(curso.__selected)}
-                          onChange={(e) => handlePreviewCursoSelect(originalIndex, e.target.checked)}
-                          color={curso.__duplicado ? "warning" : "primary"}
-                        />
-                      </TableCell>
-                      <TableCell>{previewPage * previewRowsPerPage + index + 1}</TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            value={curso.codigo || ''}
-                            onChange={(e) => handlePreviewCursoChange(originalIndex, 'codigo', e.target.value)}
-                            error={curso.__duplicado && curso.__motivoDuplicado?.includes('Código')}
-                          />
-                          {curso.__duplicado && curso.__motivoDuplicado?.includes('Código') && (
-                            <Typography variant="caption" color="warning.main" sx={{ fontWeight: 700 }}>
-                              {curso.__motivoDuplicado}
-                            </Typography>
-                          )}
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            value={curso.nombre || ''}
-                            onChange={(e) => handlePreviewCursoChange(originalIndex, 'nombre', e.target.value)}
-                            error={curso.__duplicado && curso.__motivoDuplicado?.includes('Nombre')}
-                          />
-                          {curso.__duplicado && curso.__motivoDuplicado?.includes('Nombre') && (
-                            <Typography variant="caption" color="warning.main" sx={{ fontWeight: 700 }}>
-                              {curso.__motivoDuplicado}
-                            </Typography>
-                          )}
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          value={curso.departamento || ''}
-                          onChange={(e) => handlePreviewCursoChange(originalIndex, 'departamento', e.target.value)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          value={curso.cicloAcademico || ''}
-                          onChange={(e) => handlePreviewCursoChange(originalIndex, 'cicloAcademico', e.target.value)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          type="number"
-                          inputProps={{ min: 1 }}
-                          value={curso.creditos ?? ''}
-                          onChange={(e) => handlePreviewCursoChange(originalIndex, 'creditos', e.target.value)}
-                        />
-                      </TableCell>
-                      <TableCell align="center">
-                        <Tooltip title="Quitar fila">
-                          <IconButton color="error" size="small" onClick={() => handleRemovePreviewCurso(originalIndex)}>
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </TableCell>
-                    </TableRow>
+                      curso={curso}
+                      originalIndex={originalIndex}
+                      index={index}
+                      onSelect={handlePreviewCursoSelect}
+                      onChange={handlePreviewCursoChange}
+                      onRemove={handleRemovePreviewCurso}
+                    />
                   ))
                 )}
               </TableBody>
