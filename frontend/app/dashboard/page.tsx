@@ -652,7 +652,7 @@ export default function DashboardEstadisticas() {
               cardBg: 'rgba(16, 185, 129, 0.18)'
             },
           ].map((kpi, i) => (
-            <Grid item xs={12} sm={6} md={3} key={i}>
+            <Grid item xs={12} sm={6} md={6} lg={3} key={i}>
               <Card 
                 sx={{ 
                   borderRadius: 5, 

@@ -1,5 +1,5 @@
 export function getViewportMargin(isMobile: boolean) {
-  return isMobile ? 16 : 24;
+  return isMobile ? 24 : 24;
 }
 
 export function getMiniSize() {
@@ -12,8 +12,8 @@ export function getMiniSize() {
 export function getPanelSize(isMobile: boolean, margin: number) {
   if (isMobile) {
     return {
-      width: '100%' as const,
-      height: '100%' as const,
+      width: 380,
+      height: 500,
     };
   }
   return {

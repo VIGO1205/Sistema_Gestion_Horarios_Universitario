@@ -36,7 +36,7 @@ const fadeIn = keyframes`
 export default function HorusChatFloating() {
   const ctx = useHorusChatOptional();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isMobile = useMediaQuery('(max-width:500px)');
   const margin = getViewportMargin(isMobile);
 
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
