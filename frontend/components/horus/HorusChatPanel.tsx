@@ -113,7 +113,10 @@ export default function HorusChatPanel({
               setInput((prev) => {
                 const cleanPrev = prev.trim();
                 const space = cleanPrev ? ' ' : '';
-                return cleanPrev + space + finalText.trim();
+                const trimmedText = finalText.trim();
+                // Capitalizar primera letra
+                const capitalizedText = trimmedText.charAt(0).toUpperCase() + trimmedText.slice(1);
+                return cleanPrev + space + capitalizedText;
               });
             }
           } else {
@@ -134,8 +137,9 @@ export default function HorusChatPanel({
           }
 
           silenceTimerRef.current = setTimeout(() => {
+            recognitionRef.current.lastPause = true;
             recognition.stop();
-          }, 2500); // 2.5 segundos de silencio antes de detener
+          }, 1500); // 1.5 segundos de silencio antes de detener (agrega coma)
 
           let interimTranscript = '';
           let finalTranscript = '';
@@ -162,7 +166,11 @@ export default function HorusChatPanel({
 
             if (newWords.length > 0) {
               newWords.forEach(word => recognitionRef.current.processedFragments.add(word));
-              recognitionRef.current.fullTranscript = (recognitionRef.current.fullTranscript || '') + ' ' + newWords.join(' ');
+              const newText = newWords.join(' ');
+              // Agregar coma si hay una pausa (detectado por el timer)
+              const withComma = recognitionRef.current.lastPause ? ', ' + newText : ' ' + newText;
+              recognitionRef.current.fullTranscript = (recognitionRef.current.fullTranscript || '') + withComma;
+              recognitionRef.current.lastPause = false;
             }
           }
 
