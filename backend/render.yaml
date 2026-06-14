@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: sistema-horarios-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+crons:
+  - name: keep-backend-alive
+    schedule: "*/5 * * * *"
+    command: curl -X GET https://sistema-horarios-backend.onrender.com/health
