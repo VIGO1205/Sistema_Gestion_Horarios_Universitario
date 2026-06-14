@@ -11,6 +11,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
 
+  // Configurar trust proxy para Render y otros servicios con proxy
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.set('trust proxy', true);
+
   // Forzar el adaptador de WebSockets (Socket.IO) para evitar error de driver
   app.useWebSocketAdapter(new IoAdapter(app));
 
