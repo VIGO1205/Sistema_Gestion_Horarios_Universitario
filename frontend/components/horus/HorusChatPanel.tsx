@@ -167,8 +167,9 @@ export default function HorusChatPanel({
             if (newWords.length > 0) {
               newWords.forEach(word => recognitionRef.current.processedFragments.add(word));
               const newText = newWords.join(' ');
-              // Agregar coma si hay una pausa (detectado por el timer)
-              const withComma = recognitionRef.current.lastPause ? ', ' + newText : ' ' + newText;
+              // Agregar coma solo si hay texto previo y hay una pausa (no al inicio)
+              const hasPreviousText = recognitionRef.current.fullTranscript && recognitionRef.current.fullTranscript.trim().length > 0;
+              const withComma = (hasPreviousText && recognitionRef.current.lastPause) ? ', ' + newText : ' ' + newText;
               recognitionRef.current.fullTranscript = (recognitionRef.current.fullTranscript || '') + withComma;
               recognitionRef.current.lastPause = false;
             }
