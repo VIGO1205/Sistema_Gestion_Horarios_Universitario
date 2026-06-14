@@ -419,6 +419,9 @@ export default function CursosPage() {
       setPreviewFiltroCiclo('todos');
       setPreviewFiltroCreditos('todos');
       setPreviewPage(0);
+      setPdfFile(null);
+      const input = document.getElementById('pdf-upload') as HTMLInputElement;
+      if (input) input.value = '';
       setOpenImportPreviewDialog(true);
     } catch (error: any) {
       MySwal.fire({
@@ -1490,7 +1493,16 @@ export default function CursosPage() {
           )}
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
-          <Button onClick={() => setOpenImportDialog(false)} color="inherit" disabled={importing}>
+          <Button 
+            onClick={() => {
+              setPdfFile(null);
+              const input = document.getElementById('pdf-upload') as HTMLInputElement;
+              if (input) input.value = '';
+              setOpenImportDialog(false);
+            }} 
+            color="inherit" 
+            disabled={importing}
+          >
             Cancelar
           </Button>
           <Button 
