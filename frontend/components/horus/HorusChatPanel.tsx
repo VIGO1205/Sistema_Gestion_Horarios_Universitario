@@ -76,6 +76,7 @@ export default function HorusChatPanel({
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const recognitionRef = useRef<any>(null);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const stopTimerRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isSidebar = variant === 'sidebar';
   
@@ -105,6 +106,9 @@ export default function HorusChatPanel({
           if (silenceTimerRef.current) {
             clearTimeout(silenceTimerRef.current);
           }
+          if (stopTimerRef.current) {
+            clearTimeout(stopTimerRef.current);
+          }
           
           // Solo agregamos texto si no fue una cancelación manual
           if (!isCancellingListening) {
@@ -131,15 +135,23 @@ export default function HorusChatPanel({
         };
 
         recognition.onresult = (event: any) => {
-          // Resetear el temporizador de silencio cada vez que hay un resultado
+          // Resetear los temporizadores de silencio cada vez que hay un resultado
           if (silenceTimerRef.current) {
             clearTimeout(silenceTimerRef.current);
           }
+          if (stopTimerRef.current) {
+            clearTimeout(stopTimerRef.current);
+          }
 
+          // Timer de 1.5s para agregar coma
           silenceTimerRef.current = setTimeout(() => {
             recognitionRef.current.lastPause = true;
+          }, 1500);
+
+          // Timer de 2.5s para detener el reconocimiento
+          stopTimerRef.current = setTimeout(() => {
             recognition.stop();
-          }, 1500); // 1.5 segundos de silencio antes de detener (agrega coma)
+          }, 2500);
 
           let interimTranscript = '';
           let finalTranscript = '';
