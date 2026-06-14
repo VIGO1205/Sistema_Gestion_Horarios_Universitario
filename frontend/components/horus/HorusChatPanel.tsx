@@ -151,10 +151,18 @@ export default function HorusChatPanel({
 
           // Actualizamos el transcript acumulado solo con el nuevo texto final
           if (finalTranscript) {
-            // Solo agregar si es diferente al último texto para evitar duplicados
-            if (!recognitionRef.current.lastFinalTranscript || finalTranscript !== recognitionRef.current.lastFinalTranscript) {
-              recognitionRef.current.fullTranscript = (recognitionRef.current.fullTranscript || '') + finalTranscript;
-              recognitionRef.current.lastFinalTranscript = finalTranscript;
+            // Usar un set para rastrear fragmentos únicos y evitar duplicados
+            if (!recognitionRef.current.processedFragments) {
+              recognitionRef.current.processedFragments = new Set();
+            }
+
+            // Dividir el texto en palabras y agregar solo las nuevas
+            const words = finalTranscript.toLowerCase().split(' ');
+            const newWords = words.filter(word => !recognitionRef.current.processedFragments.has(word));
+
+            if (newWords.length > 0) {
+              newWords.forEach(word => recognitionRef.current.processedFragments.add(word));
+              recognitionRef.current.fullTranscript = (recognitionRef.current.fullTranscript || '') + ' ' + newWords.join(' ');
             }
           }
 
