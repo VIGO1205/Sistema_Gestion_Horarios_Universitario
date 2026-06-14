@@ -12,7 +12,7 @@ export function getMiniSize() {
 export function getPanelSize(isMobile: boolean, margin: number) {
   if (isMobile) {
     return {
-      width: 380,
+      width: 350,
       height: 500,
     };
   }

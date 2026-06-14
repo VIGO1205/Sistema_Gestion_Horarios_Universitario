@@ -109,11 +109,28 @@ export default function HorusChatFloating() {
       applyClampedPos(e.clientX - dragOffset.x, e.clientY - dragOffset.y);
     };
 
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDragging || pos === null) return;
+      e.preventDefault();
+
+      const touch = e.touches[0];
+      const dx = Math.abs(touch.clientX - dragStartRef.current.x);
+      const dy = Math.abs(touch.clientY - dragStartRef.current.y);
+      if (dx > DRAG_CLICK_THRESHOLD || dy > DRAG_CLICK_THRESHOLD) {
+        dragMovedRef.current = true;
+      }
+
+      applyClampedPos(touch.clientX - dragOffset.x, touch.clientY - dragOffset.y);
+    };
+
     const handleMouseUp = () => setIsDragging(false);
+    const handleTouchEnd = () => setIsDragging(false);
 
     if (isDragging) {
       window.addEventListener('mousemove', handleMouseMove, { capture: true });
       window.addEventListener('mouseup', handleMouseUp, { capture: true });
+      window.addEventListener('touchmove', handleTouchMove, { capture: true, passive: false });
+      window.addEventListener('touchend', handleTouchEnd, { capture: true });
       document.body.style.userSelect = 'none';
       document.body.style.cursor = 'grabbing';
     } else {
@@ -124,6 +141,8 @@ export default function HorusChatFloating() {
     return () => {
       window.removeEventListener('mousemove', handleMouseMove, { capture: true });
       window.removeEventListener('mouseup', handleMouseUp, { capture: true });
+      window.removeEventListener('touchmove', handleTouchMove, { capture: true });
+      window.removeEventListener('touchend', handleTouchEnd, { capture: true });
     };
   }, [isDragging, dragOffset, pos, applyClampedPos]);
 
@@ -135,6 +154,18 @@ export default function HorusChatFloating() {
     setDragOffset({
       x: e.clientX - pos.left,
       y: e.clientY - pos.top,
+    });
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (pos === null) return;
+    const touch = e.touches[0];
+    dragStartRef.current = { x: touch.clientX, y: touch.clientY };
+    dragMovedRef.current = false;
+    setIsDragging(true);
+    setDragOffset({
+      x: touch.clientX - pos.left,
+      y: touch.clientY - pos.top,
     });
   };
 
@@ -196,6 +227,7 @@ export default function HorusChatFloating() {
         <IconButton
           onClick={handleExpand}
           onMouseDown={handleDragStart}
+          onTouchStart={handleTouchStart}
           sx={{
             position: 'fixed',
             left: pos.left,
@@ -241,6 +273,7 @@ export default function HorusChatFloating() {
           onDock={dockToSidebar}
           canDock={canDockToSidebar}
           onHeaderMouseDown={handleDragStart}
+          onHeaderTouchStart={handleTouchStart}
           isDragging={isDragging}
           isMini={isMini}
         />

@@ -44,6 +44,7 @@ interface HorusChatPanelProps {
   compact?: boolean;
   showDockButton?: boolean;
   onHeaderMouseDown?: (e: React.MouseEvent) => void;
+  onHeaderTouchStart?: (e: React.TouchEvent) => void;
   isDragging?: boolean;
   isMini?: boolean;
   isSidebarExpanded?: boolean;
@@ -60,6 +61,7 @@ export default function HorusChatPanel({
   compact = false,
   showDockButton = true,
   onHeaderMouseDown,
+  onHeaderTouchStart,
   isDragging = false,
   isMini = false,
   isSidebarExpanded = false,
@@ -130,7 +132,7 @@ export default function HorusChatPanel({
           if (silenceTimerRef.current) {
             clearTimeout(silenceTimerRef.current);
           }
-          
+
           silenceTimerRef.current = setTimeout(() => {
             recognition.stop();
           }, 2500); // 2.5 segundos de silencio antes de detener
@@ -147,9 +149,13 @@ export default function HorusChatPanel({
             }
           }
 
-          // Actualizamos el transcript acumulado en la referencia
+          // Actualizamos el transcript acumulado solo con el nuevo texto final
           if (finalTranscript) {
-            recognitionRef.current.fullTranscript = (recognitionRef.current.fullTranscript || '') + finalTranscript;
+            // Solo agregar si es diferente al último texto para evitar duplicados
+            if (!recognitionRef.current.lastFinalTranscript || finalTranscript !== recognitionRef.current.lastFinalTranscript) {
+              recognitionRef.current.fullTranscript = (recognitionRef.current.fullTranscript || '') + finalTranscript;
+              recognitionRef.current.lastFinalTranscript = finalTranscript;
+            }
           }
 
           // Para la visualización (aunque esté oculta, sirve para la lógica)
@@ -393,6 +399,7 @@ export default function HorusChatPanel({
       {/* Cabecera */}
       <Box
         onMouseDown={onHeaderMouseDown}
+        onTouchStart={onHeaderTouchStart}
         sx={{
           px: 1.5,
           py: 1.25,
