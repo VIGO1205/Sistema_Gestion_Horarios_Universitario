@@ -1091,6 +1091,12 @@ export default function CargaAcademicaPage() {
                   label="Seleccionar Cursos para Programar"
                   placeholder="Busca y selecciona los cursos..."
                   size="small"
+                  sx={{
+                    '& .MuiAutocomplete-inputRoot': {
+                      maxHeight: '120px',
+                      overflowY: 'auto',
+                    },
+                  }}
                 />
               )}
               sx={{ bgcolor: 'white' }}
@@ -1116,8 +1122,11 @@ export default function CargaAcademicaPage() {
                 {selectedBulkIds.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} align="center" sx={{ py: 10 }}>
-                      <Typography variant="body1" color="textSecondary">
-                        Selecciona uno o más cursos arriba para comenzar la programación masiva.
+                      <Typography variant="body1" color="textSecondary" sx={{ fontWeight: 600 }}>
+                        Debe programar cursos para poder comenzar con la asignación de la carga lectiva.
+                      </Typography>
+                      <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+                        Selecciona uno o más cursos arriba para comenzar.
                       </Typography>
                     </TableCell>
                   </TableRow>
