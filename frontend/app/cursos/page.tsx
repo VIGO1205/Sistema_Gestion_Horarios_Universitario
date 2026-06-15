@@ -350,16 +350,22 @@ export default function CursosPage() {
   };
 
   const cursosFiltrados = useMemo(() => {
-    return cursos.filter((curso: any) => {
-      const texto = `${curso.nombre || ''} ${curso.codigo || ''} ${curso.carrera?.nombre || ''}`.toLowerCase();
-      const coincideBusqueda = !filtros.search || texto.includes(filtros.search.toLowerCase());
-      const coincideCiclo = filtros.ciclo === 'todos' || String(curso.cicloAcademico) === String(filtros.ciclo);
-      const coincideCreditos = filtros.creditos === 'todos' || Number(curso.creditos) === Number(filtros.creditos);
-      const coincideCarrera = filtros.carreraId === 'todos' || Number(curso.carreraId) === Number(filtros.carreraId);
-      const coincideDepartamento = filtros.departamento === 'todos' || curso.departamento === filtros.departamento;
+    return cursos
+      .filter((curso: any) => {
+        const texto = `${curso.nombre || ''} ${curso.codigo || ''} ${curso.carrera?.nombre || ''}`.toLowerCase();
+        const coincideBusqueda = !filtros.search || texto.includes(filtros.search.toLowerCase());
+        const coincideCiclo = filtros.ciclo === 'todos' || String(curso.cicloAcademico) === String(filtros.ciclo);
+        const coincideCreditos = filtros.creditos === 'todos' || Number(curso.creditos) === Number(filtros.creditos);
+        const coincideCarrera = filtros.carreraId === 'todos' || Number(curso.carreraId) === Number(filtros.carreraId);
+        const coincideDepartamento = filtros.departamento === 'todos' || curso.departamento === filtros.departamento;
 
-      return coincideBusqueda && coincideCiclo && coincideCreditos && coincideCarrera && coincideDepartamento;
-    });
+        return coincideBusqueda && coincideCiclo && coincideCreditos && coincideCarrera && coincideDepartamento;
+      })
+      .sort((a: any, b: any) => {
+        const codigoA = String(a.codigo || '');
+        const codigoB = String(b.codigo || '');
+        return codigoA.localeCompare(codigoB, undefined, { numeric: true, sensitivity: 'base' });
+      });
   }, [cursos, filtros]);
 
   const executeImportExtraction = async () => {
