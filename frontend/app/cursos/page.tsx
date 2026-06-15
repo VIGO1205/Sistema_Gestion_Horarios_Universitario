@@ -648,6 +648,7 @@ export default function CursosPage() {
           nombre: String(curso.nombre).trim(),
           cicloAcademico: String(curso.cicloAcademico).trim(),
           creditos: Number(curso.creditos),
+          departamento: String(curso.departamento || 'General').trim(),
         })),
       });
 
