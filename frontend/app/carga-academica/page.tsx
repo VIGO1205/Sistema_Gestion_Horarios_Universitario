@@ -651,6 +651,15 @@ export default function CargaAcademicaPage() {
             <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
               {fetchingCarga ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress size={24} /></Box>
+              ) : cargaAcademica.length === 0 ? (
+                <Box sx={{ p: 4, textAlign: 'center' }}>
+                  <Typography variant="body1" color="textSecondary" sx={{ fontWeight: 600 }}>
+                    Debe programar cursos para poder comenzar con la asignación de la carga lectiva.
+                  </Typography>
+                  <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+                    Use el botón + arriba para programar cursos.
+                  </Typography>
+                </Box>
               ) : (
                 <List sx={{ p: 0 }}>
                   {cargaAcademica
@@ -677,8 +686,8 @@ export default function CargaAcademicaPage() {
                             primary={
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <Typography sx={{ fontWeight: 700, fontSize: '0.9rem' }}>{curso.curso?.nombre}</Typography>
-                                <Chip 
-                                  size="small" 
+                                <Chip
+                                  size="small"
                                   label={`${curso.creditosAsignados || 0}/${curso.curso?.creditos} C`}
                                   color={status}
                                   sx={{ fontWeight: 700, height: 20, fontSize: '0.7rem' }}
@@ -1105,21 +1114,8 @@ export default function CargaAcademicaPage() {
               )}
               sx={{ bgcolor: 'white' }}
             />
-            <Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: 'block' }}>
-              Los cursos disponibles están filtrados por Carrera y Ciclo Académico seleccionados previamente.
-            </Typography>
           </Box>
           <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
-            {selectedBulkIds.length === 0 && (
-              <Box sx={{ mb: 3, p: 3, bgcolor: '#f8fafc', borderRadius: 3, border: '1px solid #eef2f6', textAlign: 'center' }}>
-                <Typography variant="body1" color="textSecondary" sx={{ fontWeight: 600 }}>
-                  Debe programar cursos para poder comenzar con la asignación de la carga lectiva.
-                </Typography>
-                <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-                  Selecciona uno o más cursos arriba para comenzar.
-                </Typography>
-              </Box>
-            )}
             <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 3, overflow: 'auto' }}>
               <Table stickyHeader size="small" sx={{ minWidth: 800 }}>
                 <TableHead>
