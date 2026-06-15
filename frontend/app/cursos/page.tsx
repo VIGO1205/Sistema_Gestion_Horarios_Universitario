@@ -362,9 +362,9 @@ export default function CursosPage() {
         return coincideBusqueda && coincideCiclo && coincideCreditos && coincideCarrera && coincideDepartamento;
       })
       .sort((a: any, b: any) => {
-        const codigoA = String(a.codigo || '');
-        const codigoB = String(b.codigo || '');
-        return codigoA.localeCompare(codigoB, undefined, { numeric: true, sensitivity: 'base' });
+        const cicloA = Number(a.cicloAcademico) || 0;
+        const cicloB = Number(b.cicloAcademico) || 0;
+        return cicloA - cicloB;
       });
   }, [cursos, filtros]);
 
