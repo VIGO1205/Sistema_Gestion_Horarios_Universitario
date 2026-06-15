@@ -1093,8 +1093,12 @@ export default function CargaAcademicaPage() {
                   size="small"
                   sx={{
                     '& .MuiAutocomplete-inputRoot': {
+                      flexWrap: 'wrap',
                       maxHeight: '120px',
                       overflowY: 'auto',
+                      '& .MuiAutocomplete-tag': {
+                        margin: '2px',
+                      },
                     },
                   }}
                 />
@@ -1106,6 +1110,16 @@ export default function CargaAcademicaPage() {
             </Typography>
           </Box>
           <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
+            {selectedBulkIds.length === 0 && (
+              <Box sx={{ mb: 3, p: 3, bgcolor: '#f8fafc', borderRadius: 3, border: '1px solid #eef2f6', textAlign: 'center' }}>
+                <Typography variant="body1" color="textSecondary" sx={{ fontWeight: 600 }}>
+                  Debe programar cursos para poder comenzar con la asignación de la carga lectiva.
+                </Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+                  Selecciona uno o más cursos arriba para comenzar.
+                </Typography>
+              </Box>
+            )}
             <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 3, overflow: 'auto' }}>
               <Table stickyHeader size="small" sx={{ minWidth: 800 }}>
                 <TableHead>
@@ -1122,11 +1136,8 @@ export default function CargaAcademicaPage() {
                 {selectedBulkIds.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} align="center" sx={{ py: 10 }}>
-                      <Typography variant="body1" color="textSecondary" sx={{ fontWeight: 600 }}>
-                        Debe programar cursos para poder comenzar con la asignación de la carga lectiva.
-                      </Typography>
-                      <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-                        Selecciona uno o más cursos arriba para comenzar.
+                      <Typography variant="body2" color="textSecondary">
+                        No hay cursos seleccionados para mostrar en la tabla.
                       </Typography>
                     </TableCell>
                   </TableRow>
