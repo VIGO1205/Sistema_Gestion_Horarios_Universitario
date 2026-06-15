@@ -1103,8 +1103,8 @@ export default function CargaAcademicaPage() {
                   sx={{
                     '& .MuiAutocomplete-inputRoot': {
                       flexWrap: 'wrap',
-                      maxHeight: '120px',
-                      overflowY: 'auto',
+                      minHeight: '56px',
+                      height: 'auto',
                       '& .MuiAutocomplete-tag': {
                         margin: '2px',
                       },
