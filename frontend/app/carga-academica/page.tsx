@@ -1084,7 +1084,7 @@ export default function CargaAcademicaPage() {
           <AssignmentIcon /> Programación Masiva de Cursos
         </DialogTitle>
         <DialogContent sx={{ p: 0, display: 'flex', flexDirection: 'column' }}>
-          <Box ref={bulkInputRef} sx={{ p: 2, bgcolor: '#f8fafc', borderBottom: '1px solid #eef2f6' }}>
+          <Box sx={{ p: 2, bgcolor: '#f8fafc', borderBottom: '1px solid #eef2f6' }}>
             <Autocomplete
               multiple
               disableCloseOnSelect
@@ -1109,16 +1109,26 @@ export default function CargaAcademicaPage() {
                   label="Seleccionar Cursos para Programar"
                   placeholder="Busca y selecciona los cursos..."
                   size="small"
-                  InputProps={{ ...params.InputProps }}
+                  InputProps={{
+                    ...params.InputProps,
+                    ref: (node) => {
+                      // @ts-ignore
+                      bulkInputRef.current = node;
+                    },
+                  }}
                   sx={{
                     '& .MuiAutocomplete-inputRoot': {
                       flexWrap: 'wrap',
                       minHeight: '56px',
                       maxHeight: '90px',
                       overflowY: 'auto',
-                      paddingRight: '4px',
+                      paddingRight: '8px',
                       '& .MuiAutocomplete-tag': {
                         margin: '2px',
+                      },
+                      // Fix the border to stay consistent when scrolling
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'primary.main',
                       },
                     },
                   }}
