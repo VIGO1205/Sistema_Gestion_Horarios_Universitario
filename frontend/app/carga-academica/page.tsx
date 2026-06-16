@@ -98,8 +98,7 @@ export default function CargaAcademicaPage() {
   const [bulkData, setBulkData] = useState<any[]>([]);
   const [selectedBulkIds, setSelectedBulkIds] = useState<number[]>([]);
   const bulkInputRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll al final cuando seleccionamos un nuevo item
+  
   useEffect(() => {
     if (bulkInputRef.current) {
       bulkInputRef.current.scrollTop = bulkInputRef.current.scrollHeight;
@@ -1085,7 +1084,7 @@ export default function CargaAcademicaPage() {
           <AssignmentIcon /> Programación Masiva de Cursos
         </DialogTitle>
         <DialogContent sx={{ p: 0, display: 'flex', flexDirection: 'column' }}>
-          <Box sx={{ p: 2, bgcolor: '#f8fafc', borderBottom: '1px solid #eef2f6' }}>
+          <Box ref={bulkInputRef} sx={{ p: 2, bgcolor: '#f8fafc', borderBottom: '1px solid #eef2f6' }}>
             <Autocomplete
               multiple
               disableCloseOnSelect
@@ -1110,12 +1109,7 @@ export default function CargaAcademicaPage() {
                   label="Seleccionar Cursos para Programar"
                   placeholder="Busca y selecciona los cursos..."
                   size="small"
-                  InputProps={{
-                    ...params.InputProps,
-                    ref: (node) => {
-                      bulkInputRef.current = node;
-                    },
-                  }}
+                  InputProps={{ ...params.InputProps }}
                   sx={{
                     '& .MuiAutocomplete-inputRoot': {
                       flexWrap: 'wrap',
