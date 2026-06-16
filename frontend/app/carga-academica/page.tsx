@@ -100,9 +100,9 @@ export default function CargaAcademicaPage() {
 
   // Auto-scroll al final cuando seleccionamos un nuevo item
   useEffect(() => {
-    const inputRoot = document.querySelector('.MuiAutocomplete-inputRoot') as HTMLElement | null;
-    if (inputRoot) {
-      inputRoot.scrollTop = inputRoot.scrollHeight;
+    const tagContainer = document.querySelector('.MuiAutocomplete-tagContainer')?.firstElementChild as HTMLElement | null;
+    if (tagContainer) {
+      tagContainer.scrollTop = tagContainer.scrollHeight;
     }
   }, [selectedBulkIds]);
 
@@ -1104,24 +1104,33 @@ export default function CargaAcademicaPage() {
               onChange={(_, newValue) => {
                 setSelectedBulkIds(newValue.map(v => v.id));
               }}
+              renderTags={(tagValue, getTagProps) => (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    maxHeight: '60px',
+                    overflowY: 'auto',
+                    gap: 0.5,
+                    p: 0.5,
+                  }}
+                >
+                  {tagValue.map((option, index) => (
+                    <Chip
+                      key={option.id}
+                      label={`${option.nombre} (${option.codigo})`}
+                      {...getTagProps({ index })}
+                      size="small"
+                    />
+                  ))}
+                </Box>
+              )}
               renderInput={(params) => (
                 <TextField
                   {...params}
                   label="Seleccionar Cursos para Programar"
                   placeholder="Busca y selecciona los cursos..."
                   size="small"
-                  sx={{
-                    '& .MuiAutocomplete-inputRoot': {
-                      flexWrap: 'wrap',
-                      minHeight: '56px',
-                      maxHeight: '90px',
-                      overflowY: 'auto',
-                      paddingRight: '8px',
-                      '& .MuiAutocomplete-tag': {
-                        margin: '2px',
-                      },
-                    },
-                  }}
                 />
               )}
               sx={{
