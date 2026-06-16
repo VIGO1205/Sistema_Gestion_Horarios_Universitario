@@ -162,6 +162,9 @@ export default function FormularioCargaNoLectiva({
     }
   };
 
+  // Máximo de horas para Preparación y Evaluación: 50% de la carga lectiva
+  const maxHorasPreparacion = Math.round(horasLectivas / 2);
+  
   const totalHorasNoLectivas = 
     Number(data.horasPreparacion || 0) +
     Number(data.horasTutoria || 0) +
@@ -176,6 +179,12 @@ export default function FormularioCargaNoLectiva({
   const totalHorasNoLectivasEnteras = Math.round(totalHorasNoLectivas);
   const horasLectivasEnteras = Math.round(horasLectivas);
   const totalGeneralEntero = horasLectivasEnteras + totalHorasNoLectivasEnteras;
+  
+  // Validación: horasPreparacion no excede el 50% de horasLectivas
+  const excedeHorasPreparacion = Number(data.horasPreparacion || 0) > maxHorasPreparacion;
+  
+  // Botón habilitado solo si totalGeneralEntero >= dedicacionTotal
+  const puedeEnviar = totalGeneralEntero >= dedicacionTotal && !excedeHorasPreparacion;
 
   // El docente solo puede editar si el estado es 'borrador'
   // Si es finalizado, se bloquea todo permanentemente
@@ -482,65 +491,86 @@ export default function FormularioCargaNoLectiva({
       </Box>
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {rows.map((row) => (
-            <Box key={row.id}>
-              <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12} md={5}>
-                  <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
-                    {row.label}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} md={5}>
-                  <TextField
-                    fullWidth
-                    multiline={row.id !== 'Preparacion'}
-                    rows={row.id === 'Preparacion' ? 1 : 5}
-                    variant="outlined"
-                    disabled={readOnly || isLocked}
-                    placeholder="Detalle de la actividad..."
-                    value={data[row.d] || ''}
-                    onChange={(e) => handleInputChange(row.d, e.target.value)}
-                    sx={{ 
-                      '& .MuiOutlinedInput-root': { 
-                        bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#ffffff',
-                        fontSize: '0.85rem',
-                        '& fieldset': { borderColor: '#e2e8f0' },
-                        '&:hover fieldset': { borderColor: '#003366' },
-                      } 
-                    }}
-                  />
-                </Grid>
-                <Grid item xs={12} md={2}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
-                    <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: '#475569' }}>Horas:</Typography>
+          {rows.map((row) => {
+            const isPreparacion = row.id === 'Preparacion';
+            const errorPreparacion = isPreparacion && excedeHorasPreparacion;
+            
+            return (
+              <Box key={row.id}>
+                <Grid container spacing={2} alignItems="center">
+                  <Grid item xs={12} md={5}>
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
+                      {isPreparacion 
+                        ? `2. PREPARACION Y EVALUACION (Max ${maxHorasPreparacion} H - 50% de Trabajo Lectivo)` 
+                        : row.label}
+                    </Typography>
+                    {errorPreparacion && (
+                      <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 700, display: 'block', mt: 0.5 }}>
+                        ⚠️ Excede el máximo permitido ({maxHorasPreparacion} H)
+                      </Typography>
+                    )}
+                  </Grid>
+                  <Grid item xs={12} md={5}>
                     <TextField
-                      type="number"
-                      size="small"
+                      fullWidth
+                      multiline={!isPreparacion}
+                      rows={isPreparacion ? 1 : 5}
+                      variant="outlined"
                       disabled={readOnly || isLocked}
-                      value={data[row.h] === undefined ? 0 : Math.round(data[row.h])}
-                      onChange={(e) => {
-                        const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
-                        handleInputChange(row.h, isNaN(val) ? 0 : val);
-                      }}
-                      inputProps={{ 
-                        min: 0, 
-                        step: 1,
-                        style: { textAlign: 'center', fontWeight: 800, color: '#003366' } 
-                      }}
+                      placeholder="Detalle de la actividad..."
+                      value={data[row.d] || ''}
+                      onChange={(e) => handleInputChange(row.d, e.target.value)}
                       sx={{ 
-                        width: 70,
                         '& .MuiOutlinedInput-root': { 
-                          bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#fff',
-                          '& fieldset': { borderColor: '#cbd5e1' }
-                        }
+                          bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#ffffff',
+                          fontSize: '0.85rem',
+                          '& fieldset': { borderColor: '#e2e8f0' },
+                          '&:hover fieldset': { borderColor: '#003366' },
+                        } 
                       }}
                     />
-                  </Box>
+                  </Grid>
+                  <Grid item xs={12} md={2}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+                      <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: '#475569' }}>Horas:</Typography>
+                      <TextField
+                        type="number"
+                        size="small"
+                        disabled={readOnly || isLocked}
+                        value={data[row.h] === undefined ? 0 : Math.round(data[row.h])}
+                        onChange={(e) => {
+                          let val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                          if (isNaN(val)) val = 0;
+                          
+                          // Limitar el valor para preparación
+                          if (isPreparacion) {
+                            val = Math.min(val, maxHorasPreparacion);
+                          }
+                          
+                          handleInputChange(row.h, val);
+                        }}
+                        error={errorPreparacion}
+                        inputProps={{ 
+                          min: 0, 
+                          max: isPreparacion ? maxHorasPreparacion : undefined,
+                          step: 1,
+                          style: { textAlign: 'center', fontWeight: 800, color: '#003366' } 
+                        }}
+                        sx={{ 
+                          width: 70,
+                          '& .MuiOutlinedInput-root': { 
+                            bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#fff',
+                            '& fieldset': { borderColor: errorPreparacion ? 'error.main' : '#cbd5e1' }
+                          }
+                        }}
+                      />
+                    </Box>
+                  </Grid>
                 </Grid>
-              </Grid>
-              <Divider sx={{ mt: 2, borderStyle: 'dashed', opacity: 0.6 }} />
-            </Box>
-          ))}
+                <Divider sx={{ mt: 2, borderStyle: 'dashed', opacity: 0.6 }} />
+              </Box>
+            );
+          })}
         </Box>
 
         <Box sx={{ mt: 4, display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -651,23 +681,36 @@ export default function FormularioCargaNoLectiva({
                  </Button>
                )}
                {data.estado !== 'validado' && (
-                 <Button
-                   variant="contained"
-                   startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-                   onClick={handleSave}
-                   disabled={saving || isLocked}
-                   sx={{ 
-                     ...buttonStyle,
-                     bgcolor: '#003366', 
-                     color: '#fff',
-                     fontSize: '0.8rem',
-                     lineHeight: 1.2,
-                     boxShadow: '0 4px 12px rgba(0,51,102,0.2)',
-                     '&:hover': { bgcolor: '#002244', boxShadow: '0 6px 16px rgba(0,51,102,0.3)' }
-                   }}
-                 >
-                   {saving ? 'Enviando...' : 'Enviar Declaración'}
-                 </Button>
+                 <>
+                   {!puedeEnviar && (
+                     <Box sx={{ mr: 2, display: 'flex', alignItems: 'center', gap: 1, color: '#ca8a04' }}>
+                       <WarningIcon fontSize="small" />
+                       <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                         {excedeHorasPreparacion 
+                           ? `Reduzca horas de preparación a max ${maxHorasPreparacion} H`
+                           : `Faltan ${dedicacionTotal - totalGeneralEntero} H para alcanzar su dedicación`}
+                       </Typography>
+                     </Box>
+                   )}
+                   <Button
+                     variant="contained"
+                     startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+                     onClick={handleSave}
+                     disabled={saving || isLocked || !puedeEnviar}
+                     sx={{ 
+                       ...buttonStyle,
+                       bgcolor: '#003366', 
+                       color: '#fff',
+                       fontSize: '0.8rem',
+                       lineHeight: 1.2,
+                       boxShadow: '0 4px 12px rgba(0,51,102,0.2)',
+                       '&:hover': { bgcolor: '#002244', boxShadow: '0 6px 16px rgba(0,51,102,0.3)' },
+                       '&.Mui-disabled': { bgcolor: '#e2e8f0', color: '#94a3b8' }
+                     }}
+                   >
+                     {saving ? 'Enviando...' : 'Enviar Declaración'}
+                   </Button>
+                 </>
                )}
             </Box>
           )
