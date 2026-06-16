@@ -681,36 +681,24 @@ export default function FormularioCargaNoLectiva({
                  </Button>
                )}
                {data.estado !== 'validado' && (
-                 <>
-                   {!puedeEnviar && (
-                     <Box sx={{ mr: 2, display: 'flex', alignItems: 'center', gap: 1, color: '#ca8a04' }}>
-                       <WarningIcon fontSize="small" />
-                       <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                         {excedeHorasPreparacion 
-                           ? `Reduzca horas de preparación a max ${maxHorasPreparacion} H`
-                           : `Faltan ${dedicacionTotal - totalGeneralEntero} H para alcanzar su dedicación`}
-                       </Typography>
-                     </Box>
-                   )}
-                   <Button
-                     variant="contained"
-                     startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-                     onClick={handleSave}
-                     disabled={saving || isLocked || !puedeEnviar}
-                     sx={{ 
-                       ...buttonStyle,
-                       bgcolor: '#003366', 
-                       color: '#fff',
-                       fontSize: '0.8rem',
-                       lineHeight: 1.2,
-                       boxShadow: '0 4px 12px rgba(0,51,102,0.2)',
-                       '&:hover': { bgcolor: '#002244', boxShadow: '0 6px 16px rgba(0,51,102,0.3)' },
-                       '&.Mui-disabled': { bgcolor: '#e2e8f0', color: '#94a3b8' }
-                     }}
-                   >
-                     {saving ? 'Enviando...' : 'Enviar Declaración'}
-                   </Button>
-                 </>
+                 <Button
+                   variant="contained"
+                   startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+                   onClick={handleSave}
+                   disabled={saving || isLocked || !puedeEnviar}
+                   sx={{ 
+                     ...buttonStyle,
+                     bgcolor: '#003366', 
+                     color: '#fff',
+                     fontSize: '0.8rem',
+                     lineHeight: 1.2,
+                     boxShadow: '0 4px 12px rgba(0,51,102,0.2)',
+                     '&:hover': { bgcolor: '#002244', boxShadow: '0 6px 16px rgba(0,51,102,0.3)' },
+                     '&.Mui-disabled': { bgcolor: '#e2e8f0', color: '#94a3b8' }
+                   }}
+                 >
+                   {saving ? 'Enviando...' : 'Enviar Declaración'}
+                 </Button>
                )}
             </Box>
           )
