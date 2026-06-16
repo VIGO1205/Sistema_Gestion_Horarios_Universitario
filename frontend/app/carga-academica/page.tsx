@@ -1106,7 +1106,9 @@ export default function CargaAcademicaPage() {
                     '& .MuiAutocomplete-inputRoot': {
                       flexWrap: 'wrap',
                       minHeight: '56px',
-                      height: 'auto',
+                      maxHeight: '90px',
+                      overflowY: 'auto',
+                      paddingRight: '4px',
                       '& .MuiAutocomplete-tag': {
                         margin: '2px',
                       },
@@ -1116,12 +1118,6 @@ export default function CargaAcademicaPage() {
               )}
               sx={{
                 bgcolor: 'white',
-                '& .MuiAutocomplete-tagContainer': {
-                  flexWrap: 'wrap',
-                  maxHeight: '90px', // ~3 tags height
-                  overflowY: 'auto',
-                  paddingRight: '4px',
-                },
               }}
             />
           </Box>

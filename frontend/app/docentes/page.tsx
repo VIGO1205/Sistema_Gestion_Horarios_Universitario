@@ -839,16 +839,20 @@ export default function DocentesPage() {
                           label="Carreras que enseña"
                           placeholder="Seleccione una o más carreras..."
                           InputLabelProps={{ shrink: true }}
+                          sx={{
+                            '& .MuiAutocomplete-inputRoot': {
+                              flexWrap: 'wrap',
+                              minHeight: '56px',
+                              maxHeight: '90px',
+                              overflowY: 'auto',
+                              paddingRight: '4px',
+                              '& .MuiAutocomplete-tag': {
+                                margin: '2px',
+                              },
+                            },
+                          }}
                         />
                       )}
-                      sx={{
-                        '& .MuiAutocomplete-tagContainer': {
-                          flexWrap: 'wrap',
-                          maxHeight: '90px', // ~3 tags height
-                          overflowY: 'auto',
-                          paddingRight: '4px',
-                        },
-                      }}
                     />
                   )}
                 />
