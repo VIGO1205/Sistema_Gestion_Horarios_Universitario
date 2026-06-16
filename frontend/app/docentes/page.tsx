@@ -825,6 +825,7 @@ export default function DocentesPage() {
                   render={({ field: { onChange, value } }) => (
                     <Autocomplete
                       multiple
+                      limitTags={3}
                       options={carreras}
                       getOptionLabel={(option: any) => option.nombre || ''}
                       value={carreras.filter(carrera => value?.includes(carrera.id))}
@@ -839,6 +840,13 @@ export default function DocentesPage() {
                           InputLabelProps={{ shrink: true }}
                         />
                       )}
+                      sx={{
+                        '& .MuiAutocomplete-tagContainer': {
+                          flexWrap: 'wrap',
+                          maxHeight: '88px', // ~3 tags height
+                          overflowY: 'auto',
+                        },
+                      }}
                     />
                   )}
                 />
