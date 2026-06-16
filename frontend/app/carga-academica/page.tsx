@@ -98,7 +98,6 @@ export default function CargaAcademicaPage() {
   const [bulkData, setBulkData] = useState<any[]>([]);
   const [selectedBulkIds, setSelectedBulkIds] = useState<number[]>([]);
 
-  // Auto-scroll al final cuando seleccionamos un nuevo item
   useEffect(() => {
     const tagContainer = document.querySelector('.MuiAutocomplete-tagContainer')?.firstElementChild as HTMLElement | null;
     if (tagContainer) {
@@ -106,7 +105,6 @@ export default function CargaAcademicaPage() {
     }
   }, [selectedBulkIds]);
 
-  // Estado para Programación Individual (se mantiene para la tuerquita)
   const [openProgDialog, setOpenProgDialog] = useState(false);
   const [progLoading, setProgLoading] = useState(false);
   const [progData, setProgData] = useState({
@@ -1117,7 +1115,6 @@ export default function CargaAcademicaPage() {
                 >
                   {tagValue.map((option, index) => (
                     <Chip
-                      key={option.id}
                       label={`${option.nombre} (${option.codigo})`}
                       {...getTagProps({ index })}
                       size="small"
