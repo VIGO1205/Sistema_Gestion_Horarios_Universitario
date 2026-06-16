@@ -1113,8 +1113,6 @@ export default function CargaAcademicaPage() {
                   InputProps={{
                     ...params.InputProps,
                     ref: (node) => {
-                      // @ts-ignore
-                      params.InputProps.ref(node);
                       bulkInputRef.current = node;
                     },
                   }}
