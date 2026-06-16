@@ -97,11 +97,12 @@ export default function CargaAcademicaPage() {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkData, setBulkData] = useState<any[]>([]);
   const [selectedBulkIds, setSelectedBulkIds] = useState<number[]>([]);
-  const bulkInputRef = useRef<HTMLDivElement>(null);
-  
+
+  // Auto-scroll al final cuando seleccionamos un nuevo item
   useEffect(() => {
-    if (bulkInputRef.current) {
-      bulkInputRef.current.scrollTop = bulkInputRef.current.scrollHeight;
+    const inputRoot = document.querySelector('.MuiAutocomplete-inputRoot') as HTMLElement | null;
+    if (inputRoot) {
+      inputRoot.scrollTop = inputRoot.scrollHeight;
     }
   }, [selectedBulkIds]);
 
@@ -1109,13 +1110,6 @@ export default function CargaAcademicaPage() {
                   label="Seleccionar Cursos para Programar"
                   placeholder="Busca y selecciona los cursos..."
                   size="small"
-                  InputProps={{
-                    ...params.InputProps,
-                    ref: (node) => {
-                      // @ts-ignore
-                      bulkInputRef.current = node;
-                    },
-                  }}
                   sx={{
                     '& .MuiAutocomplete-inputRoot': {
                       flexWrap: 'wrap',
@@ -1125,10 +1119,6 @@ export default function CargaAcademicaPage() {
                       paddingRight: '8px',
                       '& .MuiAutocomplete-tag': {
                         margin: '2px',
-                      },
-                      // Fix the border to stay consistent when scrolling
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'primary.main',
                       },
                     },
                   }}
