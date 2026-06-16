@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -174,6 +174,14 @@ export default function DocentesPage() {
   };
 
   const carrerasSeleccionadas = watch('carreraIds') || [];
+  const docentesInputRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll al final cuando seleccionamos un nuevo item
+  useEffect(() => {
+    if (docentesInputRef.current) {
+      docentesInputRef.current.scrollTop = docentesInputRef.current.scrollHeight;
+    }
+  }, [carrerasSeleccionadas]);
 
   const docentesFiltrados = useMemo(() => {
     return docentes.filter((docente: any) => {
@@ -839,6 +847,14 @@ export default function DocentesPage() {
                           label="Carreras que enseña"
                           placeholder="Seleccione una o más carreras..."
                           InputLabelProps={{ shrink: true }}
+                          InputProps={{
+                            ...params.InputProps,
+                            ref: (node) => {
+                              // @ts-ignore
+                              params.InputProps.ref(node);
+                              docentesInputRef.current = node;
+                            },
+                          }}
                           sx={{
                             '& .MuiAutocomplete-inputRoot': {
                               flexWrap: 'wrap',

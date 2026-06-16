@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -97,6 +97,14 @@ export default function CargaAcademicaPage() {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkData, setBulkData] = useState<any[]>([]);
   const [selectedBulkIds, setSelectedBulkIds] = useState<number[]>([]);
+  const bulkInputRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll al final cuando seleccionamos un nuevo item
+  useEffect(() => {
+    if (bulkInputRef.current) {
+      bulkInputRef.current.scrollTop = bulkInputRef.current.scrollHeight;
+    }
+  }, [selectedBulkIds]);
 
   // Estado para Programación Individual (se mantiene para la tuerquita)
   const [openProgDialog, setOpenProgDialog] = useState(false);
@@ -1102,6 +1110,14 @@ export default function CargaAcademicaPage() {
                   label="Seleccionar Cursos para Programar"
                   placeholder="Busca y selecciona los cursos..."
                   size="small"
+                  InputProps={{
+                    ...params.InputProps,
+                    ref: (node) => {
+                      // @ts-ignore
+                      params.InputProps.ref(node);
+                      bulkInputRef.current = node;
+                    },
+                  }}
                   sx={{
                     '& .MuiAutocomplete-inputRoot': {
                       flexWrap: 'wrap',
