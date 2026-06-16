@@ -825,6 +825,7 @@ export default function DocentesPage() {
                   render={({ field: { onChange, value } }) => (
                     <Autocomplete
                       multiple
+                      disableCloseOnSelect
                       limitTags={3}
                       options={carreras}
                       getOptionLabel={(option: any) => option.nombre || ''}
@@ -843,8 +844,9 @@ export default function DocentesPage() {
                       sx={{
                         '& .MuiAutocomplete-tagContainer': {
                           flexWrap: 'wrap',
-                          maxHeight: '88px', // ~3 tags height
+                          maxHeight: '90px', // ~3 tags height
                           overflowY: 'auto',
+                          paddingRight: '4px',
                         },
                       }}
                     />

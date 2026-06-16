@@ -1080,6 +1080,7 @@ export default function CargaAcademicaPage() {
           <Box sx={{ p: 2, bgcolor: '#f8fafc', borderBottom: '1px solid #eef2f6' }}>
             <Autocomplete
               multiple
+              disableCloseOnSelect
               limitTags={3}
               options={bulkData.filter(c => {
                 // Solo mostrar cursos incompletos o vacíos
@@ -1117,8 +1118,9 @@ export default function CargaAcademicaPage() {
                 bgcolor: 'white',
                 '& .MuiAutocomplete-tagContainer': {
                   flexWrap: 'wrap',
-                  maxHeight: '88px', // ~3 tags height
+                  maxHeight: '90px', // ~3 tags height
                   overflowY: 'auto',
+                  paddingRight: '4px',
                 },
               }}
             />
