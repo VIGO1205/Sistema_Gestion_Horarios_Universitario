@@ -378,8 +378,8 @@ export default function CurriculasPage() {
       const params = new URLSearchParams();
       params.append('carreraId', String(curriculaParaVerCursos.carreraId));
       const response = await api.get(`/cursos?${params.toString()}`);
-      // Filtrar cursos que no están asignados a ninguna malla o están asignados a otra
-      const cursosSinMalla = response.data.filter((c: any) => c.curriculaId !== curriculaParaVerCursos.id);
+      // Mostrar solo cursos sin ninguna malla asignada
+      const cursosSinMalla = response.data.filter((c: any) => c.curriculaId === null);
       setCursosDisponibles(cursosSinMalla);
       setCursosSeleccionadosParaAsignar([]);
       setOpenAsignarCursosDialog(true);
@@ -406,11 +406,10 @@ export default function CurriculasPage() {
     if (!curriculaParaVerCursos || cursosSeleccionadosParaAsignar.length === 0) return;
 
     try {
-      // Actualizamos cada curso seleccionado para asignarlo a la malla
-      for (const cursoId of cursosSeleccionadosParaAsignar) {
-        await api.patch(`/cursos/${cursoId}`, {
-          curriculaId: curriculaParaVerCursos.id });
-      }
+      await api.patch('/cursos/batch-asignar', {
+        ids: cursosSeleccionadosParaAsignar,
+        curriculaId: curriculaParaVerCursos.id,
+      });
       MySwal.fire('¡Asignados!', 'Cursos asignados a la malla curricular', 'success');
       handleCloseAsignarCursosDialog();
       fetchCurriculas();
@@ -601,8 +600,18 @@ export default function CurriculasPage() {
       try {
         // Eliminar la relación con la malla curricular (no eliminar el curso completo)
         await api.patch(`/cursos/${id}`, { curriculaId: null });
+        await fetchCurriculas();
+        // Refrescar curriculaParaVerCursos para actualizar el modal y el paginador
+        if (curriculaParaVerCursos) {
+          const refreshed = await api.get(`/curriculas/${curriculaParaVerCursos.id}`);
+          setCurriculaParaVerCursos(refreshed.data);
+          // Ajustar página si la actual se queda sin elementos
+          const newLength = refreshed.data.cursos?.length || 0;
+          if (pageCursosModal > 0 && pageCursosModal * rowsPerPageCursosModal >= newLength) {
+            setPageCursosModal(Math.max(0, pageCursosModal - 1));
+          }
+        }
         MySwal.fire('Eliminado', 'Curso eliminado de la malla curricular', 'success');
-        fetchCurriculas();
       } catch (error) {
         MySwal.fire('Error', 'No se pudo eliminar el curso de la malla', 'error');
       }
@@ -1750,17 +1759,17 @@ export default function CurriculasPage() {
         <DialogTitle sx={{ bgcolor: '#003366', color: 'white', fontWeight: 700 }}>
           Asignar Cursos a la Malla
         </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
+        <DialogContent sx={{ pt: 6, mt: 0 }}>
           {cursosDisponibles.length === 0 ? (
             <Box sx={{ py: 10, textAlign: 'center' }}>
               <Typography color="textSecondary">No hay cursos disponibles para asignar.</Typography>
             </Box>
           ) : (
-            <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2, border: '1px solid #eef2f6' }}>
+            <TableContainer component={Paper} elevation={0} sx={{ mt: 2, borderRadius: 2, border: '1px solid #eef2f6' }}>
               <Table>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: '#f5f7fa' }}>
-                    <TableCell sx={{ fontWeight: 700, width: 50 }}>
+                  <TableRow sx={{ bgcolor: '#003366' }}>
+                    <TableCell sx={{ fontWeight: 700, color: 'white', width: 50 }}>
                       <Checkbox
                         checked={cursosSeleccionadosParaAsignar.length === cursosDisponibles.length}
                         onChange={() => {
@@ -1770,16 +1779,19 @@ export default function CurriculasPage() {
                             setCursosSeleccionadosParaAsignar(cursosDisponibles.map((c) => c.id));
                           }
                         }}
+                        sx={{ color: 'white', '&.Mui-checked': { color: 'white' } }}
                       />
                     </TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Código</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Nombre</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Ciclo</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Créditos</TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: 'white' }}>N°</TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: 'white' }}>Código</TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: 'white' }}>Ciclo</TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: 'white' }}>Nombre</TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: 'white' }}>Departamento</TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: 'white' }}>Créditos</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {cursosDisponibles.map((curso) => (
+                  {cursosDisponibles.map((curso, index) => (
                     <TableRow key={curso.id} sx={{ '&:hover': { bgcolor: '#fcfdfe' } }}>
                       <TableCell>
                         <Checkbox
@@ -1787,9 +1799,11 @@ export default function CurriculasPage() {
                           onChange={() => handleToggleCursoSeleccionado(curso.id)}
                         />
                       </TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{index + 1}</TableCell>
                       <TableCell sx={{ fontWeight: 600 }}>{curso.codigo}</TableCell>
-                      <TableCell>{curso.nombre}</TableCell>
                       <TableCell>{curso.cicloAcademico}° CICLO</TableCell>
+                      <TableCell>{curso.nombre}</TableCell>
+                      <TableCell>{curso.departamento}</TableCell>
                       <TableCell>{curso.creditos} créditos</TableCell>
                     </TableRow>
                   ))}

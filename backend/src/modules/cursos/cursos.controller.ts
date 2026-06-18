@@ -5,6 +5,7 @@ import { CursosService } from './cursos.service';
 import { CreateCursoDto } from './dto/create-curso.dto';
 import { UpdateCursoDto } from './dto/update-curso.dto';
 import { ConfirmImportCursosDto } from './dto/confirm-import-cursos.dto';
+import { BatchAsignarCursosDto } from './dto/batch-asignar-cursos.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -35,6 +36,12 @@ export class CursosController {
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
   async confirmImportFromIA(@Body() body: ConfirmImportCursosDto) {
     return this.cursosService.confirmImportFromIA(body.carreraId, body.cursos, body.curriculaId);
+  }
+
+  @Patch('batch-asignar')
+  @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
+  batchAsignar(@Body() dto: BatchAsignarCursosDto) {
+    return this.cursosService.batchAssignCurricula(dto.ids, dto.curriculaId);
   }
 
   @Get()

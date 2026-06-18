@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Curso } from '../../entities/curso.entity';
 import { CreateCursoDto } from './dto/create-curso.dto';
 import { UpdateCursoDto } from './dto/update-curso.dto';
@@ -165,5 +165,13 @@ export class CursosService {
     const where: any = { curriculaId: null };
     if (carreraId) where.carreraId = carreraId;
     return await this.cursosRepository.find({ where });
+  }
+
+  async batchAssignCurricula(ids: number[], curriculaId: number): Promise<{ count: number }> {
+    const result = await this.cursosRepository.update(
+      { id: In(ids) },
+      { curriculaId },
+    );
+    return { count: result.affected || 0 };
   }
 }
