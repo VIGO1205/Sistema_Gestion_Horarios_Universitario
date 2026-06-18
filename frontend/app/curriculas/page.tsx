@@ -410,9 +410,13 @@ export default function CurriculasPage() {
         ids: cursosSeleccionadosParaAsignar,
         curriculaId: curriculaParaVerCursos.id,
       });
+      await fetchCurriculas();
+      if (curriculaParaVerCursos) {
+        const refreshed = await api.get(`/curriculas/${curriculaParaVerCursos.id}`);
+        setCurriculaParaVerCursos(refreshed.data);
+      }
       MySwal.fire('¡Asignados!', 'Cursos asignados a la malla curricular', 'success');
       handleCloseAsignarCursosDialog();
-      fetchCurriculas();
     } catch (error) {
       MySwal.fire('Error', 'No se pudieron asignar los cursos', 'error');
     }
