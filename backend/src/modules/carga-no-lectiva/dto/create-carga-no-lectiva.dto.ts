@@ -93,6 +93,24 @@ export class CreateCargaNoLectivaDto {
   @IsOptional()
   detalleComites?: string;
 
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  horasAaep?: number;
+
+  @IsString()
+  @IsOptional()
+  detalleAaep?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  horasAaai?: number;
+
+  @IsString()
+  @IsOptional()
+  detalleAaai?: string;
+
   @IsString()
   @IsOptional()
   firma?: string;

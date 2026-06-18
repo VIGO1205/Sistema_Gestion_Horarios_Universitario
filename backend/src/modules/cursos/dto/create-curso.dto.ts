@@ -24,4 +24,8 @@ export class CreateCursoDto {
   @IsNumber()
   @IsOptional()
   carreraId?: number;
+
+  @IsNumber()
+  @IsOptional()
+  curriculaId?: number;
 }

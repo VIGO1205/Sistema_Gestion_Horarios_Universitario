@@ -60,6 +60,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   Assignment as AssignmentIcon,
+  VerifiedUser as VerifiedUserIcon,
 } from '@mui/icons-material';
 import api from '@/lib/api';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -80,10 +81,12 @@ export default function CargaAcademicaPage() {
   const [carreras, setCarreras] = useState<any[]>([]);
   const [docentes, setDocentes] = useState<any[]>([]);
   const [todosCursos, setTodosCursos] = useState<any[]>([]);
+  const [curriculas, setCurriculas] = useState<any[]>([]);
   const [filtros, setFiltros] = useState({
     cicloId: '',
     carreraId: '',
     cicloAcademico: '1',
+    curriculaId: '',
   });
 
   const [cargaAcademica, setCargaAcademica] = useState<any[]>([]);
@@ -116,6 +119,53 @@ export default function CargaAcademicaPage() {
     horasLaboratorio: 0,
     numGruposLaboratorio: 0,
   });
+  
+  // Estados para la pestaña "Por Docente"
+  const [selectedDocente, setSelectedDocente] = useState<any>(null);
+  const [soloIncompletosDocentes, setSoloIncompletosDocentes] = useState(false);
+  const [docenteCursosEdit, setDocenteCursosEdit] = useState<any[]>([]);
+  const [showCursoAutocomplete, setShowCursoAutocomplete] = useState(false);
+
+  const pendingCursoId = useRef<number | null>(null);
+  const pendingDocenteId = useRef<number | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab) setActiveTab(parseInt(tab));
+    const cursoId = params.get('cursoProgramacionId');
+    if (cursoId) pendingCursoId.current = parseInt(cursoId);
+    const docenteId = params.get('docenteId');
+    if (docenteId) pendingDocenteId.current = parseInt(docenteId);
+  }, []);
+
+  useEffect(() => {
+    if (cargaAcademica.length === 0 || !pendingCursoId.current) return;
+    const found = cargaAcademica.find((c: any) => c.id === pendingCursoId.current);
+    if (found) {
+      setSelectedCurso(found);
+      pendingCursoId.current = null;
+    }
+  }, [cargaAcademica]);
+
+  useEffect(() => {
+    if (docentes.length === 0 || !pendingDocenteId.current) return;
+    const found = docentes.find((d: any) => d.id === pendingDocenteId.current);
+    if (found) {
+      setSelectedDocente(found);
+      pendingDocenteId.current = null;
+    }
+  }, [docentes]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (activeTab > 0) params.set('tab', String(activeTab));
+    if (selectedCurso?.id) params.set('cursoProgramacionId', String(selectedCurso.id));
+    if (selectedDocente?.id) params.set('docenteId', String(selectedDocente.id));
+    const searchStr = params.toString();
+    const newUrl = searchStr ? `${window.location.pathname}?${searchStr}` : window.location.pathname;
+    window.history.replaceState(null, '', newUrl);
+  }, [activeTab, selectedCurso, selectedDocente]);
 
   useEffect(() => {
     fetchInitialData();
@@ -124,16 +174,18 @@ export default function CargaAcademicaPage() {
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const [ciclosRes, carrerasRes, docentesRes, cursosRes] = await Promise.all([
+      const [ciclosRes, carrerasRes, docentesRes, cursosRes, curriculasRes] = await Promise.all([
         api.get('/ciclos'),
         api.get('/carreras'),
         api.get('/docentes/active'),
         api.get('/cursos'),
+        api.get('/curriculas'),
       ]);
       setCiclos(ciclosRes.data);
       setCarreras(carrerasRes.data);
       setDocentes(docentesRes.data);
       setTodosCursos(cursosRes.data);
+      setCurriculas(curriculasRes.data);
 
       // Set default cycle "2026-I" and career "Ingeniería de Sistemas"
       const defaultCiclo = Array.isArray(ciclosRes.data) ? ciclosRes.data.find((c: any) => c.nombre.includes('2026-I')) : null;
@@ -142,7 +194,8 @@ export default function CargaAcademicaPage() {
       setFiltros({
         cicloId: defaultCiclo ? String(defaultCiclo.id) : '',
         carreraId: defaultCarrera ? String(defaultCarrera.id) : '',
-        cicloAcademico: '1',
+    cicloAcademico: '',
+        curriculaId: '',
       });
     } catch (error) {
       console.error('Error fetching initial data:', error);
@@ -301,14 +354,38 @@ export default function CargaAcademicaPage() {
     if (filtros.cicloId) {
       fetchCargaAcademica();
     }
-  }, [filtros.cicloId, filtros.carreraId, filtros.cicloAcademico]);
+  }, [filtros.cicloId, filtros.carreraId]);
+
+  // Poblar docenteCursosEdit cuando cambia el docente seleccionado o la carga académica
+  useEffect(() => {
+    if (!selectedDocente) { setDocenteCursosEdit([]); return; }
+    const existing = cargaAcademica
+      .filter((c: any) => c.asignaciones.some((a: any) => a.docenteId === selectedDocente.id))
+      .map((c: any) => ({
+        cursoProgramacion: c,
+        asignaciones: c.asignaciones
+          .filter((a: any) => a.docenteId === selectedDocente.id)
+          .map((a: any) => {
+            const tipo = a.tipoClase;
+            const maxGrupos = tipo === 'teoria' ? c.numGruposTeoria : tipo === 'practica' ? c.numGruposPractica : c.numGruposLaboratorio;
+            const maxHoras = tipo === 'teoria' ? c.horasTeoria : tipo === 'practica' ? c.horasPractica : c.horasLaboratorio;
+            return {
+              tipoClase: tipo,
+              horasSemanales: a.grupos?.length ? Math.round(a.horasSemanales / a.grupos.length) : maxHoras,
+              grupos: a.grupos.map((g: any) => g.numeroGrupo),
+              maxGrupos: maxGrupos || 1,
+              maxHoras: maxHoras || 1,
+            };
+          }),
+      }));
+    setDocenteCursosEdit(existing);
+  }, [selectedDocente, cargaAcademica]);
 
   const fetchCargaAcademica = async () => {
     setFetchingCarga(true);
     try {
       const params = new URLSearchParams();
       if (filtros.carreraId) params.append('carreraId', filtros.carreraId);
-      if (filtros.cicloAcademico) params.append('cicloAcademico', filtros.cicloAcademico);
       
       const url = `/programacion-curso-ciclo/carga-academica/${filtros.cicloId}?${params.toString()}`;
       const response = await api.get(url);
@@ -549,6 +626,224 @@ export default function CargaAcademicaPage() {
     return 'warning';
   };
 
+  // Funciones para la pestaña "Por Docente"
+  const calcularCreditosDocente = (docenteId: number) => {
+    let totalCreditos = 0;
+    cargaAcademica.forEach((curso: any) => {
+      curso.asignaciones.forEach((asig: any) => {
+        if (asig.docenteId === docenteId && asig.docenteId) {
+          const horasAsig = Number(asig.horasSemanales || 0);
+          const numGrupos = asig.grupos?.length || 0;
+          const tipo = String(asig.tipoClase || '').toLowerCase();
+
+          if (tipo === 'teoria') {
+            totalCreditos += horasAsig * numGrupos;
+          } else if (tipo === 'practica') {
+            totalCreditos += (horasAsig * numGrupos) / 2;
+          } else if (tipo === 'laboratorio') {
+            if (numGrupos > 0) {
+              totalCreditos += horasAsig / 2;
+            }
+          }
+        }
+      });
+    });
+    return totalCreditos;
+  };
+
+  const calcularHorasDocente = (docenteId: number) => {
+    let totalHoras = 0;
+    cargaAcademica.forEach((curso: any) => {
+      curso.asignaciones.forEach((asig: any) => {
+        if (asig.docenteId === docenteId && asig.docenteId) {
+          totalHoras += Number(asig.horasSemanales || 0);
+        }
+      });
+    });
+    return totalHoras;
+  };
+
+  const getStatusColorDocente = (docente: any) => {
+    const horas = calcularHorasDocente(docente.id);
+    const limites = getLimitesCargaDocente(docente);
+    
+    if (horas > limites.max) return 'error';
+    if (horas >= limites.min && horas <= limites.max) return 'success';
+    return 'warning';
+  };
+
+  const formatEnumText = (text: string | null | undefined): string => {
+    if (!text) return 'Sin especificar';
+    return text.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const getLimitesCargaDocente = (docente: any) => {
+    let minHoras = 0;
+    let maxHoras = 0;
+    const dedicacion = (docente?.dedicacion || '').toUpperCase();
+
+    // 1. Determinar límites por dedicación
+    if (dedicacion.includes('EXCLUSIVA') || dedicacion.includes('40') || dedicacion.includes('TIEMPO COMPLETO')) {
+      maxHoras = 22;
+      minHoras = 16;
+    } else if (dedicacion.includes('20') || dedicacion.includes('TP1')) {
+      maxHoras = 20;
+      minHoras = 12;
+    } else if (dedicacion.includes('10') || dedicacion.includes('TP2')) {
+      maxHoras = 10;
+      minHoras = 8;
+    } else if (dedicacion.includes('8') || dedicacion.includes('TP3')) {
+      maxHoras = 8;
+      minHoras = 8;
+    }
+
+    // 2. Ajustar por cargos administrativos
+    const cargo = (docente?.cargoAdministrativo || docente?.cargo || '').toUpperCase();
+    if (cargo.includes('RECTOR') || cargo.includes('VICERRECTOR')) {
+      minHoras = 0;
+      maxHoras = 0;
+    } else if (cargo.includes('DECANO') || cargo.includes('DIRECTOR DE POSTGRADO')) {
+      minHoras = 6;
+    } else if (cargo.includes('DIRECTOR DE ESCUELA') || cargo.includes('DIRECTOR DE DEPARTAMENTO')) {
+      minHoras = 10;
+    } else if (cargo.includes('DIRECTOR DE FILIAL')) {
+      minHoras = 8;
+    }
+
+    return {
+      min: minHoras,
+      max: maxHoras,
+      topeDiario: 8
+    };
+  };
+
+  // --- Handlers for "Asignación por Docente" tab ---
+  const handleAddCursoToDocente = (event: any, newValue: any) => {
+    setShowCursoAutocomplete(false);
+    if (!newValue) return;
+
+    const newAsignaciones: any[] = [];
+    if (newValue.horasTeoria > 0) {
+      newAsignaciones.push({
+        tipoClase: 'teoria',
+        horasSemanales: newValue.horasTeoria,
+        grupos: [1],
+        maxGrupos: newValue.numGruposTeoria,
+        maxHoras: newValue.horasTeoria,
+      });
+    }
+    if (newValue.horasPractica > 0) {
+      newAsignaciones.push({
+        tipoClase: 'practica',
+        horasSemanales: newValue.horasPractica,
+        grupos: [1],
+        maxGrupos: newValue.numGruposPractica,
+        maxHoras: newValue.horasPractica,
+      });
+    }
+    if (newValue.horasLaboratorio > 0) {
+      newAsignaciones.push({
+        tipoClase: 'laboratorio',
+        horasSemanales: newValue.horasLaboratorio,
+        grupos: [1],
+        maxGrupos: newValue.numGruposLaboratorio,
+        maxHoras: newValue.horasLaboratorio,
+      });
+    }
+
+    setDocenteCursosEdit(prev => [...prev, {
+      cursoProgramacion: newValue,
+      asignaciones: newAsignaciones,
+    }]);
+  };
+
+  const handleDocenteAsignacionChange = (cursoIdx: number, asigIdx: number, field: string, value: any) => {
+    setDocenteCursosEdit(prev => {
+      const updated = [...prev];
+      const asig = { ...updated[cursoIdx].asignaciones[asigIdx] };
+      asig[field] = value;
+      const newAsigs = [...updated[cursoIdx].asignaciones];
+      newAsigs[asigIdx] = asig;
+      updated[cursoIdx] = { ...updated[cursoIdx], asignaciones: newAsigs };
+      return updated;
+    });
+  };
+
+  const handleDocenteGruposChange = (cursoIdx: number, asigIdx: number, selected: number[]) => {
+    setDocenteCursosEdit(prev => {
+      const updated = [...prev];
+      const asig = { ...updated[cursoIdx].asignaciones[asigIdx] };
+      asig.grupos = selected;
+      const newAsigs = [...updated[cursoIdx].asignaciones];
+      newAsigs[asigIdx] = asig;
+      updated[cursoIdx] = { ...updated[cursoIdx], asignaciones: newAsigs };
+      return updated;
+    });
+  };
+
+  const handleRemoveCursoEdit = (index: number) => {
+    setDocenteCursosEdit(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSaveDocenteAsignaciones = async () => {
+    if (docenteCursosEdit.length === 0 || !selectedDocente) return;
+    
+    setSaving(true);
+    try {
+      for (const cursoEdit of docenteCursosEdit) {
+        const cursoProg = cursoEdit.cursoProgramacion;
+        const cursoId = cursoProg.cursoId || cursoProg.id;
+        
+        const cursoEnCarga = cargaAcademica.find((c: any) => 
+          (c.cursoId === cursoId || c.id === cursoId)
+        );
+        
+        const existingAsignaciones = (cursoEnCarga?.asignaciones || [])
+          .filter((a: any) => a.docenteId !== selectedDocente.id);
+        
+        const existingPayload = existingAsignaciones.map((a: any) => ({
+          docenteId: a.docenteId,
+          tipoClase: a.tipoClase,
+          horasSemanales: a.grupos?.length ? Math.round(a.horasSemanales / a.grupos.length) : a.horasSemanales,
+          grupos: a.grupos.map((g: any) => g.numeroGrupo),
+        }));
+        
+        const newPayload = cursoEdit.asignaciones.map((a: any) => ({
+          docenteId: selectedDocente.id,
+          tipoClase: a.tipoClase,
+          horasSemanales: Number(a.horasSemanales),
+          grupos: a.grupos,
+        }));
+        
+        const payload = {
+          cursoId,
+          cicloId: Number(filtros.cicloId),
+          asignaciones: [...existingPayload, ...newPayload],
+        };
+        
+        await api.post('/programacion-curso-ciclo/carga-academica', payload);
+      }
+      
+      MySwal.fire({
+        icon: 'success',
+        title: 'Guardado',
+        text: 'Cambios guardados correctamente.',
+        timer: 1500,
+        showConfirmButton: false,
+      });
+      
+      fetchCargaAcademica();
+    } catch (error: any) {
+      MySwal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.response?.data?.message || 'Error al guardar.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) return <LoadingSpinner />;
 
   if (esDocente) {
@@ -570,8 +865,24 @@ export default function CargaAcademicaPage() {
           onChange={(_, v) => setActiveTab(v)}
           sx={{ mb: 4, borderBottom: 1, borderColor: 'divider' }}
         >
-          <Tab label="Gestión de Carga Lectiva" sx={{ fontWeight: 700, textTransform: 'none' }} />
-          <Tab label="Validación de la Carga Académica" sx={{ fontWeight: 700, textTransform: 'none' }} />
+          <Tab 
+            label="Asignación Carga Lectiva (Por Curso)" 
+            icon={<BookIcon />}
+            iconPosition="start"
+            sx={{ fontWeight: 700, textTransform: 'none' }} 
+          />
+          <Tab 
+            label="Asignación Carga Lectiva (Por Docente)" 
+            icon={<PersonIcon />}
+            iconPosition="start"
+            sx={{ fontWeight: 700, textTransform: 'none' }} 
+          />
+          <Tab 
+            label="Validación de Carga Académica" 
+            icon={<VerifiedUserIcon />}
+            iconPosition="start"
+            sx={{ fontWeight: 700, textTransform: 'none' }} 
+          />
         </Tabs>
       )}
 
@@ -580,7 +891,7 @@ export default function CargaAcademicaPage() {
           {/* Filtros */}
           <Paper elevation={0} sx={{ p: 3, mb: 4, borderRadius: 4, border: '1px solid #eef2f6' }}>
         <Grid container spacing={3}>
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={3}>
             <FormControl fullWidth size="small">
               <InputLabel>Periodo Académico</InputLabel>
               <Select
@@ -596,7 +907,8 @@ export default function CargaAcademicaPage() {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12} md={4}>
+
+          <Grid item xs={12} md={3}>
             <FormControl fullWidth size="small">
               <InputLabel>Carrera Profesional</InputLabel>
               <Select
@@ -607,21 +919,6 @@ export default function CargaAcademicaPage() {
                 <MenuItem value="">Todas las Carreras</MenuItem>
                 {carreras.map(c => (
                   <MenuItem key={c.id} value={c.id}>{c.nombre}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Ciclo Académico</InputLabel>
-              <Select
-                value={filtros.cicloAcademico}
-                label="Ciclo Académico"
-                onChange={(e) => setFiltros({ ...filtros, cicloAcademico: e.target.value })}
-              >
-                <MenuItem value="">Todos los Ciclos</MenuItem>
-                {Array.from({ length: 10 }, (_, i) => i + 1).map(c => (
-                  <MenuItem key={c} value={String(c)}>{c}° CICLO</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -654,6 +951,65 @@ export default function CargaAcademicaPage() {
                 </IconButton>
               </Tooltip>
             </Box>
+            <Box sx={{ p: 2, borderBottom: '1px solid #eef2f6', display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel shrink>Currícula</InputLabel>
+                  <Select
+                    value={filtros.curriculaId}
+                    label="Currícula"
+                    displayEmpty
+                    onChange={(e) => setFiltros({ ...filtros, curriculaId: e.target.value })}
+                    renderValue={(selected) => {
+                      if (selected === '') return 'Todas las Curriculas';
+                      const curricula = curriculas.find(c => c.id === Number(selected));
+                      return curricula ? `MC - ${curricula.anio}` : '';
+                    }}
+                  >
+                    <MenuItem value="">Todas las Curriculas</MenuItem>
+                    {curriculas
+                      .filter(c => filtros.carreraId === '' || c.carreraId === Number(filtros.carreraId))
+                      .map(c => (
+                      <MenuItem key={c.id} value={c.id}>MC - {c.anio}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl fullWidth size="small">
+                  <InputLabel shrink>Ciclo Académico</InputLabel>
+                  <Select
+                    value={filtros.cicloAcademico}
+                    label="Ciclo Académico"
+                    displayEmpty
+                    onChange={(e) => setFiltros({ ...filtros, cicloAcademico: e.target.value })}
+                    renderValue={(selected) => {
+                      if (selected === '') return 'Todos los Ciclos';
+                      return `${selected}° CICLO`;
+                    }}
+                  >
+                    <MenuItem value="">Todos los Ciclos</MenuItem>
+                    {Array.from({ length: 10 }, (_, i) => i + 1).map(c => (
+                      <MenuItem key={c} value={String(c)}>{c}° CICLO</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+              <Autocomplete
+                size="small"
+                options={cargaAcademica}
+                getOptionLabel={(option) => option.curso?.nombre || ''}
+                onChange={(_, newValue) => { if (newValue) setSelectedCurso(newValue); }}
+                renderInput={(params) => <TextField {...params} label="Buscar Curso" />}
+                filterOptions={(options, state) => {
+                  const input = state.inputValue.toLowerCase();
+                  const filtered = options.filter(o =>
+                    (o.curso?.nombre || '').toLowerCase().includes(input) ||
+                    (o.curso?.codigo || '').toLowerCase().includes(input)
+                  );
+                  return state.inputValue === '' ? filtered.slice(0, 10) : filtered;
+                }}
+                fullWidth
+              />
+            </Box>
             <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
               {fetchingCarga ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress size={24} /></Box>
@@ -670,6 +1026,8 @@ export default function CargaAcademicaPage() {
                 <List sx={{ p: 0 }}>
                   {cargaAcademica
                     .filter(curso => !soloIncompletos || getStatusColor(curso) !== 'success')
+                    .filter(curso => filtros.curriculaId === '' || Number(curso.curso?.curriculaId) === Number(filtros.curriculaId))
+                    .filter(curso => filtros.cicloAcademico === '' || String(curso.curso?.cicloAcademico) === String(filtros.cicloAcademico))
                     .map((curso) => {
                     const status = getStatusColor(curso);
                     const isSelected = selectedCurso?.id === curso.id;
@@ -928,8 +1286,432 @@ export default function CargaAcademicaPage() {
         </Grid>
       </Grid>
       </>
+      ) : activeTab === 1 ? (
+        <>
+          {/* Filtros */}
+          <Paper elevation={0} sx={{ p: 3, mb: 4, borderRadius: 4, border: '1px solid #eef2f6' }}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Periodo Académico</InputLabel>
+                  <Select
+                    value={filtros.cicloId}
+                    label="Periodo Académico"
+                    onChange={(e) => setFiltros({ ...filtros, cicloId: e.target.value })}
+                  >
+                    {ciclos.map(c => (
+                      <MenuItem key={c.id} value={c.id}>
+                        {c.nombre} {c.nombre.includes('2026-I') ? '(Actual)' : ''}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} md={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Carrera Profesional</InputLabel>
+                  <Select
+                    value={filtros.carreraId}
+                    label="Carrera Profesional"
+                    onChange={(e) => setFiltros({ ...filtros, carreraId: e.target.value })}
+                  >
+                    <MenuItem value="">Todas las Carreras</MenuItem>
+                    {carreras.map(c => (
+                      <MenuItem key={c.id} value={c.id}>{c.nombre}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+            </Grid>
+          </Paper>
+
+          <Grid container spacing={3}>
+            {/* Lista de Docentes */}
+            <Grid item xs={12} md={4}>
+              <Paper elevation={0} sx={{ height: 'calc(100vh - 300px)', display: 'flex', flexDirection: 'column', borderRadius: 4, border: '1px solid #eef2f6', overflow: 'hidden' }}>
+                <Box sx={{ p: 2, bgcolor: '#f8fafc', borderBottom: '1px solid #eef2f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#003366' }}>
+                      Docentes ({docentes.length})
+                    </Typography>
+                    <Tooltip title={soloIncompletosDocentes ? "Mostrar todos" : "Ver solo incompletos"}>
+                      <IconButton 
+                        size="small" 
+                        onClick={() => setSoloIncompletosDocentes(!soloIncompletosDocentes)}
+                        color={soloIncompletosDocentes ? "primary" : "default"}
+                      >
+                        <InfoIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </Box>
+                <Box sx={{ p: 2, borderBottom: '1px solid #eef2f6' }}>
+                  <Autocomplete
+                    size="small"
+                    options={docentes}
+                    getOptionLabel={(option) => option.nombreCompleto || `${option.nombre} ${option.apellidoPaterno || ''} ${option.apellidoMaterno || ''}`}
+                    value={selectedDocente}
+                    onChange={(_, newValue) => setSelectedDocente(newValue)}
+                    renderInput={(params) => <TextField {...params} label="Buscar Docente" />}
+                    filterOptions={(options, state) => {
+                      const filtered = options.filter(option => {
+                        const label = (option.nombreCompleto || `${option.nombre} ${option.apellidoPaterno || ''} ${option.apellidoMaterno || ''}`).toLowerCase();
+                        return label.includes(state.inputValue.toLowerCase());
+                      });
+                      return state.inputValue === '' ? filtered.slice(0, 10) : filtered;
+                    }}
+                  />
+                </Box>
+                <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
+                  {fetchingCarga ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress size={24} /></Box>
+                  ) : docentes.length === 0 ? (
+                    <Box sx={{ p: 4, textAlign: 'center' }}>
+                      <Typography variant="body2" color="textSecondary">No hay docentes disponibles</Typography>
+                    </Box>
+                  ) : (
+                    <List sx={{ p: 0 }}>
+                      {docentes
+                        .filter(doc => !soloIncompletosDocentes || getStatusColorDocente(doc) !== 'success')
+                        .map((docente) => {
+                        const isSelected = selectedDocente?.id === docente.id;
+                        return (
+                          <ListItem
+                            key={docente.id}
+                            disablePadding
+                            divider
+                          >
+                            <ListItemButton
+                              selected={isSelected}
+                              onClick={() => setSelectedDocente(docente)}
+                              sx={{
+                                py: 2,
+                                borderLeft: isSelected ? '4px solid #003366' : '4px solid transparent',
+                                '&.Mui-selected': { bgcolor: '#f0f4f8' }
+                              }}
+                            >
+                              <ListItemText
+                                primary={
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Typography sx={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                                      {docente.nombreCompleto || `${docente.nombre} ${docente.apellidoPaterno || ''} ${docente.apellidoMaterno || ''}`}
+                                    </Typography>
+                                    <Chip
+                                      size="small"
+                                      label={`${calcularHorasDocente(docente.id)}H`}
+                                      color={getStatusColorDocente(docente)}
+                                      sx={{ fontWeight: 700, height: 20, fontSize: '0.7rem' }}
+                                    />
+                                  </Box>
+                                }
+                                secondary={
+                                  <Typography variant="caption" color="textSecondary">
+                                    {formatEnumText(docente.categoria)} | {formatEnumText(docente.tipoContrato)}
+                                  </Typography>
+                                }
+                              />
+                            </ListItemButton>
+                          </ListItem>
+                        );
+                      })}
+                    </List>
+                  )}
+                </Box>
+              </Paper>
+            </Grid>
+
+            {/* Detalle de Asignación por Docente */}
+            <Grid item xs={12} md={8}>
+              {selectedDocente ? (
+                <Paper elevation={0} sx={{ height: 'calc(100vh - 300px)', display: 'flex', flexDirection: 'column', borderRadius: 4, border: '1px solid #eef2f6' }}>
+                  <Box sx={{ p: 2, borderBottom: '1px solid #eef2f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
+                    <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 700, color: '#003366', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {selectedDocente.nombreCompleto || `${selectedDocente.nombre} ${selectedDocente.apellidoPaterno || ''} ${selectedDocente.apellidoMaterno || ''}`}
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
+                        <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap' }}>
+                          <PersonIcon fontSize="inherit" /> {formatEnumText(selectedDocente.categoria)} | {formatEnumText(selectedDocente.tipoContrato)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <AccessTimeIcon fontSize="inherit" /> {calcularHorasDocente(selectedDocente.id)}H / {getLimitesCargaDocente(selectedDocente).max}H (Min: {getLimitesCargaDocente(selectedDocente).min}H)
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+                      <Box sx={{ display: 'flex', bgcolor: '#f0f4f8', borderRadius: 2, p: 0.5, mr: 1 }}>
+                        <Tooltip title="Docente Anterior">
+                          <IconButton size="small" onClick={() => {
+                            const currentIndex = docentes.findIndex(d => d.id === selectedDocente.id);
+                            let nextIndex = currentIndex - 1;
+                            if (nextIndex < 0) nextIndex = docentes.length - 1;
+                            setSelectedDocente(docentes[nextIndex]);
+                          }} sx={{ color: '#003366' }}>
+                            <ChevronLeftIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+                        <Tooltip title="Siguiente Docente">
+                          <IconButton size="small" onClick={() => {
+                            const currentIndex = docentes.findIndex(d => d.id === selectedDocente.id);
+                            let nextIndex = currentIndex + 1;
+                            if (nextIndex >= docentes.length) nextIndex = 0;
+                            setSelectedDocente(docentes[nextIndex]);
+                          }} sx={{ color: '#003366' }}>
+                            <ChevronRightIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                      <Button
+                        variant="contained"
+                        startIcon={<SaveIcon />}
+                        onClick={handleSaveDocenteAsignaciones}
+                        disabled={saving || docenteCursosEdit.length === 0}
+                        sx={{ 
+                          bgcolor: '#003366', 
+                          borderRadius: 2, 
+                          px: 3,
+                          height: 40,
+                          minWidth: 110,
+                          fontWeight: 700,
+                          textTransform: 'none'
+                        }}
+                      >
+                        {saving ? 'Guardando...' : 'Guardar'}
+                      </Button>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ flexGrow: 1, overflowY: 'auto', p: 3 }}>
+                    {/* Resumen de Créditos */}
+                    <Card variant="outlined" sx={{ mb: 4, bgcolor: '#f8fafc', borderStyle: 'dashed' }}>
+                      <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Progreso de Carga Lectiva</Typography>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                            {docenteCursosEdit.reduce((sum: number, ce: any) => 
+                              sum + ce.asignaciones.reduce((s: number, a: any) => s + Number(a.horasSemanales) * a.grupos.length, 0), 0
+                            )} / {getLimitesCargaDocente(selectedDocente).max} H (Mín: {getLimitesCargaDocente(selectedDocente).min}H)
+                          </Typography>
+                        </Box>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={Math.min(100, (docenteCursosEdit.reduce((sum: number, ce: any) => 
+                            sum + ce.asignaciones.reduce((s: number, a: any) => s + Number(a.horasSemanales) * a.grupos.length, 0), 0
+                          ) / getLimitesCargaDocente(selectedDocente).max) * 100)} 
+                          color={getStatusColorDocente(selectedDocente)}
+                          sx={{ height: 8, borderRadius: 4 }}
+                        />
+                      </CardContent>
+                    </Card>
+
+                    {/* Lista de Cursos Asignados - Editable */}
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <BookIcon color="primary" /> Cursos Asignados
+                    </Typography>
+
+                    {docenteCursosEdit.length === 0 ? (
+                      <Typography variant="body2" color="textSecondary" sx={{ fontStyle: 'italic', textAlign: 'center', py: 4 }}>
+                        Este docente no tiene cursos asignados todavía.
+                      </Typography>
+                    ) : (
+                      <Grid container spacing={2}>
+                        {docenteCursosEdit.map((cursoEdit: any, cursoIdx: number) => {
+                          const cp = cursoEdit.cursoProgramacion;
+                          return (
+                            <Grid item xs={12} key={cursoIdx}>
+                              <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, border: '1px solid #e2e8f0' }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                                  <Box>
+                                    <Typography sx={{ fontWeight: 700 }}>{cp.curso?.nombre}</Typography>
+                                    <Typography variant="caption" color="textSecondary">
+                                      Código: {cp.curso?.codigo} | Ciclo: {cp.curso?.cicloAcademico}°
+                                    </Typography>
+                                  </Box>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Chip 
+                                      size="small" 
+                                      label={`${cp.curso?.creditos} créditos`} 
+                                      sx={{ fontWeight: 600, bgcolor: '#003366', color: 'white' }} 
+                                    />
+                                    <IconButton 
+                                      size="small" 
+                                      onClick={() => handleRemoveCursoEdit(cursoIdx)} 
+                                      sx={{ color: 'error.main', p: 0.5 }}
+                                    >
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Box>
+                                </Box>
+
+                                {['teoria', 'practica', 'laboratorio'].map((tipo) => {
+                                  const asigsTipo = cursoEdit.asignaciones.filter((a: any) => a.tipoClase === tipo);
+                                  if (asigsTipo.length === 0) return null;
+                                  return (
+                                    <Box key={tipo} sx={{ mb: 2 }}>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                        {tipo === 'teoria' ? <SchoolIcon color="primary" fontSize="small" /> : tipo === 'practica' ? <GroupsIcon color="secondary" fontSize="small" /> : <BiotechIcon color="info" fontSize="small" />}
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 700, textTransform: 'capitalize' }}>
+                                          {tipo}
+                                        </Typography>
+                                      </Box>
+                                      {asigsTipo.map((asig: any, asigIdx: number) => {
+                                        const actualIdx = cursoEdit.asignaciones.indexOf(asig);
+                                        return (
+                                          <Grid container spacing={1} alignItems="center" key={asigIdx}>
+                                            <Grid item xs={12} md={4}>
+                                              <TextField
+                                                size="small"
+                                                type="number"
+                                                label="Horas"
+                                                value={asig.horasSemanales}
+                                                onChange={(e) => handleDocenteAsignacionChange(cursoIdx, actualIdx, 'horasSemanales', Math.max(1, Math.min(asig.maxHoras, Number(e.target.value))))}
+                                                inputProps={{ min: 1, max: asig.maxHoras }}
+                                                fullWidth
+                                              />
+                                            </Grid>
+                                            <Grid item xs={12} md={4}>
+                                              <FormControl fullWidth size="small">
+                                                <InputLabel id={`docente-grupos-${cursoIdx}-${actualIdx}`}>Grupo</InputLabel>
+                                                <Select
+                                                  labelId={`docente-grupos-${cursoIdx}-${actualIdx}`}
+                                                  multiple
+                                                  value={asig.grupos}
+                                                  onChange={(e) => handleDocenteGruposChange(cursoIdx, actualIdx, e.target.value as number[])}
+                                                  input={<OutlinedInput label="Grupo" />}
+                                                  renderValue={(selected) => (selected as number[]).sort((a: number, b: number) => a - b).map((v: number) => numberToLetter(v)).join(', ')}
+                                                >
+                                                  {Array.from({ length: asig.maxGrupos || 1 }, (_, i) => i + 1).map((gNum) => (
+                                                    <MenuItem key={gNum} value={gNum}>
+                                                      {numberToLetter(gNum)}
+                                                    </MenuItem>
+                                                  ))}
+                                                </Select>
+                                              </FormControl>
+                                            </Grid>
+                                            <Grid item xs={12} md={4}>
+                                              <TextField
+                                                size="small"
+                                                label="T. Horas"
+                                                value={`${Number(asig.horasSemanales) * asig.grupos.length}h`}
+                                                InputProps={{ readOnly: true }}
+                                                fullWidth
+                                                sx={{ bgcolor: '#f8fafc' }}
+                                              />
+                                            </Grid>
+                                          </Grid>
+                                        );
+                                      })}
+                                    </Box>
+                                  );
+                                })}
+                              </Paper>
+                            </Grid>
+                          );
+                        })}
+                      </Grid>
+                    )}
+
+                    {/* Autocomplete para agregar nuevo curso */}
+                    {showCursoAutocomplete ? (
+                      <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, border: '1px solid #e2e8f0', mt: 3, bgcolor: 'transparent' }}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <FormControl fullWidth size="small">
+                              <InputLabel shrink>Currícula</InputLabel>
+                              <Select
+                                value={filtros.curriculaId}
+                                label="Currícula"
+                                displayEmpty
+                                onChange={(e) => setFiltros({ ...filtros, curriculaId: e.target.value })}
+                                renderValue={(selected) => {
+                                  if (selected === '') return 'Todas las Curriculas';
+                                  const curricula = curriculas.find(c => c.id === Number(selected));
+                                  return curricula ? `MC - ${curricula.anio}` : '';
+                                }}
+                              >
+                                <MenuItem value="">Todas las Curriculas</MenuItem>
+                                {curriculas
+                                  .filter(c => filtros.carreraId === '' || c.carreraId === Number(filtros.carreraId))
+                                  .map(c => (
+                                  <MenuItem key={c.id} value={c.id}>MC - {c.anio}</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                            <FormControl fullWidth size="small">
+                              <InputLabel shrink>Ciclo Académico</InputLabel>
+                              <Select
+                                value={filtros.cicloAcademico}
+                                label="Ciclo Académico"
+                                displayEmpty
+                                onChange={(e) => setFiltros({ ...filtros, cicloAcademico: e.target.value })}
+                                renderValue={(selected) => {
+                                  if (selected === '') return 'Todos los Ciclos';
+                                  return `${selected}° CICLO`;
+                                }}
+                              >
+                                <MenuItem value="">Todos los Ciclos</MenuItem>
+                                {Array.from({ length: 10 }, (_, i) => i + 1).map(c => (
+                                  <MenuItem key={c} value={String(c)}>{c}° CICLO</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Box>
+                          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                            <Autocomplete
+                              size="small"
+                              options={cargaAcademica}
+                              getOptionLabel={(option) => option.curso?.nombre || ''}
+                              onChange={handleAddCursoToDocente}
+                              renderInput={(params) => <TextField {...params} label="Buscar curso" autoFocus />}
+                              filterOptions={(options, state) => {
+                                const input = state.inputValue.toLowerCase();
+                                const assignedIds = new Set(docenteCursosEdit.map((c: any) => c.cursoProgramacion?.curso?.id));
+                                return options.filter(o =>
+                                  !assignedIds.has(o.curso?.id) &&
+                                  (filtros.curriculaId === '' || Number(o.curso?.curriculaId) === Number(filtros.curriculaId)) &&
+                                  (filtros.cicloAcademico === '' || String(o.curso?.cicloAcademico) === String(filtros.cicloAcademico)) &&
+                                  ((o.curso?.nombre || '').toLowerCase().includes(input) ||
+                                  (o.curso?.codigo || '').toLowerCase().includes(input))
+                                );
+                              }}
+                              fullWidth
+                              ListboxProps={{ style: { maxHeight: 300, overflow: 'auto' } }}
+                            />
+                            <Button size="small" variant="outlined" color="error" onClick={() => setShowCursoAutocomplete(false)} sx={{ minWidth: 'auto', whiteSpace: 'nowrap', height: 40, color: 'white', bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' } }}>
+                              Cancelar
+                            </Button>
+                          </Box>
+                        </Box>
+                      </Paper>
+                    ) : (
+                      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
+                        <Button
+                          size="small"
+                          startIcon={<AddIcon />}
+                          onClick={() => setShowCursoAutocomplete(true)}
+                        >
+                          Asignar Curso
+                        </Button>
+                      </Box>
+                    )}
+                  </Box>
+                </Paper>
+              ) : (
+                <Paper elevation={0} sx={{ height: 'calc(100vh - 300px)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', borderRadius: 4, border: '1px solid #eef2f6', bgcolor: '#f8fafc' }}>
+                  <InfoIcon sx={{ fontSize: 64, color: '#cbd5e1', mb: 2 }} />
+                  <Typography variant="h6" color="textSecondary">Selecciona un docente para gestionar su carga</Typography>
+                </Paper>
+              )}
+            </Grid>
+          </Grid>
+        </>
       ) : (
-        <ValidacionCargaNoLectiva cicloId={Number(filtros.cicloId)} />
+        <ValidacionCargaNoLectiva 
+          cicloId={Number(filtros.cicloId)} 
+        />
       )}
 
       {/* Diálogo de Programación */}

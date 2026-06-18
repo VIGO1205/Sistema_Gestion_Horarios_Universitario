@@ -32,6 +32,8 @@ import {
   DialogActions,
   Snackbar,
   Alert,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Person as PersonIcon,
@@ -90,46 +92,165 @@ export default function DocentesPage() {
   const [selectedDocente, setSelectedDocente] = useState<any>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as any });
 
-  const categoriasDocente = [
-    { id: 'principal', nombre: 'Principal' },
-    { id: 'asociado', nombre: 'Asociado' },
-    { id: 'auxiliar', nombre: 'Auxiliar' },
-    { id: 'jefe_practica', nombre: 'Jefe de Práctica' }
-  ];
   const tiposContrato = [
     { id: 'nombrado', nombre: 'Nombrado' },
-    { id: 'contratado', nombre: 'Contratado' }
-  ];
-  const dedicacionesDocente = [
-    'DEDICACION EXCLUSIVA',
-    'TIEMPO COMPLETO 40 H',
-    'TIEMPO PARCIAL',
-    'TIEMPO PARCIAL 10 HR',
-    'TIEMPO PARCIAL 20 HR',
-    'TIEMPO PARCIAL 12 HR',
-    'TIEMPO PARCIAL 8 HR',
-    'TIEMPO PARCIAL 16 HR'
+    { id: 'contratado', nombre: 'Contratado' },
+    { id: 'extraordinario', nombre: 'Extraordinario' },
   ];
 
-  const normalizeDedicacion = (val: string) => {
-    if (!val) return 'TIEMPO COMPLETO 40 H';
-    const normalized = val.toUpperCase().trim();
-    // Intentar encontrar una coincidencia exacta en el array
-    const match = dedicacionesDocente.find(d => d === normalized);
-    if (match) return match;
-    
-    // Si no hay coincidencia exacta (ej. "Tiempo Parcial 10 Hr" vs "TIEMPO PARCIAL 10 HR")
-    // Intentamos una comparación más flexible
-    const flexibleMatch = dedicacionesDocente.find(d => d.replace(/\s/g, '') === normalized.replace(/\s/g, ''));
-    return flexibleMatch || 'TIEMPO COMPLETO 40 H';
+  const categoriasDocente = {
+    ordinario: [
+      { id: 'principal', nombre: 'Principal' },
+      { id: 'asociado', nombre: 'Asociado' },
+      { id: 'auxiliar', nombre: 'Auxiliar' },
+    ],
+    contratado: [
+      { id: 'tipo_a1', nombre: 'Tipo A1' },
+      { id: 'tipo_a2', nombre: 'Tipo A2' },
+      { id: 'tipo_a3', nombre: 'Tipo A3' },
+      { id: 'tipo_b1', nombre: 'Tipo B1' },
+      { id: 'tipo_b2', nombre: 'Tipo B2' },
+      { id: 'tipo_b3', nombre: 'Tipo B3' },
+      { id: 'jefe_practica', nombre: 'Jefe de Práctica' },
+    ],
+    extraordinario: [
+      { id: 'principal', nombre: 'Principal' },
+      { id: 'asociado', nombre: 'Asociado' },
+      { id: 'auxiliar', nombre: 'Auxiliar' },
+      { id: 'tipo_a1', nombre: 'Tipo A1' },
+      { id: 'tipo_a2', nombre: 'Tipo A2' },
+      { id: 'tipo_a3', nombre: 'Tipo A3' },
+      { id: 'tipo_b1', nombre: 'Tipo B1' },
+      { id: 'tipo_b2', nombre: 'Tipo B2' },
+      { id: 'tipo_b3', nombre: 'Tipo B3' },
+      { id: 'jefe_practica', nombre: 'Jefe de Práctica' },
+    ],
   };
 
-  const { control, handleSubmit, reset, watch, formState: { errors } } = useForm({
+  const facultades = [
+    { id: 'ciencias_agropecuarias', nombre: 'Ciencias Agropecuarias' },
+    { id: 'ciencias_biologicas', nombre: 'Ciencias Biológicas' },
+    { id: 'ciencias_economicas', nombre: 'Ciencias Económicas' },
+    { id: 'ciencias_fisicas_y_matematicas', nombre: 'Ciencias Físicas y Matemáticas' },
+    { id: 'ciencias_sociales', nombre: 'Ciencias Sociales' },
+    { id: 'educacion_y_ciencias_de_la_comunicacion', nombre: 'Educación y Ciencias de la Comunicación' },
+    { id: 'derecho_y_ciencias_politicas', nombre: 'Derecho y Ciencias Políticas' },
+    { id: 'enfermeria', nombre: 'Enfermería' },
+    { id: 'estomatologia', nombre: 'Estomatología' },
+    { id: 'farmacia_y_bioquimica', nombre: 'Farmacia y Bioquímica' },
+    { id: 'ingenieria', nombre: 'Ingeniería' },
+    { id: 'ingenieria_quimica', nombre: 'Ingeniería Química' },
+    { id: 'medicina', nombre: 'Medicina' },
+    { id: 'valle_jequetepeque', nombre: 'Valle Jequetepeque' },
+    { id: 'huamachuco', nombre: 'Huamachuco' },
+    { id: 'santiago_de_chuco', nombre: 'Santiago de Chuco' },
+  ];
+
+  const departamentosAcademicos = [
+    { id: 'administracion', nombre: 'Administración' },
+    { id: 'agronomia_y_zootecnia', nombre: 'Agronomía y Zootecnia' },
+    { id: 'arqueologia_y_antropologia', nombre: 'Arqueología y Antropología' },
+    { id: 'bioquimica', nombre: 'Bioquímica' },
+    { id: 'ciencias_agroindustriales', nombre: 'Ciencias Agroindustriales' },
+    { id: 'ciencias_basicas_medicas', nombre: 'Ciencias Básicas Médicas' },
+    { id: 'ciencias_biologicas', nombre: 'Ciencias Biológicas' },
+    { id: 'ciencias_de_la_educacion', nombre: 'Ciencias de la Educación' },
+    { id: 'ciencias_psicologicas', nombre: 'Ciencias Psicológicas' },
+    { id: 'ciencias_sociales', nombre: 'Ciencias Sociales' },
+    { id: 'cirugia', nombre: 'Cirugía' },
+    { id: 'comunicacion_social', nombre: 'Comunicación Social' },
+    { id: 'contabilidad_y_finanzas', nombre: 'Contabilidad y Finanzas' },
+    { id: 'enfermeria_de_la_mujer_nino_y_adolescente', nombre: 'Enfermería de la Mujer, Niño y Adolescente' },
+    { id: 'derecho', nombre: 'Derecho' },
+    { id: 'economia', nombre: 'Economía' },
+    { id: 'estadistica', nombre: 'Estadística' },
+    { id: 'estomatologia', nombre: 'Estomatología' },
+    { id: 'farmacologia', nombre: 'Farmacología' },
+    { id: 'farmacotecnia', nombre: 'Farmacotecnia' },
+    { id: 'filosofia_y_arte', nombre: 'Filosofía y Arte' },
+    { id: 'fisica', nombre: 'Física' },
+    { id: 'fisiologia_humana', nombre: 'Fisiología Humana' },
+    { id: 'ginecologia_y_obstetricia', nombre: 'Ginecología y Obstetricia' },
+    { id: 'historia_y_geografia', nombre: 'Historia y Geografía' },
+    { id: 'idiomas_y_linguistica', nombre: 'Idiomas y Lingüística' },
+    { id: 'informatica', nombre: 'Informática' },
+    { id: 'ingenieria_ambiental', nombre: 'Ingeniería Ambiental' },
+    { id: 'ingenieria_civil_arquitectura_y_urbanismo', nombre: 'Ingeniería Civil, Arquitectura y Urbanismo' },
+    { id: 'ingenieria_de_materiales', nombre: 'Ingeniería de Materiales' },
+    { id: 'ingenieria_de_minas', nombre: 'Ingeniería de Minas' },
+    { id: 'ingenieria_de_sistemas', nombre: 'Ingeniería de Sistemas' },
+    { id: 'ingenieria_industrial', nombre: 'Ingeniería Industrial' },
+    { id: 'ingenieria_mecatronica', nombre: 'Ingeniería Mecatrónica' },
+    { id: 'ingenieria_metalurgica', nombre: 'Ingeniería Metalúrgica' },
+    { id: 'ingenieria_quimica', nombre: 'Ingeniería Química' },
+    { id: 'lengua_nacional_y_literatura', nombre: 'Lengua Nacional y Literatura' },
+    { id: 'matematicas', nombre: 'Matemáticas' },
+    { id: 'mecanica_y_energia', nombre: 'Mecánica y Energía' },
+    { id: 'medicina', nombre: 'Medicina' },
+    { id: 'medicina_preventiva_y_salud_publica', nombre: 'Medicina Preventiva y Salud Pública' },
+    { id: 'microbiologia_y_parasitologia', nombre: 'Microbiología y Parasitología' },
+    { id: 'morfologia_humana', nombre: 'Morfología Humana' },
+    { id: 'pediatria', nombre: 'Pediatría' },
+    { id: 'pesqueria', nombre: 'Pesquería' },
+    { id: 'quimica', nombre: 'Química' },
+    { id: 'quimica_biologica_y_fisiologia_animal', nombre: 'Química Biológica y Fisiología Animal' },
+    { id: 'salud_del_adulto_y_salud_familiar_y_comunitaria', nombre: 'Salud del Adulto y Salud Familiar y Comunitaria' },
+  ];
+
+  const cargosAdministrativos = [
+    { id: 'ninguno', nombre: 'Ninguno' },
+    { id: 'rector_vicerrector', nombre: 'Rector/Vicerrector' },
+    { id: 'decano_director_postgrado', nombre: 'Decano/Director de Postgrado' },
+    { id: 'director_escuela_departamento', nombre: 'Director de Escuela/Departamento' },
+    { id: 'director_filial', nombre: 'Director de Filial' },
+  ];
+
+  const dedicacionesDocente = {
+    ordinario: [
+      'DOCENTE INVESTIGADOR',
+      'DEDICACION EXCLUSIVA',
+      'TIEMPO COMPLETO 40 H',
+      'TIEMPO PARCIAL 20 H',
+      'TIEMPO PARCIAL 12 H',
+      'TIEMPO PARCIAL 10 H',
+      'TIEMPO PARCIAL 4 H',
+    ],
+    extraordinario: [
+      'DEDICACION EXCLUSIVA',
+      'TIEMPO COMPLETO 40 H',
+      'TIEMPO PARCIAL 20 H',
+      'TIEMPO PARCIAL 12 H',
+      'TIEMPO PARCIAL 10 H',
+    ],
+    contratado: [
+      'TIEMPO COMPLETO A1/B1',
+      'TIEMPO PARCIAL A2/B2 16 H',
+      'TIEMPO PARCIAL A3/B3 8 H',
+    ],
+  };
+
+  const normalizeDedicacion = (val: string, tipoContrato: string = 'ordinario') => {
+    const disponibles = (dedicacionesDocente as any)[tipoContrato] || dedicacionesDocente.ordinario;
+    if (!val) return disponibles[0] || 'TIEMPO COMPLETO 40 H';
+    const normalized = val.toUpperCase().trim();
+
+    const match = disponibles.find((d: string) => d === normalized);
+    if (match) return match;
+
+    const flexibleMatch = disponibles.find((d: string) => d.replace(/\s/g, '') === normalized.replace(/\s/g, ''));
+    return flexibleMatch || disponibles[0] || 'TIEMPO COMPLETO 40 H';
+  };
+
+  const { control, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
       nombreCompleto: '',
       dni: '',
       tipoContrato: 'nombrado',
       categoria: 'principal',
+      facultad: '',
+      departamentoAcademico: '',
+      cargoAdministrativo: 'ninguno',
+      esBecario: false,
       dedicacion: 'TIEMPO COMPLETO 40 H',
       fechaIngreso: '',
       telefono: '',
@@ -138,9 +259,16 @@ export default function DocentesPage() {
       codigoIBM: '0000',
       antiguedadAnios: 0,
       activo: true,
-      carreraIds: [] as number[]
-    }
+      carreraIds: [] as number[],
+    },
   });
+
+  // Watch tipoContrato para actualizar categorías y dedicaciones disponibles
+  const watchedTipoContrato = watch('tipoContrato');
+
+  // Obtener categorías y dedicaciones según el tipo de contrato seleccionado
+  const getCategoriasDisponibles = () => (categoriasDocente as any)[watchedTipoContrato] || categoriasDocente.ordinario;
+  const getDedicacionesDisponibles = () => (dedicacionesDocente as any)[watchedTipoContrato] || dedicacionesDocente.ordinario;
 
   useEffect(() => {
     fetchDocentes();
@@ -197,17 +325,29 @@ export default function DocentesPage() {
       setSelectedDocente(docente);
       try {
         const docenteRes = await api.get(`/docentes/${docente.id}`);
-        
+
         const carreraIds = (docenteRes.data?.carreras || [])
           .map((rel: any) => rel.carrera?.id)
           .filter(Boolean);
 
+        const tipoContrato = docenteRes.data?.tipoContrato ?? docente.tipoContrato ?? 'nombrado';
+        const key = tipoContrato === 'nombrado' ? 'ordinario' : tipoContrato;
+        const categoriasDisponibles = (categoriasDocente as any)[key] || categoriasDocente.ordinario;
+        let categoria = docenteRes.data?.categoria ?? docente.categoria ?? 'principal';
+        if (!categoriasDisponibles.some((c: any) => c.id === categoria)) {
+          categoria = categoriasDisponibles[0]?.id || 'principal';
+        }
+
         reset({
           nombreCompleto: docenteRes.data?.nombreCompleto ?? docente.nombreCompleto ?? '',
           dni: docenteRes.data?.dni ?? docente.dni ?? '',
-          tipoContrato: docenteRes.data?.tipoContrato ?? docente.tipoContrato ?? 'nombrado',
-          categoria: docenteRes.data?.categoria ?? docente.categoria ?? 'principal',
-          dedicacion: normalizeDedicacion(docenteRes.data?.dedicacion || docente.dedicacion),
+          tipoContrato,
+          categoria,
+          facultad: docenteRes.data?.facultad ?? docente.facultad ?? '',
+          departamentoAcademico: docenteRes.data?.departamentoAcademico ?? docente.departamentoAcademico ?? '',
+          cargoAdministrativo: docenteRes.data?.cargoAdministrativo ?? docente.cargoAdministrativo ?? 'ninguno',
+          esBecario: docenteRes.data?.esBecario ?? docente.esBecario ?? false,
+          dedicacion: normalizeDedicacion(docenteRes.data?.dedicacion || docente.dedicacion, key),
           fechaIngreso: docenteRes.data?.fechaIngreso ? new Date(docenteRes.data.fechaIngreso).toISOString().split('T')[0] : '',
           telefono: docenteRes.data?.telefono ?? '',
           emailPersonal: docenteRes.data?.emailPersonal ?? '',
@@ -218,12 +358,24 @@ export default function DocentesPage() {
           carreraIds,
         });
       } catch (error) {
+        const tipoContrato = docente.tipoContrato ?? 'nombrado';
+        const key = tipoContrato === 'nombrado' ? 'ordinario' : tipoContrato;
+        const categoriasDisponibles = (categoriasDocente as any)[key] || categoriasDocente.ordinario;
+        let categoria = docente.categoria ?? 'principal';
+        if (!categoriasDisponibles.some((c: any) => c.id === categoria)) {
+          categoria = categoriasDisponibles[0]?.id || 'principal';
+        }
+
         reset({
           nombreCompleto: docente.nombreCompleto ?? '',
           dni: docente.dni ?? '',
-          tipoContrato: docente.tipoContrato ?? 'nombrado',
-          categoria: docente.categoria ?? 'principal',
-          dedicacion: normalizeDedicacion(docente.dedicacion),
+          tipoContrato,
+          categoria,
+          facultad: docente.facultad ?? '',
+          departamentoAcademico: docente.departamentoAcademico ?? '',
+          cargoAdministrativo: docente.cargoAdministrativo ?? 'ninguno',
+          esBecario: docente.esBecario ?? false,
+          dedicacion: normalizeDedicacion(docente.dedicacion, key),
           fechaIngreso: docente.fechaIngreso ? new Date(docente.fechaIngreso).toISOString().split('T')[0] : '',
           telefono: docente.telefono ?? '',
           emailPersonal: docente.emailPersonal ?? '',
@@ -236,12 +388,19 @@ export default function DocentesPage() {
       }
     } else {
       setSelectedDocente(null);
+      const categoriasDisponibles = categoriasDocente.ordinario;
+      const dedicacionesDisponibles = dedicacionesDocente.ordinario;
+
       reset({
         nombreCompleto: '',
         dni: '',
         tipoContrato: 'nombrado',
-        categoria: 'principal',
-        dedicacion: 'TIEMPO COMPLETO 40 H',
+        categoria: categoriasDisponibles[0]?.id || 'principal',
+        facultad: '',
+        departamentoAcademico: '',
+        cargoAdministrativo: 'ninguno',
+        esBecario: false,
+        dedicacion: dedicacionesDisponibles[0] || 'TIEMPO COMPLETO 40 H',
         fechaIngreso: '',
         telefono: '',
         emailPersonal: '',
@@ -386,9 +545,9 @@ export default function DocentesPage() {
           </Grid>
           <Grid item xs={12} md={4}>
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button 
-                fullWidth 
-                variant="outlined" 
+              <Button
+                fullWidth
+                variant="outlined"
                 startIcon={<DeleteSweepIcon />}
                 onClick={() => {
                   setFiltros({
@@ -403,13 +562,13 @@ export default function DocentesPage() {
               >
                 Limpiar
               </Button>
-              <Button 
-                fullWidth 
+              <Button
+                fullWidth
                 variant={showAdvancedFilters ? "contained" : "outlined"}
                 startIcon={<TuneIcon />}
                 onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                sx={{ 
-                  borderRadius: 2, 
+                sx={{
+                  borderRadius: 2,
                   fontWeight: 600,
                   bgcolor: showAdvancedFilters ? '#003366' : 'transparent',
                   color: showAdvancedFilters ? 'white' : '#003366',
@@ -432,7 +591,7 @@ export default function DocentesPage() {
                     onChange={(e) => setFiltros({ ...filtros, categoria: e.target.value })}
                   >
                     <MenuItem value="todos">Todas las Categorías</MenuItem>
-                    {categoriasDocente.map(cat => (
+                    {Object.values(categoriasDocente).flat().map((cat: any) => (
                       <MenuItem key={cat.id} value={cat.id}>{cat.nombre}</MenuItem>
                     ))}
                   </Select>
@@ -479,7 +638,7 @@ export default function DocentesPage() {
                     onChange={(e) => setFiltros({ ...filtros, dedicacion: e.target.value })}
                   >
                     <MenuItem value="todos">Todas las Dedicaciones</MenuItem>
-                    {dedicacionesDocente.map(ded => (
+                    {Object.values(dedicacionesDocente).flat().map((ded: string) => (
                       <MenuItem key={ded} value={ded}>{ded}</MenuItem>
                     ))}
                   </Select>
@@ -516,50 +675,50 @@ export default function DocentesPage() {
               docentesFiltrados
                 .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                 .map((docente, index) => (
-                <TableRow key={docente.id} sx={{ '&:hover': { bgcolor: '#fcfdfe' } }}>
-                  <TableCell sx={{ fontWeight: 700, color: '#003366' }}>
-                    {page * rowsPerPage + index + 1}
-                  </TableCell>
-                  <TableCell>
-                    <Typography sx={{ fontWeight: 600 }}>{docente.nombreCompleto}</Typography>
-                  </TableCell>
-                  <TableCell>{docente.dni || '---'}</TableCell>
-                  <TableCell>
-                    <Chip 
-                      label={categoriasDocente.find(c => c.id === docente.categoria.toLowerCase())?.nombre || docente.categoria} 
-                      size="small"
-                      sx={{ bgcolor: 'rgba(102, 126, 234, 0.1)', color: '#667eea', fontWeight: 600 }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Chip 
-                      label={tiposContrato.find(t => t.id === docente.tipoContrato.toLowerCase())?.nombre || docente.tipoContrato} 
-                      size="small"
-                      variant="outlined"
-                    />
-                  </TableCell>
-                  <TableCell>{docente.antiguedadAnios} años</TableCell>
-                  <TableCell>
-                    <Chip 
-                      label={docente.activo ? 'Activo' : 'Inactivo'} 
-                      color={docente.activo ? 'success' : 'default'}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Tooltip title="Editar">
-                      <IconButton onClick={() => handleOpenDialog(docente)} color="primary" size="small">
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Eliminar">
-                      <IconButton onClick={() => handleDelete(docente.id)} color="error" size="small">
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </TableCell>
-                </TableRow>
-              ))
+                  <TableRow key={docente.id} sx={{ '&:hover': { bgcolor: '#fcfdfe' } }}>
+                    <TableCell sx={{ fontWeight: 700, color: '#003366' }}>
+                      {page * rowsPerPage + index + 1}
+                    </TableCell>
+                    <TableCell>
+                      <Typography sx={{ fontWeight: 600 }}>{docente.nombreCompleto}</Typography>
+                    </TableCell>
+                    <TableCell>{docente.dni || '---'}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={Object.values(categoriasDocente).flat().find(c => c.id === docente.categoria?.toLowerCase())?.nombre || docente.categoria}
+                        size="small"
+                        sx={{ bgcolor: 'rgba(102, 126, 234, 0.1)', color: '#667eea', fontWeight: 600 }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={tiposContrato.find(t => t.id === docente.tipoContrato.toLowerCase())?.nombre || docente.tipoContrato}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell>{docente.antiguedadAnios} años</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={docente.activo ? 'Activo' : 'Inactivo'}
+                        color={docente.activo ? 'success' : 'default'}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell align="center">
+                      <Tooltip title="Editar">
+                        <IconButton onClick={() => handleOpenDialog(docente)} color="primary" size="small">
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Eliminar">
+                        <IconButton onClick={() => handleDelete(docente.id)} color="error" size="small">
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))
             )}
           </TableBody>
         </Table>
@@ -577,289 +736,397 @@ export default function DocentesPage() {
       </TableContainer>
 
       {/* Diálogo CRUD */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <DialogTitle sx={{ bgcolor: '#003366', color: '#fff', fontWeight: 800, py: 2 }}>
-              {selectedDocente ? 'Editar Docente' : 'Nuevo Docente'}
-            </DialogTitle>
-            <DialogContent sx={{ pt: 4, overflowY: 'visible' }}>
-              <Box sx={{ mt: 1.5 }}>
+      <Dialog 
+        open={openDialog} 
+        onClose={handleCloseDialog} 
+        maxWidth="md" 
+        fullWidth 
+        scroll="paper"
+        PaperProps={{ 
+          sx: { 
+            borderRadius: 3,
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          } 
+        }}
+      >
+        <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+          <DialogTitle sx={{ bgcolor: '#003366', color: '#fff', fontWeight: 800, py: 2, flexShrink: 0 }}>
+            {selectedDocente ? 'Editar Docente' : 'Nuevo Docente'}
+          </DialogTitle>
+          <DialogContent sx={{ pt: 4, overflowY: 'auto', flexGrow: 1, overflowX: 'hidden' }}>
+            <Box sx={{ mt: 1.5 }}>
+              {/* Sección 1: Datos Personales */}
+              <Paper elevation={1} sx={{ p: 3, mb: 3, borderRadius: 2, border: '1px solid #e0e0e0' }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#003366' }}>
+                  Datos Personales
+                </Typography>
                 <Grid container spacing={2}>
-              {/* Fila 1: Nombre y Fecha de Ingreso */}
-              <Grid item xs={12} md={6}>
-                <Controller
-                  name="nombreCompleto"
-                  control={control}
-                  rules={{
-                    required: 'El nombre completo es obligatorio',
-                    pattern: { value: /^[\p{L}\s]+$/u, message: 'Solo letras y espacios permitidos' }
-                  }}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      fullWidth
-                      label="Nombre Completo"
-                      error={!!errors.nombreCompleto}
-                      helperText={errors.nombreCompleto?.message as string}
-                      InputLabelProps={{ shrink: true }}
-                      inputProps={{ inputMode: 'text' }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <PersonIcon color="primary" />
-                          </InputAdornment>
-                        ),
+                  {/* Fila 1: Nombre Completo y Fecha de Ingreso */}
+                  <Grid item xs={12} md={6}>
+                    <Controller
+                      name="nombreCompleto"
+                      control={control}
+                      rules={{
+                        required: 'El nombre completo es obligatorio',
+                        pattern: { value: /^[\p{L}\s]+$/u, message: 'Solo letras y espacios permitidos' }
                       }}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Controller
-                  name="fechaIngreso"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      fullWidth
-                      type="date"
-                      label="Fecha de Ingreso"
-                      InputLabelProps={{ shrink: true }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <CalendarIcon color="primary" />
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  )}
-                />
-              </Grid>
-
-              {/* Fila 2: DNI, Teléfono y Email Personal */}
-              <Grid item xs={12} md={4}>
-                <Controller
-                  name="dni"
-                  control={control}
-                  rules={{ 
-                    required: 'El DNI es obligatorio',
-                    pattern: {
-                      value: /^[0-9]{8}$/,
-                      message: 'El DNI debe tener 8 dígitos'
-                    }
-                  }}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      fullWidth
-                      label="DNI"
-                      error={!!errors.dni}
-                      helperText={errors.dni?.message as string}
-                      inputProps={{ maxLength: 8 }}
-                      InputLabelProps={{ shrink: true }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <BadgeIcon color="primary" />
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Controller
-                  name="telefono"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      fullWidth
-                      label="Teléfono"
-                      InputLabelProps={{ shrink: true }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <PhoneIcon color="primary" />
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Controller
-                  name="emailPersonal"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      fullWidth
-                      type="email"
-                      label="Email Personal"
-                      InputLabelProps={{ shrink: true }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <EmailIcon color="primary" />
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  )}
-                />
-              </Grid>
-
-              {/* Fila 3: Telegram, Dedicación y Código IBM */}
-              <Grid item xs={12} md={4}>
-                <Controller
-                  name="telegramId"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      fullWidth
-                      label="Telegram (ID o Username)"
-                      placeholder="@usuario o ID numérico"
-                      InputLabelProps={{ shrink: true }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <TelegramIcon color="primary" />
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Controller
-                  name="dedicacion"
-                  control={control}
-                  render={({ field }) => (
-                    <FormControl fullWidth>
-                      <InputLabel>Dedicación</InputLabel>
-                      <Select {...field} label="Dedicación">
-                        {dedicacionesDocente.map(ded => (
-                          <MenuItem key={ded} value={ded}>{ded}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Controller
-                  name="codigoIBM"
-                  control={control}
-                  rules={{ 
-                    pattern: {
-                      value: /^[0-9]{4}$/,
-                      message: 'El Código IBM debe tener 4 dígitos'
-                    }
-                  }}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      fullWidth
-                      label="Código IBM"
-                      placeholder="0000"
-                      error={!!errors.codigoIBM}
-                      helperText={errors.codigoIBM?.message as string}
-                      inputProps={{ maxLength: 4 }}
-                      InputLabelProps={{ shrink: true }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <BadgeIcon color="primary" />
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  )}
-                />
-              </Grid>
-
-              {/* Fila 4: Categoría y Tipo de Contrato */}
-              <Grid item xs={12} md={6}>
-                <Controller
-                  name="categoria"
-                  control={control}
-                  render={({ field }) => (
-                    <FormControl fullWidth>
-                      <InputLabel>Categoría</InputLabel>
-                      <Select {...field} label="Categoría">
-                        {categoriasDocente.map(cat => (
-                          <MenuItem key={cat.id} value={cat.id}>{cat.nombre}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Controller
-                  name="tipoContrato"
-                  control={control}
-                  render={({ field }) => (
-                    <FormControl fullWidth>
-                      <InputLabel>Tipo de Contrato</InputLabel>
-                      <Select {...field} label="Tipo de Contrato">
-                        {tiposContrato.map(tipo => (
-                          <MenuItem key={tipo.id} value={tipo.id}>{tipo.nombre}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  )}
-                />
-              </Grid>
-
-              <Grid item xs={12}>
-                <Controller
-                  name="carreraIds"
-                  control={control}
-                  render={({ field: { onChange, value } }) => (
-                    <Autocomplete
-                      multiple
-                      options={carreras}
-                      getOptionLabel={(option: any) => option.nombre || ''}
-                      value={carreras.filter(carrera => value?.includes(carrera.id))}
-                      onChange={(_, newValue) => {
-                        onChange(newValue.map((carrera) => carrera.id));
-                      }}
-                      renderInput={(params) => (
+                      render={({ field }) => (
                         <TextField
-                          {...params}
-                          label="Carreras que enseña"
-                          placeholder="Seleccione una o más carreras..."
+                          {...field}
+                          fullWidth
+                          label="Nombre Completo"
+                          error={!!errors.nombreCompleto}
+                          helperText={errors.nombreCompleto?.message as string}
                           InputLabelProps={{ shrink: true }}
+                          inputProps={{ inputMode: 'text' }}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <PersonIcon color="primary" />
+                              </InputAdornment>
+                            ),
+                          }}
                         />
                       )}
                     />
-                  )}
-                />
-              </Grid>
-            </Grid>
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
-          <Button onClick={handleCloseDialog} color="inherit" sx={{ fontWeight: 600 }}>
-            Cancelar
-          </Button>
-          <Button type="submit" variant="contained" sx={{ bgcolor: '#003366', fontWeight: 600 }}>
-            {selectedDocente ? 'Actualizar' : 'Crear'}
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Controller
+                      name="fechaIngreso"
+                      control={control}
+                      render={({ field }) => (
+                        <TextField
+                          {...field}
+                          fullWidth
+                          type="date"
+                          label="Fecha de Ingreso"
+                          InputLabelProps={{ shrink: true }}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <CalendarIcon color="primary" />
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                      )}
+                    />
+                  </Grid>
 
-      <Snackbar 
-        open={snackbar.open} 
-        autoHideDuration={6000} 
+                  {/* Fila 2: DNI, Teléfono y Email Personal */}
+                  <Grid item xs={12} md={4}>
+                    <Controller
+                      name="dni"
+                      control={control}
+                      rules={{
+                        required: 'El DNI es obligatorio',
+                        pattern: {
+                          value: /^[0-9]{8}$/,
+                          message: 'El DNI debe tener 8 dígitos'
+                        }
+                      }}
+                      render={({ field }) => (
+                        <TextField
+                          {...field}
+                          fullWidth
+                          label="DNI"
+                          error={!!errors.dni}
+                          helperText={errors.dni?.message as string}
+                          inputProps={{ maxLength: 8 }}
+                          InputLabelProps={{ shrink: true }}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <BadgeIcon color="primary" />
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Controller
+                      name="telefono"
+                      control={control}
+                      render={({ field }) => (
+                        <TextField
+                          {...field}
+                          fullWidth
+                          label="Teléfono"
+                          InputLabelProps={{ shrink: true }}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <PhoneIcon color="primary" />
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Controller
+                      name="emailPersonal"
+                      control={control}
+                      render={({ field }) => (
+                        <TextField
+                          {...field}
+                          fullWidth
+                          type="email"
+                          label="Email Personal"
+                          InputLabelProps={{ shrink: true }}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <EmailIcon color="primary" />
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                      )}
+                    />
+                  </Grid>
+
+                  {/* Fila 3: Telegram y Código IBM */}
+                  <Grid item xs={12} md={6}>
+                    <Controller
+                      name="telegramId"
+                      control={control}
+                      render={({ field }) => (
+                        <TextField
+                          {...field}
+                          fullWidth
+                          label="Telegram (ID o Username)"
+                          placeholder="@usuario o ID numérico"
+                          InputLabelProps={{ shrink: true }}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <TelegramIcon color="primary" />
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Controller
+                      name="codigoIBM"
+                      control={control}
+                      rules={{
+                        pattern: {
+                          value: /^[0-9]{4}$/,
+                          message: 'El Código IBM debe tener 4 dígitos'
+                        }
+                      }}
+                      render={({ field }) => (
+                        <TextField
+                          {...field}
+                          fullWidth
+                          label="Código IBM"
+                          placeholder="0000"
+                          error={!!errors.codigoIBM}
+                          helperText={errors.codigoIBM?.message as string}
+                          inputProps={{ maxLength: 4 }}
+                          InputLabelProps={{ shrink: true }}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <BadgeIcon color="primary" />
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                      )}
+                    />
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Sección 2: Datos Laborales */}
+              <Paper elevation={1} sx={{ p: 3, borderRadius: 2, border: '1px solid #e0e0e0' }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#003366' }}>
+                  Datos Laborales
+                </Typography>
+                <Grid container spacing={2}>
+                  {/* Fila 1: Tipo de Contrato, Categoría y Dedicación (cascada) */}
+                  <Grid item xs={12} md={4}>
+                    <Controller
+                      name="tipoContrato"
+                      control={control}
+                      render={({ field }) => (
+                        <FormControl fullWidth>
+                          <InputLabel shrink>Tipo de Contrato</InputLabel>
+                          <Select
+                            {...field}
+                            label="Tipo de Contrato"
+                            onChange={(e) => {
+                              field.onChange(e);
+                              // Cuando cambia el tipo de contrato, actualizamos categoría y dedicación
+                              const nuevoTipo = e.target.value;
+                              const nuevasCategorias = (categoriasDocente as any)[nuevoTipo] || categoriasDocente.ordinario;
+                              const nuevasDedicaciones = (dedicacionesDocente as any)[nuevoTipo] || dedicacionesDocente.ordinario;
+                              setValue('categoria', nuevasCategorias[0]?.id || 'principal');
+                              setValue('dedicacion', nuevasDedicaciones[0] || 'TIEMPO COMPLETO 40 H');
+                            }}
+                          >
+                            {tiposContrato.map(tipo => (
+                              <MenuItem key={tipo.id} value={tipo.id}>{tipo.nombre}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Controller
+                      name="categoria"
+                      control={control}
+                      render={({ field }) => (
+                        <FormControl fullWidth>
+                          <InputLabel shrink>Categoría</InputLabel>
+                          <Select {...field} label="Categoría">
+                            {getCategoriasDisponibles().map((cat: any) => (
+                              <MenuItem key={cat.id} value={cat.id}>{cat.nombre}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Controller
+                      name="dedicacion"
+                      control={control}
+                      render={({ field }) => (
+                        <FormControl fullWidth>
+                          <InputLabel shrink>Dedicación</InputLabel>
+                          <Select {...field} label="Dedicación">
+                            {getDedicacionesDisponibles().map((ded: string) => (
+                              <MenuItem key={ded} value={ded}>{ded}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                    />
+                  </Grid>
+
+                  {/* Fila 2: Facultad y Departamento Académico */}
+                  <Grid item xs={12} md={6}>
+                    <Controller
+                      name="facultad"
+                      control={control}
+                      render={({ field }) => (
+                        <FormControl fullWidth>
+                          <InputLabel>Facultad</InputLabel>
+                          <Select {...field} label="Facultad">
+                            {facultades.map(fac => (
+                              <MenuItem key={fac.id} value={fac.id}>{fac.nombre}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Controller
+                      name="departamentoAcademico"
+                      control={control}
+                      render={({ field }) => (
+                        <FormControl fullWidth>
+                          <InputLabel>Departamento Académico</InputLabel>
+                          <Select {...field} label="Departamento Académico">
+                            {departamentosAcademicos.map(depto => (
+                              <MenuItem key={depto.id} value={depto.id}>{depto.nombre}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                    />
+                  </Grid>
+
+                  {/* Fila 3: Cargo Administrativo y Es Becario */}
+                  <Grid item xs={12} md={6}>
+                    <Controller
+                      name="cargoAdministrativo"
+                      control={control}
+                      render={({ field }) => (
+                        <FormControl fullWidth>
+                          <InputLabel>Cargo Administrativo</InputLabel>
+                          <Select {...field} label="Cargo Administrativo">
+                            {cargosAdministrativos.map(cargo => (
+                              <MenuItem key={cargo.id} value={cargo.id}>{cargo.nombre}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Controller
+                      name="esBecario"
+                      control={control}
+                      render={({ field }) => (
+                        <FormControl fullWidth>
+                          <FormControlLabel
+                            control={<Checkbox {...field} checked={field.value} />}
+                            label="Es Becario"
+                          />
+                        </FormControl>
+                      )}
+                    />
+                  </Grid>
+
+                  {/* Fila 4: Carreras que enseña */}
+                  <Grid item xs={12}>
+                    <Controller
+                      name="carreraIds"
+                      control={control}
+                      render={({ field: { onChange, value } }) => (
+                        <Autocomplete
+                          multiple
+                          options={carreras}
+                          getOptionLabel={(option: any) => option.nombre || ''}
+                          value={carreras.filter(carrera => value?.includes(carrera.id))}
+                          onChange={(_, newValue) => {
+                            onChange(newValue.map((carrera) => carrera.id));
+                          }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              label="Carreras que enseña"
+                              placeholder="Seleccione una o más carreras..."
+                              InputLabelProps={{ shrink: true }}
+                            />
+                          )}
+                        />
+                      )}
+                    />
+                  </Grid>
+                </Grid>
+              </Paper>
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ p: 3, flexShrink: 0 }}>
+            <Button onClick={handleCloseDialog} color="inherit" sx={{ fontWeight: 600 }}>
+              Cancelar
+            </Button>
+            <Button type="submit" variant="contained" sx={{ bgcolor: '#003366', fontWeight: 600 }}>
+              {selectedDocente ? 'Actualizar' : 'Crear'}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >
         <Alert severity={snackbar.severity} sx={{ width: '100%' }}>

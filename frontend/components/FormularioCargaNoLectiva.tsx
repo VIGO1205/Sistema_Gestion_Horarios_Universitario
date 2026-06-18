@@ -162,8 +162,10 @@ export default function FormularioCargaNoLectiva({
     }
   };
 
-  // Máximo de horas para Preparación y Evaluación: 50% de la carga lectiva
+  // Máximos para cada actividad
   const maxHorasPreparacion = Math.round(horasLectivas / 2);
+  const maxHorasResponsabilidadSocial = 2;
+  const maxHorasCapacitacion = 5;
   
   const totalHorasNoLectivas = 
     Number(data.horasPreparacion || 0) +
@@ -174,17 +176,16 @@ export default function FormularioCargaNoLectiva({
     Number(data.horasAdministracion || 0) +
     Number(data.horasAsesoria || 0) +
     Number(data.horasResponsabilidadSocial || 0) +
-    Number(data.horasComites || 0);
+    Number(data.horasComites || 0) +
+    Number(data.horasAaep || 0) +
+    Number(data.horasAaai || 0);
 
   const totalHorasNoLectivasEnteras = Math.round(totalHorasNoLectivas);
   const horasLectivasEnteras = Math.round(horasLectivas);
   const totalGeneralEntero = horasLectivasEnteras + totalHorasNoLectivasEnteras;
   
-  // Validación: horasPreparacion no excede el 50% de horasLectivas
-  const excedeHorasPreparacion = Number(data.horasPreparacion || 0) > maxHorasPreparacion;
-  
   // Botón habilitado solo si totalGeneralEntero >= dedicacionTotal
-  const puedeEnviar = totalGeneralEntero >= dedicacionTotal && !excedeHorasPreparacion;
+  const puedeEnviar = totalGeneralEntero >= dedicacionTotal;
 
   // El docente solo puede editar si el estado es 'borrador'
   // Si es finalizado, se bloquea todo permanentemente
@@ -460,14 +461,14 @@ export default function FormularioCargaNoLectiva({
   if (loading) return <CircularProgress size={24} sx={{ m: 2 }} />;
 
   const rows = [
-    { id: 'Preparacion', label: '2. PREPARACION Y EVALUACION (Max 50% de Trabajo Lectivo)', h: 'horasPreparacion', d: 'detallePreparacion' },
-    { id: 'Tutoria', label: '3. CONSEJERIA Y TUTORIA: señalar número de alumnos y el ciclo academico con los que se desarrolla. (Como minimo una 01 hora semanal).', h: 'horasTutoria', d: 'detalleTutoria' },
-    { id: 'Investigacion', label: '4. INVESTIGACIÓN: Consignar el nro de inscripción, código, nombre y duración del proyecto. (Como mínimo 04 y 05 horas semanales, según modalidad de trabajo de docentes ordinarios).', h: 'horasInvestigacion', d: 'detalleInvestigacion' },
-    { id: 'Capacitacion', label: '5. CAPACITACIÓN: Señale lo referente a este rubro en el marco de los planes de cada Facultad (como máximo 05 semanales)', h: 'horasCapacitacion', d: 'detalleCapacitacion' },
+    { id: 'Preparacion', label: '2. PREPARACION Y EVALUACION (Max 50% de Trabajo Lectivo)', h: 'horasPreparacion', d: 'detallePreparacion', max: maxHorasPreparacion },
+    { id: 'Tutoria', label: '3. CONSEJERIA Y TUTORIA: señalar número de alumnos y el ciclo academico con los que se desarrolla.', h: 'horasTutoria', d: 'detalleTutoria' },
+    { id: 'Investigacion', label: '4. INVESTIGACIÓN: Consignar el nro de inscripción, código, nombre y duración del proyecto.', h: 'horasInvestigacion', d: 'detalleInvestigacion' },
+    { id: 'Capacitacion', label: '5. CAPACITACIÓN: Señale lo referente a este rubro en el marco de los planes de cada Facultad (Max 5 H)', h: 'horasCapacitacion', d: 'detalleCapacitacion', max: maxHorasCapacitacion },
     { id: 'Gobierno', label: '6. ACTIVIDADES DE GOBIERNO: Se desempeña cargo indique', h: 'horasGobierno', d: 'detalleGobierno' },
     { id: 'Administracion', label: '7. ACTIVIDADES DE ADMINISTRACION: Si desempeña cargo indique.', h: 'horasAdministracion', d: 'detalleAdministracion' },
     { id: 'Asesoria', label: '8. ASESORIA DE TESIS, EXAMENES PROFESIONALES Y EXPERIENCIA PROFESIONAL: Indicar el numero de Resolución Decanal, precisando el nombre y duración de la actividad programada.', h: 'horasAsesoria', d: 'detalleAsesoria' },
-    { id: 'Responsabilidad', label: '9. RESPONSABILIDAD SOCIAL UNIVERSITARIA: Señalar actividad, proyecto programa a ejecutarse en beneficio de la comunidad local o regional. (Como máximo 02 horas semanales)', h: 'horasResponsabilidadSocial', d: 'detalleResponsabilidadSocial' },
+    { id: 'Responsabilidad', label: '9. RESPONSABILIDAD SOCIAL UNIVERSITARIA: Señalar actividad, proyecto programa a ejecutarse en beneficio de la comunidad local o regional. (Max 2 H)', h: 'horasResponsabilidadSocial', d: 'detalleResponsabilidadSocial', max: maxHorasResponsabilidadSocial },
     { id: 'Comites', label: '10. COMITES TECNICOS Y COMISIONES: Consignar el numero de Resolución autoritativa indicando el lapso de vigencia', h: 'horasComites', d: 'detalleComites' },
   ];
 
@@ -490,88 +491,158 @@ export default function FormularioCargaNoLectiva({
         </Box>
       </Box>
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {rows.map((row) => {
-            const isPreparacion = row.id === 'Preparacion';
-            const errorPreparacion = isPreparacion && excedeHorasPreparacion;
-            
-            return (
-              <Box key={row.id}>
-                <Grid container spacing={2} alignItems="center">
-                  <Grid item xs={12} md={5}>
-                    <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
-                      {isPreparacion 
-                        ? `2. PREPARACION Y EVALUACION (Max ${maxHorasPreparacion} H - 50% de Trabajo Lectivo)` 
-                        : row.label}
-                    </Typography>
-                    {errorPreparacion && (
-                      <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 700, display: 'block', mt: 0.5 }}>
-                        ⚠️ Excede el máximo permitido ({maxHorasPreparacion} H)
-                      </Typography>
-                    )}
-                  </Grid>
-                  <Grid item xs={12} md={5}>
-                    <TextField
-                      fullWidth
-                      multiline={!isPreparacion}
-                      rows={isPreparacion ? 1 : 5}
-                      variant="outlined"
-                      disabled={readOnly || isLocked}
-                      placeholder="Detalle de la actividad..."
-                      value={data[row.d] || ''}
-                      onChange={(e) => handleInputChange(row.d, e.target.value)}
-                      sx={{ 
-                        '& .MuiOutlinedInput-root': { 
-                          bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#ffffff',
-                          fontSize: '0.85rem',
-                          '& fieldset': { borderColor: '#e2e8f0' },
-                          '&:hover fieldset': { borderColor: '#003366' },
-                        } 
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={2}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
-                      <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: '#475569' }}>Horas:</Typography>
-                      <TextField
-                        type="number"
-                        size="small"
-                        disabled={readOnly || isLocked}
-                        value={data[row.h] === undefined ? 0 : Math.round(data[row.h])}
-                        onChange={(e) => {
-                          let val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
-                          if (isNaN(val)) val = 0;
-                          
-                          // Limitar el valor para preparación
-                          if (isPreparacion) {
-                            val = Math.min(val, maxHorasPreparacion);
-                          }
-                          
-                          handleInputChange(row.h, val);
-                        }}
-                        error={errorPreparacion}
-                        inputProps={{ 
-                          min: 0, 
-                          max: isPreparacion ? maxHorasPreparacion : undefined,
-                          step: 1,
-                          style: { textAlign: 'center', fontWeight: 800, color: '#003366' } 
-                        }}
-                        sx={{ 
-                          width: 70,
-                          '& .MuiOutlinedInput-root': { 
-                            bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#fff',
-                            '& fieldset': { borderColor: errorPreparacion ? 'error.main' : '#cbd5e1' }
-                          }
-                        }}
-                      />
-                    </Box>
-                  </Grid>
-                </Grid>
-                <Divider sx={{ mt: 2, borderStyle: 'dashed', opacity: 0.6 }} />
-              </Box>
-            );
-          })}
-        </Box>
+      {/* Sección 1: CHNLC */}
+      <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#003366', mb: 2, mt: 3 }}>
+        2.1. Carga Horaria No Lectiva Complementaria (CHNLC)
+      </Typography>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {[
+          { num: 1, id: 'PE', label: 'Preparación y Evaluación (PE) (Max 50% de Trabajo Lectivo)', h: 'horasPreparacion', d: 'detallePreparacion', max: maxHorasPreparacion },
+          { num: 2, id: 'TC', label: 'Tutoría y Consejería (TC)', h: 'horasTutoria', d: 'detalleTutoria' },
+          { num: 3, id: 'INV', label: 'Investigación (INV)', h: 'horasInvestigacion', d: 'detalleInvestigacion' },
+          { num: 4, id: 'AAEP', label: 'Autoevaluación y/o Acreditación de la Escuela Profesional (AAEP)', h: 'horasAaep', d: 'detalleAaep' },
+          { num: 5, id: 'FAC', label: 'Formación Académica y Capacitación (FAC) (Max 5 H)', h: 'horasCapacitacion', d: 'detalleCapacitacion', max: maxHorasCapacitacion },
+          { num: 6, id: 'RSU', label: 'Responsabilidad Social Universitaria (RSU) (Max 2 H)', h: 'horasResponsabilidadSocial', d: 'detalleResponsabilidadSocial', max: maxHorasResponsabilidadSocial },
+          { num: 7, id: 'ATEP', label: 'Asesoría de Tesis y Exámenes Profesionales (ATEP)', h: 'horasAsesoria', d: 'detalleAsesoria' },
+        ].map((row) => (
+          <Box key={row.id}>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} md={5}>
+                <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
+                  {row.num}. {row.label}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} md={5}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={1}
+                  variant="outlined"
+                  disabled={readOnly || isLocked}
+                  placeholder="Detalle de la actividad..."
+                  value={data[row.d] || ''}
+                  onChange={(e) => handleInputChange(row.d, e.target.value)}
+                  sx={{ 
+                    '& .MuiOutlinedInput-root': { 
+                      bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#ffffff',
+                      fontSize: '0.85rem',
+                      '& fieldset': { borderColor: '#e2e8f0' },
+                      '&:hover fieldset': { borderColor: '#003366' },
+                    } 
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+                  <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: '#475569' }}>Horas:</Typography>
+                  <TextField
+                    type="number"
+                    size="small"
+                    disabled={readOnly || isLocked}
+                    value={data[row.h] === undefined ? 0 : Math.round(data[row.h])}
+                    onChange={(e) => {
+                      let val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                      if (isNaN(val)) val = 0;
+                      
+                      // Limitar el valor según la actividad
+                      if (row.max !== undefined) {
+                        val = Math.min(val, row.max);
+                      }
+                      
+                      handleInputChange(row.h, val);
+                    }}
+                    inputProps={{ 
+                      min: 0, 
+                      max: row.max,
+                      step: 1,
+                      style: { textAlign: 'center', fontWeight: 800, color: '#003366' } 
+                    }}
+                    sx={{ 
+                      width: 70,
+                      '& .MuiOutlinedInput-root': { 
+                        bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#fff',
+                        '& fieldset': { borderColor: '#cbd5e1' }
+                      }
+                    }}
+                  />
+                </Box>
+              </Grid>
+            </Grid>
+            <Divider sx={{ mt: 2, borderStyle: 'dashed', opacity: 0.6 }} />
+          </Box>
+        ))}
+      </Box>
+
+      {/* Sección 2: CHNLA */}
+      <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#003366', mb: 2, mt: 4 }}>
+        2.2. Carga Horaria No Lectiva Administrativa (CHNLA)
+      </Typography>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {[
+          { num: 8, id: 'CC', label: 'Comités y Comisiones Especiales (CC)', h: 'horasComites', d: 'detalleComites' },
+          { num: 9, id: 'AGA', label: 'Actividades de Gobierno o de Autoridad (AGA)', h: 'horasGobierno', d: 'detalleGobierno' },
+          { num: 10, id: 'AAAI', label: 'Actividades de Gestión Institucional (AAAI)', h: 'horasAaai', d: 'detalleAaai' },
+        ].map((row) => (
+          <Box key={row.id}>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} md={5}>
+                <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
+                  {row.num}. {row.label}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} md={5}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={1}
+                  variant="outlined"
+                  disabled={readOnly || isLocked}
+                  placeholder="Detalle de la actividad..."
+                  value={data[row.d] || ''}
+                  onChange={(e) => handleInputChange(row.d, e.target.value)}
+                  sx={{ 
+                    '& .MuiOutlinedInput-root': { 
+                      bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#ffffff',
+                      fontSize: '0.85rem',
+                      '& fieldset': { borderColor: '#e2e8f0' },
+                      '&:hover fieldset': { borderColor: '#003366' },
+                    } 
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+                  <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: '#475569' }}>Horas:</Typography>
+                  <TextField
+                    type="number"
+                    size="small"
+                    disabled={readOnly || isLocked}
+                    value={data[row.h] === undefined ? 0 : Math.round(data[row.h])}
+                    onChange={(e) => {
+                      let val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                      if (isNaN(val)) val = 0;
+                      handleInputChange(row.h, val);
+                    }}
+                    inputProps={{ 
+                      min: 0, 
+                      step: 1,
+                      style: { textAlign: 'center', fontWeight: 800, color: '#003366' } 
+                    }}
+                    sx={{ 
+                      width: 70,
+                      '& .MuiOutlinedInput-root': { 
+                        bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#fff',
+                        '& fieldset': { borderColor: '#cbd5e1' }
+                      }
+                    }}
+                  />
+                </Box>
+              </Grid>
+            </Grid>
+            <Divider sx={{ mt: 2, borderStyle: 'dashed', opacity: 0.6 }} />
+          </Box>
+        ))}
+      </Box>
 
         <Box sx={{ mt: 4, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <Box sx={{ 

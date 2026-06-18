@@ -228,6 +228,51 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
     }
   };
 
+  const formatEnumText = (text: string | null | undefined): string => {
+    if (!text) return 'Sin especificar';
+    return text.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const getLimitesCargaDocente = (docente: any) => {
+    let minHoras = 0;
+    let maxHoras = 0;
+    const dedicacion = (docente?.dedicacion || '').toUpperCase();
+
+    // 1. Determinar límites por dedicación
+    if (dedicacion.includes('EXCLUSIVA') || dedicacion.includes('40') || dedicacion.includes('TIEMPO COMPLETO')) {
+      maxHoras = 22;
+      minHoras = 16;
+    } else if (dedicacion.includes('20') || dedicacion.includes('TP1')) {
+      maxHoras = 20;
+      minHoras = 12;
+    } else if (dedicacion.includes('10') || dedicacion.includes('TP2')) {
+      maxHoras = 10;
+      minHoras = 8;
+    } else if (dedicacion.includes('8') || dedicacion.includes('TP3')) {
+      maxHoras = 8;
+      minHoras = 8;
+    }
+
+    // 2. Ajustar por cargos administrativos
+    const cargo = (docente?.cargoAdministrativo || docente?.cargo || '').toUpperCase();
+    if (cargo.includes('RECTOR') || cargo.includes('VICERRECTOR')) {
+      minHoras = 0;
+      maxHoras = 0;
+    } else if (cargo.includes('DECANO') || cargo.includes('DIRECTOR DE POSTGRADO')) {
+      minHoras = 6;
+    } else if (cargo.includes('DIRECTOR DE ESCUELA') || cargo.includes('DIRECTOR DE DEPARTAMENTO')) {
+      minHoras = 10;
+    } else if (cargo.includes('DIRECTOR DE FILIAL')) {
+      minHoras = 8;
+    }
+
+    return {
+      min: minHoras,
+      max: maxHoras,
+      topeDiario: 8
+    };
+  };
+
   const getStatusChip = (estado: string) => {
     switch (estado?.toLowerCase()) {
       case 'validado':
@@ -477,6 +522,8 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
             <TableRow sx={{ bgcolor: '#003366' }}>
               <TableCell sx={{ fontWeight: 800, color: 'white', whiteSpace: 'nowrap' }}>DOCENTE</TableCell>
               <TableCell align="center" sx={{ fontWeight: 800, color: 'white', whiteSpace: 'nowrap' }}>DEDICACIÓN</TableCell>
+              <TableCell align="center" sx={{ fontWeight: 800, color: 'white', whiteSpace: 'nowrap' }}>HORAS LECTIVAS</TableCell>
+              <TableCell align="center" sx={{ fontWeight: 800, color: 'white', whiteSpace: 'nowrap' }}>HORAS NO LECTIVAS</TableCell>
               <TableCell align="center" sx={{ fontWeight: 800, color: 'white', whiteSpace: 'nowrap' }}>HORAS TOTALES</TableCell>
               <TableCell align="center" sx={{ fontWeight: 800, color: 'white', whiteSpace: 'nowrap' }}>ESTADO</TableCell>
               <TableCell align="center" sx={{ fontWeight: 800, color: 'white', whiteSpace: 'nowrap' }}>ACCIONES</TableCell>
@@ -485,7 +532,7 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
           <TableBody>
             {filteredCargas.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 8 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 8 }}>
                   <Typography color="textSecondary">No se han encontrado declaraciones con los filtros aplicados.</Typography>
                 </TableCell>
               </TableRow>
@@ -524,11 +571,27 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
                       <Chip label={carga.docente?.dedicacion || 'N/A'} size="small" variant="outlined" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }} />
                     </TableCell>
                     <TableCell align="center">
-                      <Tooltip title={`Lectiva: ${Math.round(totalLectiva)}H + No Lectiva: ${Math.round(totalNoLectiva)}H`}>
-                        <Typography sx={{ fontWeight: 800, color: '#0369a1', cursor: 'help', whiteSpace: 'nowrap' }}>
-                          {Math.round(totalGeneral)} H
-                        </Typography>
-                      </Tooltip>
+                      {(() => {
+                        const limites = getLimitesCargaDocente(carga.docente);
+                        const valido = totalLectiva <= limites.max && totalLectiva >= limites.min;
+                        return (
+                          <Typography 
+                            sx={{ fontWeight: 800, color: valido ? '#16a34a' : '#dc2626', whiteSpace: 'nowrap' }}
+                          >
+                            {Math.round(totalLectiva)} H
+                          </Typography>
+                        );
+                      })()}
+                    </TableCell>
+                    <TableCell align="center">
+                      <Typography sx={{ fontWeight: 800, color: '#0369a1', cursor: 'help', whiteSpace: 'nowrap' }}>
+                        {Math.round(totalNoLectiva)} H
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="center">
+                      <Typography sx={{ fontWeight: 800, color: '#0369a1', cursor: 'help', whiteSpace: 'nowrap' }}>
+                        {Math.round(totalGeneral)} H
+                      </Typography>
                     </TableCell>
                     <TableCell align="center">
                       <Box sx={{ display: 'flex', justifyContent: 'center' }}>

@@ -34,6 +34,11 @@ export class ConfirmImportCursosDto {
   @Min(1)
   carreraId: number;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  curriculaId?: number;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

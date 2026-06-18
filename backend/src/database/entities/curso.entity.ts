@@ -3,6 +3,7 @@ import { AsignacionDocenteCurso } from './asignacion-docente-curso.entity';
 import { Horario } from './horario.entity';
 import { Carrera } from './carrera.entity';
 import { ProgramacionCursoCiclo } from './programacion-curso-ciclo.entity';
+import { Curricula } from './curricula.entity';
 
 export enum TipoCurso {
   TEORIA = 'teoria',
@@ -37,6 +38,13 @@ export class Curso {
   @ManyToOne(() => Carrera, (carrera) => carrera.cursos)
   @JoinColumn({ name: 'carrera_id' })
   carrera: Carrera;
+
+  @Column({ name: 'curricula_id', type: 'integer', nullable: true })
+  curriculaId: number;
+
+  @ManyToOne(() => Curricula, (curricula) => curricula.cursos, { nullable: true })
+  @JoinColumn({ name: 'curricula_id' })
+  curricula: Curricula;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -34,13 +34,13 @@ export class CursosController {
   @Post('importar-ia/confirmar')
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
   async confirmImportFromIA(@Body() body: ConfirmImportCursosDto) {
-    return this.cursosService.confirmImportFromIA(body.carreraId, body.cursos);
+    return this.cursosService.confirmImportFromIA(body.carreraId, body.cursos, body.curriculaId);
   }
 
   @Get()
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR, RolUsuario.DOCENTE)
-  findAll(@Query('ciclo') ciclo?: string, @Query('carreraId') carreraId?: string, @Query('departamento') departamento?: string) {
-    return this.cursosService.findAll(carreraId ? +carreraId : undefined, ciclo, departamento);
+  findAll(@Query('ciclo') ciclo?: string, @Query('carreraId') carreraId?: string, @Query('departamento') departamento?: string, @Query('curriculaId') curriculaId?: string) {
+    return this.cursosService.findAll(carreraId ? +carreraId : undefined, ciclo, departamento, curriculaId ? +curriculaId : undefined);
   }
 
   @Get('departamentos')

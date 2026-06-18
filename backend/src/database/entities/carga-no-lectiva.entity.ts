@@ -80,6 +80,20 @@ export class CargaNoLectiva {
   @Column({ name: 'detalle_comites', type: 'text', nullable: true })
   detalleComites: string;
 
+  // 11. AUTOEVALUACION Y/O ACREDITACION (AAEP)
+  @Column({ name: 'horas_aaep', type: 'decimal', precision: 5, scale: 2, default: 0 })
+  horasAaep: number;
+
+  @Column({ name: 'detalle_aaep', type: 'text', nullable: true })
+  detalleAaep: string;
+
+  // 12. ACTIVIDADES DE GESTION INSTITUCIONAL (AAAI)
+  @Column({ name: 'horas_aaai', type: 'decimal', precision: 5, scale: 2, default: 0 })
+  horasAaai: number;
+
+  @Column({ name: 'detalle_aaai', type: 'text', nullable: true })
+  detalleAaai: string;
+
   @OneToOne(() => CargaAcademica, (ca) => ca.cargaNoLectiva)
   @JoinColumn({ name: 'carga_academica_id' })
   cargaAcademica: CargaAcademica;

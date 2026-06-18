@@ -37,6 +37,7 @@ import {
   Timer as TimerIcon,
   Notifications as NotificationsIcon,
   Close as CloseIcon,
+  GridView as GridViewIcon,
 } from '@mui/icons-material';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from './providers/AuthProvider';
@@ -94,6 +95,7 @@ const navItems: NavItem[] = [
   { text: 'Horarios', icon: <CalendarIcon />, path: '/horarios', roles: ['admin', 'coordinador', 'docente'] },
   { text: 'Docentes', icon: <PeopleIcon />, path: '/docentes', roles: ['admin', 'coordinador'] },
   { text: 'Carreras', icon: <SchoolIcon />, path: '/carreras', roles: ['admin'] },
+  { text: 'Currícula', icon: <GridViewIcon />, path: '/curriculas', roles: ['admin', 'coordinador'] },
   { text: 'Cursos', icon: <BookIcon />, path: '/cursos', roles: ['admin', 'coordinador'] },
   { text: 'Periodos', icon: <CalendarIcon />, path: '/periodos', roles: ['admin'] },
   { text: 'Aulas', icon: <RoomIcon />, path: '/ambientes', roles: ['admin'] },

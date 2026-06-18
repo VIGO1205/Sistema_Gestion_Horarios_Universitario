@@ -149,11 +149,27 @@ export class CargaNoLectivaService {
     
     ca.totalHorasNoLectivas = totalNoLectivas;
 
-    // Calcular horas lectivas (opcional aquí, o se puede hacer dinámico)
+    // Calcular horas lectivas
     const asignaciones = await this.dataSource.getRepository('asignacion_docente_curso').find({
       where: { docenteId, cicloId },
     });
-    ca.totalHorasLectivas = asignaciones.reduce((sum, a) => sum + Number(a['horasSemanales'] || 0), 0);
+    const totalHorasLectivas = asignaciones.reduce((sum, a) => sum + Number(a['horasSemanales'] || 0), 0);
+    ca.totalHorasLectivas = totalHorasLectivas;
+
+    // VALIDACIONES
+    // 1. Horas preparación no puede exceder 50% de la carga lectiva
+    const maxPreparacion = Math.round(totalHorasLectivas / 2);
+    if (noLectivaData.horasPreparacion && Number(noLectivaData.horasPreparacion) > maxPreparacion) {
+      noLectivaData.horasPreparacion = maxPreparacion;
+    }
+    // 2. Capacitación máx 5h
+    if (noLectivaData.horasCapacitacion && Number(noLectivaData.horasCapacitacion) > 5) {
+      noLectivaData.horasCapacitacion = 5;
+    }
+    // 3. Responsabilidad Social máx 2h
+    if (noLectivaData.horasResponsabilidadSocial && Number(noLectivaData.horasResponsabilidadSocial) > 2) {
+      noLectivaData.horasResponsabilidadSocial = 2;
+    }
 
     const caSaved = await this.cargaAcademicaRepo.save(ca);
 

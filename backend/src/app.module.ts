@@ -12,6 +12,7 @@ import { CursosModule } from './modules/cursos/cursos.module';
 import { AulasModule } from './modules/aulas/aulas.module';
 import { CiclosModule } from './modules/ciclos/ciclos.module';
 import { CarrerasModule } from './modules/carreras/carreras.module';
+import { CurriculasModule } from './modules/curriculas/curriculas.module';
 import { IAModule } from './modules/ia/ia.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { ProgramacionesModule } from './modules/programaciones/programaciones.module';
@@ -35,6 +36,7 @@ import { CargaNoLectiva } from './entities/carga-no-lectiva.entity';
 import { Reporte } from './entities/reporte.entity';
 import { CargaAcademica } from './entities/carga-academica.entity';
 import { ConfiguracionGrilla } from './entities/configuracion-grilla.entity';
+import { Curricula } from './entities/curricula.entity';
 
 @Module({
   imports: [
@@ -55,7 +57,7 @@ import { ConfiguracionGrilla } from './entities/configuracion-grilla.entity';
           Usuario, Docente, Curso, Aula, CicloAcademico, Horario, 
           AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, 
           Carrera, DocenteCarrera, VentanaAtencion, Notificacion, 
-          CargaNoLectiva, CargaAcademica, Reporte, ConfiguracionGrilla
+          CargaNoLectiva, CargaAcademica, Reporte, ConfiguracionGrilla, Curricula
         ];
         
         // Si hay DATABASE_URL (Render), la usamos directamente con SSL opcional
@@ -95,6 +97,7 @@ import { ConfiguracionGrilla } from './entities/configuracion-grilla.entity';
     AulasModule,
     CiclosModule,
     CarrerasModule,
+    CurriculasModule,
     IAModule,
     UsuariosModule,
     ProgramacionesModule,

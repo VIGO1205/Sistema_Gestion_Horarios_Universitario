@@ -59,6 +59,7 @@ export default function CursosPage() {
   const [loading, setLoading] = useState(true);
   const [cursos, setCursos] = useState<any[]>([]);
   const [carreras, setCarreras] = useState<any[]>([]);
+  const [curriculas, setCurriculas] = useState<any[]>([]);
   const [departamentos, setDepartamentos] = useState<string[]>([]);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [filtros, setFiltros] = useState({
@@ -67,7 +68,9 @@ export default function CursosPage() {
     creditos: 'todos',
     carreraId: 'todos',
     departamento: 'todos',
+    curriculaId: 'todos',
   });
+  const [importCurriculaId, setImportCurriculaId] = useState('');
 
   // Opciones para filtros
   const ciclosAcademicos = Array.from({ length: 10 }, (_, i) => i + 1);
@@ -289,6 +292,7 @@ export default function CursosPage() {
 
   useEffect(() => {
     fetchCarreras();
+    fetchCurriculas();
     fetchDepartamentos();
   }, []);
 
@@ -298,7 +302,7 @@ export default function CursosPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [filtros.search, filtros.ciclo, filtros.creditos, filtros.carreraId, filtros.departamento]);
+  }, [filtros.search, filtros.ciclo, filtros.creditos, filtros.carreraId, filtros.departamento, filtros.curriculaId]);
 
   const fetchCarreras = async () => {
     try {
@@ -306,6 +310,15 @@ export default function CursosPage() {
       setCarreras(response.data);
     } catch (error) {
       console.error('Error fetching carreras:', error);
+    }
+  };
+
+  const fetchCurriculas = async () => {
+    try {
+      const response = await api.get('/curriculas');
+      setCurriculas(response.data);
+    } catch (error) {
+      console.error('Error fetching curriculas:', error);
     }
   };
 
@@ -325,6 +338,7 @@ export default function CursosPage() {
       if (filtros.ciclo !== 'todos') params.append('ciclo', filtros.ciclo);
       if (filtros.carreraId !== 'todos') params.append('carreraId', filtros.carreraId);
       if (filtros.departamento !== 'todos') params.append('departamento', filtros.departamento);
+      if (filtros.curriculaId !== 'todos') params.append('curriculaId', filtros.curriculaId);
       
       const response = await api.get(`/cursos?${params.toString()}`);
       setCursos(response.data);
@@ -649,6 +663,7 @@ export default function CursosPage() {
     try {
       await api.post('/cursos/importar-ia/confirmar', {
         carreraId: Number(importCarreraId),
+        curriculaId: importCurriculaId ? Number(importCurriculaId) : undefined,
         cursos: cursosSeleccionados.map((curso) => ({
           codigo: String(curso.codigo).trim(),
           nombre: String(curso.nombre).trim(),
@@ -828,29 +843,30 @@ export default function CursosPage() {
               <RefreshIcon />
             </IconButton>
           </Tooltip>
-          <Button
-            variant="outlined"
-            startIcon={<AutoAwesomeIcon />}
-            onClick={() => setOpenImportDialog(true)}
-            sx={{ borderRadius: 2, fontWeight: 600, color: '#003366', borderColor: '#003366' }}
-          >
-            Importar con IA
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
-            sx={{ bgcolor: '#003366', borderRadius: 2, fontWeight: 600 }}
-          >
-            Nuevo Curso
-          </Button>
         </Box>
       </Box>
 
       {/* Filtros */}
       <Paper elevation={0} sx={{ p: 3, mb: 4, borderRadius: 4, border: '1px solid #eef2f6', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
         <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={8}>
+          {/* Filtro de Curricula (al lado izquierdo) */} 
+          <Grid item xs={12} md={2}>
+            <FormControl fullWidth size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Filtrar por Curricula</InputLabel>
+              <Select
+                value={filtros.curriculaId}
+                label="Filtrar por Curricula"
+                onChange={(e) => setFiltros({ ...filtros, curriculaId: e.target.value })}
+              >
+                <MenuItem value="todos">TODAS</MenuItem>
+                {curriculas.map(c => (
+                  <MenuItem key={c.id} value={c.id}>MC - {c.anio}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
             <TextField
               fullWidth
               size="small"
@@ -873,7 +889,7 @@ export default function CursosPage() {
                 fullWidth 
                 variant="outlined" 
                 startIcon={<DeleteSweepIcon />}
-                onClick={() => setFiltros({ search: '', ciclo: 'todos', creditos: 'todos', carreraId: 'todos', departamento: 'todos' })}
+                onClick={() => setFiltros({ search: '', ciclo: 'todos', creditos: 'todos', carreraId: 'todos', departamento: 'todos', curriculaId: 'todos' })}
                 sx={{ borderRadius: 2, fontWeight: 600, color: '#666', borderColor: '#ddd' }}
               >
                 Limpiar
@@ -969,10 +985,10 @@ export default function CursosPage() {
           <TableHead>
             <TableRow sx={{ bgcolor: '#003366' }}>
               <TableCell sx={{ color: 'white', fontWeight: 700, width: '50px' }}>N°</TableCell>
-              <TableCell sx={{ color: 'white', fontWeight: 700 }}>CURSO</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 700 }}>CURRICULA</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CÓDIGO</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 700 }}>CURSO</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>DEPARTAMENTO</TableCell>
-              <TableCell sx={{ color: 'white', fontWeight: 700 }}>CARRERA</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CICLO</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CRÉDITOS</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700, textAlign: 'center' }}>ACCIONES</TableCell>
@@ -981,7 +997,7 @@ export default function CursosPage() {
           <TableBody>
             {cursosFiltrados.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} sx={{ py: 10, textAlign: 'center' }}>
+                <TableCell colSpan={8} sx={{ py: 10, textAlign: 'center' }}>
                   <Typography color="textSecondary">No se encontraron cursos.</Typography>
                 </TableCell>
               </TableRow>
@@ -994,15 +1010,17 @@ export default function CursosPage() {
                     {page * rowsPerPage + index + 1}
                   </TableCell>
                   <TableCell>
-                    <Typography sx={{ fontWeight: 600 }}>{curso.nombre}</Typography>
+                    <Typography sx={{ fontWeight: 600 }}>
+                      {curso.curricula ? `MC - ${curso.curricula.anio}` : 'No asignada'}
+                    </Typography>
                   </TableCell>
                   <TableCell>
                     <Chip label={curso.codigo} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
                   </TableCell>
-                  <TableCell>{curso.departamento}</TableCell>
                   <TableCell>
-                    <Typography variant="body2">{curso.carrera?.nombre || 'No asignada'}</Typography>
+                    <Typography sx={{ fontWeight: 600 }}>{curso.nombre}</Typography>
                   </TableCell>
+                  <TableCell>{curso.departamento}</TableCell>
                   <TableCell>{curso.cicloAcademico}° Ciclo</TableCell>
                   <TableCell>{curso.creditos} créditos</TableCell>
                   <TableCell align="center">
@@ -1416,6 +1434,24 @@ export default function CursosPage() {
                     {carreras.map(c => (
                       <MenuItem key={c.id} value={c.id}>{c.nombre}</MenuItem>
                     ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Malla Curricular (opcional)</InputLabel>
+                  <Select 
+                    value={importCurriculaId} 
+                    label="Malla Curricular (opcional)"
+                    onChange={(e) => setImportCurriculaId(e.target.value)}
+                    disabled={importing}
+                  >
+                    <MenuItem value="">Sin asignar</MenuItem>
+                    {curriculas
+                      .filter(c => c.carreraId === Number(importCarreraId) || !importCarreraId)
+                      .map(c => (
+                        <MenuItem key={c.id} value={c.id}>{c.nombre} ({c.anio})</MenuItem>
+                      ))}
                   </Select>
                 </FormControl>
               </Grid>

@@ -7,6 +7,7 @@ import { UpdateProgramacionDto } from './dto/update-programacion.dto';
 import { UpdateCargaAcademicaDto } from './dto/update-carga-academica.dto';
 import { AsignacionDocenteCurso, TipoClase } from '../../entities/asignacion-docente-curso.entity';
 import { GrupoDocenteAsignacion } from '../../database/entities/grupo-docente-asignacion.entity';
+import { Horario } from '../../database/entities/horario.entity';
 import { Curso } from '../../database/entities/curso.entity';
 
 @Injectable()
@@ -180,7 +181,7 @@ export class ProgramacionesService {
     await this.programacionRepo.delete(id);
   }
 
-  async getCargaAcademica(cicloId: number, carreraId?: number, cicloAcademico?: number) {
+  async getCargaAcademica(cicloId: number, carreraId?: number, cicloAcademico?: number, curriculaId?: number) {
     // Obtener todas las programaciones para el ciclo
     const query = this.programacionRepo.createQueryBuilder('p')
       .leftJoinAndSelect('p.curso', 'curso')
@@ -193,6 +194,10 @@ export class ProgramacionesService {
 
     if (cicloAcademico) {
       query.andWhere('curso.cicloAcademico = :cicloAcademico', { cicloAcademico });
+    }
+
+    if (curriculaId) {
+      query.andWhere('curso.curriculaId = :curriculaId', { curriculaId });
     }
 
     const programaciones = await query.getMany();
@@ -283,10 +288,19 @@ export class ProgramacionesService {
 
     // Ejecutar actualización en transacción
     await this.dataSource.transaction(async (tm) => {
-      // 1. Eliminar asignaciones actuales para este curso/ciclo
-      // Nota: Esto borrará también los grupos por CASCADE
+      // 0. Desvincular horarios que referencian los grupos antes de eliminar
       const actuales = await tm.find(AsignacionDocenteCurso, { where: { cursoId, cicloId } });
       if (actuales.length > 0) {
+        const ids = actuales.map(a => a.id);
+        const grupos = await tm.find(GrupoDocenteAsignacion, { where: { asignacionId: In(ids) } });
+        if (grupos.length > 0) {
+          const grupoIds = grupos.map(g => g.id);
+          await tm.createQueryBuilder()
+            .update(Horario)
+            .set({ grupoId: null })
+            .where('grupoId IN (:...grupoIds)', { grupoIds })
+            .execute();
+        }
         await tm.remove(actuales);
       }
 

@@ -43,7 +43,7 @@ export class CursosService {
     };
   }
 
-  async confirmImportFromIA(carreraId: number, cursos: any[]): Promise<any> {
+  async confirmImportFromIA(carreraId: number, cursos: any[], curriculaId?: number): Promise<any> {
     if (!carreraId || Number.isNaN(carreraId)) {
       throw new BadRequestException('Debes seleccionar una carrera válida.');
     }
@@ -83,12 +83,12 @@ export class CursosService {
       const existing = await this.cursosRepository.findOne({ where: { codigo: data.codigo } });
       if (existing) {
         // Actualizar si ya existe
-        Object.assign(existing, { ...data, carreraId });
+        Object.assign(existing, { ...data, carreraId, curriculaId });
         const saved = await this.cursosRepository.save(existing);
         savedCursos.push(saved as any);
       } else {
         // Crear si no existe
-        const curso = this.cursosRepository.create({ ...data, carreraId } as Partial<Curso>);
+        const curso = this.cursosRepository.create({ ...data, carreraId, curriculaId } as Partial<Curso>);
         const saved = await this.cursosRepository.save(curso);
         savedCursos.push(saved as any);
       }
@@ -113,15 +113,16 @@ export class CursosService {
     };
   }
 
-  async findAll(carreraId?: number, cicloAcademico?: string, departamento?: string): Promise<Curso[]> {
+  async findAll(carreraId?: number, cicloAcademico?: string, departamento?: string, curriculaId?: number): Promise<Curso[]> {
     const where: any = {};
     if (carreraId) where.carreraId = carreraId;
     if (cicloAcademico) where.cicloAcademico = cicloAcademico;
     if (departamento && departamento !== 'todos') where.departamento = departamento;
+    if (curriculaId) where.curriculaId = curriculaId;
 
     return await this.cursosRepository.find({
       where,
-      relations: ['carrera'],
+      relations: ['carrera', 'curricula'],
       order: { codigo: 'ASC' },
     });
   }
@@ -158,5 +159,11 @@ export class CursosService {
   async remove(id: number): Promise<void> {
     const curso = await this.findOne(id);
     await this.cursosRepository.remove(curso);
+  }
+
+  async findSinMalla(carreraId?: number): Promise<Curso[]> {
+    const where: any = { curriculaId: null };
+    if (carreraId) where.carreraId = carreraId;
+    return await this.cursosRepository.find({ where });
   }
 }
