@@ -40,17 +40,19 @@ export class AulasService {
   }
 
   async update(id: number, updateAulaDto: UpdateAulaDto): Promise<Aula> {
-    const aula = await this.findOne(id);
+    // Primero verificamos que la aula exista
+    await this.findOne(id);
     
-    // Actualizamos explícitamente los campos, incluido lugarId
-    aula.nombre = updateAulaDto.nombre ?? aula.nombre;
-    if (updateAulaDto.tipo) {
-      aula.tipo = updateAulaDto.tipo as any;
+    // Usamos preload para cargar la entidad y fusionar los datos
+    const aula = await this.aulasRepository.preload({
+      id,
+      ...updateAulaDto,
+    });
+
+    if (!aula) {
+      throw new NotFoundException(`Aula con id ${id} no encontrada`);
     }
-    aula.capacidad = updateAulaDto.capacidad ?? aula.capacidad;
-    aula.disponible = updateAulaDto.disponible ?? aula.disponible;
-    aula.lugarId = updateAulaDto.lugarId !== undefined ? updateAulaDto.lugarId : aula.lugarId;
-    
+
     return await this.aulasRepository.save(aula);
   }
 
