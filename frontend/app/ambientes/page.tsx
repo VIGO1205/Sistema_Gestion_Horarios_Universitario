@@ -537,7 +537,16 @@ export default function AmbientesPage() {
                   render={({ field }) => (
                     <FormControl fullWidth>
                       <InputLabel>Lugar</InputLabel>
-                      <Select {...field} label="Lugar" value={field.value ?? ''}>
+                      <Select 
+                        {...field} 
+                        label="Lugar" 
+                        value={field.value ?? ''}
+                        onChange={(e) => {
+                          // Convertir a número o null
+                          const value = e.target.value;
+                          field.onChange(value === '' ? null : Number(value));
+                        }}
+                      >
                         <MenuItem value="">
                           <em>Sin lugar</em>
                         </MenuItem>
