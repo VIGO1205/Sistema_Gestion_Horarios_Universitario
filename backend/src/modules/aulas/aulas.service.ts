@@ -44,7 +44,9 @@ export class AulasService {
     
     // Actualizamos explícitamente los campos, incluido lugarId
     aula.nombre = updateAulaDto.nombre ?? aula.nombre;
-    aula.tipo = updateAulaDto.tipo ?? aula.tipo;
+    if (updateAulaDto.tipo) {
+      aula.tipo = updateAulaDto.tipo as any;
+    }
     aula.capacidad = updateAulaDto.capacidad ?? aula.capacidad;
     aula.disponible = updateAulaDto.disponible ?? aula.disponible;
     aula.lugarId = updateAulaDto.lugarId !== undefined ? updateAulaDto.lugarId : aula.lugarId;
