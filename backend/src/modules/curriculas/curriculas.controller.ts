@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, UseInterceptors, UploadedFile, Res } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import { diskStorage, memoryStorage } from 'multer';
 import { extname } from 'path';
 import { Response } from 'express';
 import { CurriculasService } from './curriculas.service';
@@ -54,7 +54,7 @@ export class CurriculasController {
     if (!file) {
       throw new Error('Debes subir un archivo PDF');
     }
-    return this.curriculasService.importCurriculaFromPDF(file.buffer, {
+    return this.curriculasService.importCurriculaFromPDF(readFileSync(file.path), {
       nombre,
       anio: +anio,
       descripcion,
@@ -63,17 +63,24 @@ export class CurriculasController {
     });
   }
 
-  @Post(':id/extraer-cursos-pdf')
+  @Post(':id/previsualizar-cursos-pdf')
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
-  @UseInterceptors(FileInterceptor('file'))
-  async extractCursosFromPDF(
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async previewCursosFromPDF(
     @Param('id') id: string,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    return this.curriculasService.extractCursosFromPDF(+id, file);
+    return this.curriculasService.previewCursosFromPDF(+id, file);
   }
 
-
+  @Post(':id/confirmar-cursos-pdf')
+  @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
+  async confirmImportCursosFromPreview(
+    @Param('id') id: string,
+    @Body() body: any,
+  ) {
+    return this.curriculasService.confirmImportCursosFromPreview(+id, body.cursos);
+  }
 
   @Get()
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR, RolUsuario.DOCENTE)

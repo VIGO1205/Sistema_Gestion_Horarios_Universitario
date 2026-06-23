@@ -19,6 +19,7 @@ export class AulasService {
 
   async findAll(): Promise<Aula[]> {
     return await this.aulasRepository.find({
+      relations: ['lugar'],
       order: { tipo: 'ASC' },
     });
   }
@@ -26,11 +27,12 @@ export class AulasService {
   async findByTipo(tipo: string): Promise<Aula[]> {
     return await this.aulasRepository.find({
       where: { tipo: tipo as any },
+      relations: ['lugar'],
     });
   }
 
   async findOne(id: number): Promise<Aula> {
-    const aula = await this.aulasRepository.findOne({ where: { id } });
+    const aula = await this.aulasRepository.findOne({ where: { id }, relations: ['lugar'] });
     if (!aula) {
       throw new NotFoundException(`Aula con id ${id} no encontrada`);
     }

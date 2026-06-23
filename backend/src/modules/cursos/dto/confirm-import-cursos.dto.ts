@@ -2,9 +2,11 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
+  IsOptional,
   IsString,
   Min,
   ValidateNested,
@@ -26,6 +28,10 @@ export class ImportedCursoDto {
   @IsString()
   @IsNotEmpty()
   cicloAcademico: string;
+
+  @IsOptional()
+  @IsIn(['ES', 'EL', 'OB', 'OP'])
+  tipoCurso?: string;
 }
 
 export class ConfirmImportCursosDto {

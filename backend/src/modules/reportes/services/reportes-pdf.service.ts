@@ -138,11 +138,11 @@ export class ReportesPDFService {
       WITH asignaciones AS (
         SELECT 
           h.id,
-          d.tipo_contrato,
+          d.condicion,
           d.categoria,
           d.antiguedad_anios,
           ROW_NUMBER() OVER (PARTITION BY h.dia_semana ORDER BY 
-            CASE d.tipo_contrato WHEN 'nombrado' THEN 1 ELSE 2 END,
+            CASE d.condicion WHEN 'nombrado' THEN 1 ELSE 2 END,
             CASE d.categoria 
               WHEN 'principal' THEN 1 WHEN 'asociado' THEN 2 
               WHEN 'auxiliar' THEN 3 WHEN 'jefe_practica' THEN 4 
@@ -155,7 +155,7 @@ export class ReportesPDFService {
       )
       SELECT 
         COUNT(*) as total_asignaciones,
-        COUNT(*) FILTER (WHERE tipo_contrato = 'contratado' AND orden = 1) as violaciones
+        COUNT(*) FILTER (WHERE condicion = 'contratado' AND orden = 1) as violaciones
       FROM asignaciones
       `,
       [cicloId],

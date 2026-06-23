@@ -1,6 +1,6 @@
 import * as dotenv from 'dotenv';
 import * as bcrypt from 'bcryptjs';
-import { dataSource } from '../data-source';
+import { dataSource } from './data-source';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -10,6 +10,7 @@ import { Usuario, RolUsuario } from '../entities/usuario.entity';
 import { CicloAcademico } from '../entities/ciclo-academico.entity';
 import { Carrera } from '../entities/carrera.entity';
 import { DocenteCarrera } from '../entities/docente-carrera.entity';
+import { Lugar } from '../entities/lugar.entity';
 
 async function runSeeds() {
   try {
@@ -22,6 +23,43 @@ async function runSeeds() {
     const cicloRepo = dataSource.getRepository(CicloAcademico);
     const carreraRepo = dataSource.getRepository(Carrera);
     const docenteCarreraRepository = dataSource.getRepository(DocenteCarrera);
+    const lugarRepo = dataSource.getRepository(Lugar);
+
+    console.log('Iniciando seed de Lugares...');
+    const lugaresData = [
+      ['F01', 'CC. Agropecuarias'],
+      ['F02', 'CC. Biológicas'],
+      ['F03', 'CC. Económicas'],
+      ['F04', 'CC. Físicas y Matemáticas'],
+      ['F05', 'CC. Sociales'],
+      ['F06', 'Derecho y Ciencias Políticas'],
+      ['F07', 'Educación y Comunicación'],
+      ['F08', 'Enfermería'],
+      ['F09', 'Estomatología'],
+      ['F10', 'Farmacia y Bioquímica'],
+      ['F11', 'Ingeniería'],
+      ['F12', 'Ingeniería Química'],
+      ['F13', 'Medicina'],
+      ['F14', 'Filial Valle Jequetepeque'],
+      ['F15', 'Filial Huamachuco'],
+      ['F16', 'Filial Santiago de Chuco'],
+      ['OA', 'Oficina Administrativa'],
+      ['SC', 'Salida de Campo'],
+    ];
+
+    const existingLugares = await lugarRepo.find();
+    const lugarByCodigo = new Map(existingLugares.map((lugar) => [lugar.codigo, lugar]));
+
+    for (const [codigo, nombre] of lugaresData) {
+      const existente = lugarByCodigo.get(codigo);
+      if (!existente) {
+        await lugarRepo.save({ codigo, nombre });
+        console.log(`Insertado lugar: ${codigo} - ${nombre}`);
+      } else {
+        console.log(`Ya existe lugar: ${codigo} - ${nombre}`);
+      }
+    }
+    console.log('Seed de Lugares completado.\n');
 
     console.log('Iniciando limpieza de base de datos...');
     
@@ -94,57 +132,57 @@ async function runSeeds() {
     // 2. Docentes Reales de Ingeniería de Sistemas (Extraídos de las imágenes de horarios)
     const docentesData = [
       // De la primera imagen (Ciclo V)
-      { nombreCompleto: 'Luis Bay Chavell', dni: '10000001', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 20, fechaIngreso: new Date('2004-01-01'), activo: true },
-      { nombreCompleto: 'Consuelo Barreto Arguello Escriba', dni: '10000002', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 15, fechaIngreso: new Date('2009-01-01'), activo: true },
-      { nombreCompleto: 'Carlos Arturo Yactayo Tacora', dni: '10000003', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 18, fechaIngreso: new Date('2006-01-01'), activo: true },
-      { nombreCompleto: 'Camilo Andres Salazar', dni: '10000004', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 8, fechaIngreso: new Date('2016-01-01'), activo: true },
-      { nombreCompleto: 'Marcos Becera Lopez', dni: '10000005', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 10, fechaIngreso: new Date('2014-01-01'), activo: true },
-      { nombreCompleto: 'Ana Cuadra Mizquebay', dni: '10000006', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 5, fechaIngreso: new Date('2019-01-01'), activo: true },
+      { nombreCompleto: 'Luis Bay Chavell', dni: '10000001', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 20, fechaIngreso: new Date('2004-01-01'), activo: true },
+      { nombreCompleto: 'Consuelo Barreto Arguello Escriba', dni: '10000002', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 15, fechaIngreso: new Date('2009-01-01'), activo: true },
+      { nombreCompleto: 'Carlos Arturo Yactayo Tacora', dni: '10000003', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 18, fechaIngreso: new Date('2006-01-01'), activo: true },
+      { nombreCompleto: 'Camilo Andres Salazar', dni: '10000004', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 8, fechaIngreso: new Date('2016-01-01'), activo: true },
+      { nombreCompleto: 'Marcos Becera Lopez', dni: '10000005', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 10, fechaIngreso: new Date('2014-01-01'), activo: true },
+      { nombreCompleto: 'Ana Cuadra Mizquebay', dni: '10000006', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 5, fechaIngreso: new Date('2019-01-01'), activo: true },
       // De la segunda imagen (Ciclo VII)
-      { nombreCompleto: 'Juan Pedro Santos Fernandez', dni: '10000007', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 22, fechaIngreso: new Date('2002-01-01'), activo: true },
-      { nombreCompleto: 'Teresa Tarazona Arbildo', dni: '10000008', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 14, fechaIngreso: new Date('2010-01-01'), activo: true },
-      { nombreCompleto: 'Alonso Miguel Apaza Benites', dni: '10000009', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 19, fechaIngreso: new Date('2005-01-01'), activo: true },
-      { nombreCompleto: 'Paul Carbajal Castillejos', dni: '10000010', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 4, fechaIngreso: new Date('2020-01-01'), activo: true },
-      { nombreCompleto: 'Dioser Rondar Vasquez', dni: '10000011', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 5, fechaIngreso: new Date('2019-01-01'), activo: true },
+      { nombreCompleto: 'Juan Pedro Santos Fernandez', dni: '10000007', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 22, fechaIngreso: new Date('2002-01-01'), activo: true },
+      { nombreCompleto: 'Teresa Tarazona Arbildo', dni: '10000008', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 14, fechaIngreso: new Date('2010-01-01'), activo: true },
+      { nombreCompleto: 'Alonso Miguel Apaza Benites', dni: '10000009', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 19, fechaIngreso: new Date('2005-01-01'), activo: true },
+      { nombreCompleto: 'Paul Carbajal Castillejos', dni: '10000010', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 4, fechaIngreso: new Date('2020-01-01'), activo: true },
+      { nombreCompleto: 'Dioser Rondar Vasquez', dni: '10000011', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 5, fechaIngreso: new Date('2019-01-01'), activo: true },
       // De la tercera imagen (Ciclo IX)
-      { nombreCompleto: 'Ricardo Membrive Rivera', dni: '10000012', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 20, fechaIngreso: new Date('2004-01-01'), activo: true },
-      { nombreCompleto: 'Eduardo Mendoza Alvarez', dni: '10000013', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 15, fechaIngreso: new Date('2009-01-01'), activo: true },
-      { nombreCompleto: 'Wilson Mendoza de los Santos', dni: '10000014', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 12, fechaIngreso: new Date('2012-01-01'), activo: true },
-      { nombreCompleto: 'Oscar Peralt Alcantara Moreno', dni: '10000015', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 18, fechaIngreso: new Date('2006-01-01'), activo: true },
-      { nombreCompleto: 'Jorge Estema Vilcarima', dni: '10000016', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 8, fechaIngreso: new Date('2016-01-01'), activo: true },
-      { nombreCompleto: 'Luis Gomez Aulia', dni: '10000017', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 10, fechaIngreso: new Date('2014-01-01'), activo: true },
+      { nombreCompleto: 'Ricardo Membrive Rivera', dni: '10000012', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 20, fechaIngreso: new Date('2004-01-01'), activo: true },
+      { nombreCompleto: 'Eduardo Mendoza Alvarez', dni: '10000013', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 15, fechaIngreso: new Date('2009-01-01'), activo: true },
+      { nombreCompleto: 'Wilson Mendoza de los Santos', dni: '10000014', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 12, fechaIngreso: new Date('2012-01-01'), activo: true },
+      { nombreCompleto: 'Oscar Peralt Alcantara Moreno', dni: '10000015', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 18, fechaIngreso: new Date('2006-01-01'), activo: true },
+      { nombreCompleto: 'Jorge Estema Vilcarima', dni: '10000016', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 8, fechaIngreso: new Date('2016-01-01'), activo: true },
+      { nombreCompleto: 'Luis Gomez Aulia', dni: '10000017', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 10, fechaIngreso: new Date('2014-01-01'), activo: true },
       // De la cuarta imagen (Ciclo I)
-      { nombreCompleto: 'Dario Mendoza de los Santos', dni: '10000018', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 15, fechaIngreso: new Date('2009-01-01'), activo: true },
-      { nombreCompleto: 'Pamela Carrillo Castillejos', dni: '10000019', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 12, fechaIngreso: new Date('2012-01-01'), activo: true },
-      { nombreCompleto: 'Bertha Linda Baile', dni: '10000020', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 8, fechaIngreso: new Date('2016-01-01'), activo: true },
-      { nombreCompleto: 'Jose Luis Ponte Bojan', dni: '10000021', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 20, fechaIngreso: new Date('2004-01-01'), activo: true },
-      { nombreCompleto: 'Yrma Ysabel Salazar Obando', dni: '10000022', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 10, fechaIngreso: new Date('2014-01-01'), activo: true },
-      { nombreCompleto: 'Samuel Baltazar Queso', dni: '10000023', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 5, fechaIngreso: new Date('2019-01-01'), activo: true },
-      { nombreCompleto: 'Miguel Enriques Apoala', dni: '10000024', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 18, fechaIngreso: new Date('2006-01-01'), activo: true },
-      { nombreCompleto: 'Martha Carlesso', dni: '10000025', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 15, fechaIngreso: new Date('2009-01-01'), activo: true },
+      { nombreCompleto: 'Dario Mendoza de los Santos', dni: '10000018', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 15, fechaIngreso: new Date('2009-01-01'), activo: true },
+      { nombreCompleto: 'Pamela Carrillo Castillejos', dni: '10000019', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 12, fechaIngreso: new Date('2012-01-01'), activo: true },
+      { nombreCompleto: 'Bertha Linda Baile', dni: '10000020', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 8, fechaIngreso: new Date('2016-01-01'), activo: true },
+      { nombreCompleto: 'Jose Luis Ponte Bojan', dni: '10000021', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 20, fechaIngreso: new Date('2004-01-01'), activo: true },
+      { nombreCompleto: 'Yrma Ysabel Salazar Obando', dni: '10000022', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 10, fechaIngreso: new Date('2014-01-01'), activo: true },
+      { nombreCompleto: 'Samuel Baltazar Queso', dni: '10000023', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 5, fechaIngreso: new Date('2019-01-01'), activo: true },
+      { nombreCompleto: 'Miguel Enriques Apoala', dni: '10000024', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 18, fechaIngreso: new Date('2006-01-01'), activo: true },
+      { nombreCompleto: 'Martha Carlesso', dni: '10000025', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 15, fechaIngreso: new Date('2009-01-01'), activo: true },
       // De la quinta imagen (Ciclo III) y los originales
-      { nombreCompleto: 'Marco Ferrer Requejo', dni: '10000026', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 12, fechaIngreso: new Date('2012-01-01'), activo: true },
-      { nombreCompleto: 'Ernesto Rojas Garcia', dni: '10000027', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 10, fechaIngreso: new Date('2014-01-01'), activo: true },
-      { nombreCompleto: 'Juan Carranza Cabanillas', dni: '10000028', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 6, fechaIngreso: new Date('2018-01-01'), activo: true },
-      { nombreCompleto: 'Nilo Mendez Odi', dni: '10000029', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 4, fechaIngreso: new Date('2020-01-01'), activo: true },
-      { nombreCompleto: 'Sheyla Guari Escobedo Rodriguez', dni: '10000030', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 3, fechaIngreso: new Date('2021-01-01'), activo: true },
+      { nombreCompleto: 'Marco Ferrer Requejo', dni: '10000026', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 12, fechaIngreso: new Date('2012-01-01'), activo: true },
+      { nombreCompleto: 'Ernesto Rojas Garcia', dni: '10000027', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 10, fechaIngreso: new Date('2014-01-01'), activo: true },
+      { nombreCompleto: 'Juan Carranza Cabanillas', dni: '10000028', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 6, fechaIngreso: new Date('2018-01-01'), activo: true },
+      { nombreCompleto: 'Nilo Mendez Odi', dni: '10000029', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 4, fechaIngreso: new Date('2020-01-01'), activo: true },
+      { nombreCompleto: 'Sheyla Guari Escobedo Rodriguez', dni: '10000030', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 3, fechaIngreso: new Date('2021-01-01'), activo: true },
       // Originales que ya estaban y no se repiten
-      { nombreCompleto: 'Cesar Arellano Salazar', dni: '10000031', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 21, fechaIngreso: new Date('2003-01-01'), activo: true },
-      { nombreCompleto: 'Marcelino Torres Villanueva', dni: '10000032', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 25, fechaIngreso: new Date('1999-01-01'), activo: true },
-      { nombreCompleto: 'Everson Agreda Gamboa', dni: '10000033', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 20, fechaIngreso: new Date('2004-01-01'), activo: true },
-      { nombreCompleto: 'Alberto Mendoza de los Santos', dni: '10000034', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 12, fechaIngreso: new Date('2012-01-01'), activo: true },
-      { nombreCompleto: 'Luis Enrique Boy Chavil', dni: '10000035', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 18, fechaIngreso: new Date('2006-01-01'), activo: true },
-      { nombreCompleto: 'José Alberto Gómez Ávila', dni: '10000036', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 22, fechaIngreso: new Date('2002-01-01'), activo: true },
-      { nombreCompleto: 'Ricardo Darío Mendoza Rivera', dni: '10000037', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 10, fechaIngreso: new Date('2014-01-01'), activo: true },
-      { nombreCompleto: 'Juan Carlos Obando Roldán', dni: '10000038', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 24, fechaIngreso: new Date('2000-01-01'), activo: true },
-      { nombreCompleto: 'Robert Jerry Sánchez Ticona', dni: '10000039', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 8, fechaIngreso: new Date('2016-01-01'), activo: true },
-      { nombreCompleto: 'Zoraida Yanet Vidal Melgarejo', dni: '10000040', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 5, fechaIngreso: new Date('2019-01-01'), activo: true },
-      { nombreCompleto: 'Silvia Ana Rodríguez Aguirre', dni: '10000041', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 6, fechaIngreso: new Date('2018-01-01'), activo: true },
-      { nombreCompleto: 'Camilo Ernesto Suarez Rebaza', dni: '10000042', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 14, fechaIngreso: new Date('2010-01-01'), activo: true },
-      { nombreCompleto: 'Oscar Romel Alcantara Moreno', dni: '10000043', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 19, fechaIngreso: new Date('2005-01-01'), activo: true },
-      { nombreCompleto: 'Franklin Alexis Díaz Díaz', dni: '10000044', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 4, fechaIngreso: new Date('2020-01-01'), activo: true },
-      { nombreCompleto: 'Victor Antonio Charcape Ravelo', dni: '10000045', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 7, fechaIngreso: new Date('2017-01-01'), activo: true },
-      { nombreCompleto: 'Juan Luis Cordova Otero', dni: '10000046', tipoContrato: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 3, fechaIngreso: new Date('2021-01-01'), activo: true },
+      { nombreCompleto: 'Cesar Arellano Salazar', dni: '10000031', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 21, fechaIngreso: new Date('2003-01-01'), activo: true },
+      { nombreCompleto: 'Marcelino Torres Villanueva', dni: '10000032', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 25, fechaIngreso: new Date('1999-01-01'), activo: true },
+      { nombreCompleto: 'Everson Agreda Gamboa', dni: '10000033', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 20, fechaIngreso: new Date('2004-01-01'), activo: true },
+      { nombreCompleto: 'Alberto Mendoza de los Santos', dni: '10000034', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 12, fechaIngreso: new Date('2012-01-01'), activo: true },
+      { nombreCompleto: 'Luis Enrique Boy Chavil', dni: '10000035', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 18, fechaIngreso: new Date('2006-01-01'), activo: true },
+      { nombreCompleto: 'José Alberto Gómez Ávila', dni: '10000036', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 22, fechaIngreso: new Date('2002-01-01'), activo: true },
+      { nombreCompleto: 'Ricardo Darío Mendoza Rivera', dni: '10000037', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 10, fechaIngreso: new Date('2014-01-01'), activo: true },
+      { nombreCompleto: 'Juan Carlos Obando Roldán', dni: '10000038', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 24, fechaIngreso: new Date('2000-01-01'), activo: true },
+      { nombreCompleto: 'Robert Jerry Sánchez Ticona', dni: '10000039', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 8, fechaIngreso: new Date('2016-01-01'), activo: true },
+      { nombreCompleto: 'Zoraida Yanet Vidal Melgarejo', dni: '10000040', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 5, fechaIngreso: new Date('2019-01-01'), activo: true },
+      { nombreCompleto: 'Silvia Ana Rodríguez Aguirre', dni: '10000041', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 6, fechaIngreso: new Date('2018-01-01'), activo: true },
+      { nombreCompleto: 'Camilo Ernesto Suarez Rebaza', dni: '10000042', condicion: TipoContrato.NOMBRADO, categoria: Categoria.ASOCIADO, antiguedadAnios: 14, fechaIngreso: new Date('2010-01-01'), activo: true },
+      { nombreCompleto: 'Oscar Romel Alcantara Moreno', dni: '10000043', condicion: TipoContrato.NOMBRADO, categoria: Categoria.PRINCIPAL, antiguedadAnios: 19, fechaIngreso: new Date('2005-01-01'), activo: true },
+      { nombreCompleto: 'Franklin Alexis Díaz Díaz', dni: '10000044', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 4, fechaIngreso: new Date('2020-01-01'), activo: true },
+      { nombreCompleto: 'Victor Antonio Charcape Ravelo', dni: '10000045', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 7, fechaIngreso: new Date('2017-01-01'), activo: true },
+      { nombreCompleto: 'Juan Luis Cordova Otero', dni: '10000046', condicion: TipoContrato.NOMBRADO, categoria: Categoria.AUXILIAR, antiguedadAnios: 3, fechaIngreso: new Date('2021-01-01'), activo: true },
     ];
 
     const docentesGuardados = [] as Docente[];

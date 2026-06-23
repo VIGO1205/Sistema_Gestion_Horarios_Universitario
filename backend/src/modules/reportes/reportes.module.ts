@@ -12,6 +12,7 @@ import { Carrera } from '../../entities/carrera.entity';
 import { CargaAcademica } from '../../entities/carga-academica.entity';
 import { CicloAcademico } from '../../entities/ciclo-academico.entity';
 import { CiclosModule } from '../ciclos/ciclos.module';
+import { AsignacionFilialModule } from '../asignacion-filial/asignacion-filial.module';
 
 @Module({
   imports: [
@@ -26,7 +27,8 @@ import { CiclosModule } from '../ciclos/ciclos.module';
       CargaAcademica,
       CicloAcademico
     ]), 
-    CiclosModule
+    CiclosModule,
+    AsignacionFilialModule
   ],
   controllers: [ReportesController],
   providers: [ReportesService],

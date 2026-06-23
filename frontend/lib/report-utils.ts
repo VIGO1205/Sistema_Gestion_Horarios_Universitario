@@ -262,14 +262,14 @@ export const generateFormato1PDF = async (data: ReportData) => {
   const url = window.URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `(FORMATO # 1) Carga Horaria Asignada - ${data.docente.nombreCompleto}.pdf`;
+  anchor.download = `DECLARACION DE LA CARGA ACADEMICA DOCENTE (F01-CAD) - ${data.docente.nombreCompleto}.pdf`;
   anchor.click();
   window.URL.revokeObjectURL(url);
 };
 
 export const generateFormato1Excel = async (data: ReportData) => {
   const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Formato N° 1');
+  const worksheet = workbook.addWorksheet('DECLARACION DE LA CARGA ACADEMICA DOCENTE (F01-CAD)');
   const AZUL_UNT_HEX = '003366';
   const BLANCO_HEX = 'FFFFFF';
   const GRIS_BORDE = 'E2E8F0';
@@ -474,7 +474,7 @@ export const generateFormato1Excel = async (data: ReportData) => {
   const url = window.URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `(FORMATO # 1) Carga Horaria Asignada - ${data.docente.nombreCompleto}.xlsx`;
+  anchor.download = `DECLARACION DE LA CARGA ACADEMICA DOCENTE (F01-CAD) - ${data.docente.nombreCompleto}.xlsx`;
   anchor.click();
   window.URL.revokeObjectURL(url);
 };

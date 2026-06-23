@@ -504,7 +504,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 }
               }}
             >
-              <MenuItem onClick={handleMenuClose}>
+              <MenuItem onClick={() => { handleMenuClose(); router.push('/perfil'); }}>
                 <ListItemIcon><AccountCircleIcon fontSize="small" /></ListItemIcon>
                 Mi Perfil
               </MenuItem>

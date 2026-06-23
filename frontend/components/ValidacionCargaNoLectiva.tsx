@@ -46,9 +46,17 @@ import {
   ExpandLess as ExpandLessIcon,
   Assignment as AssignmentIcon,
   Book as BookIcon,
+  School as SchoolIcon,
+  ArrowBack as ArrowBackIcon,
+  ArrowForward as ArrowForwardIcon,
 } from '@mui/icons-material';
 import api from '@/lib/api';
+import { getLimitesReglamento } from '@/lib/reglamento-utils';
 import FormularioCargaNoLectiva from './FormularioCargaNoLectiva';
+import Swal from 'sweetalert2';
+import withReactContent from 'sweetalert2-react-content';
+
+const MySwal = withReactContent(Swal);
 
 interface ValidacionCargaNoLectivaProps {
   cicloId: number;
@@ -65,6 +73,12 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
   const [cicloData, setCicloData] = useState<any>(null);
   const [lectivaData, setLectivaData] = useState<{ agrupada: any[], total: number }>({ agrupada: [], total: 0 });
   const [loadingReview, setLoadingReview] = useState(false);
+  const [stepReview, setStepReview] = useState<'carga' | 'filial'>('carga');
+  const [horasAdicionalesReview, setHorasAdicionalesReview] = useState(0);
+  const [horasNoLectivasReview, setHorasNoLectivasReview] = useState(0);
+  const [filialData, setFilialData] = useState<any>(null);
+  const [loadingFilial, setLoadingFilial] = useState(false);
+  const FILIALES = ['Filial Valle Jequetepeque', 'Filial Huamachuco', 'Filial Santiago de Chuco'];
   
   // Filtros
   const [showFilters, setShowFilters] = useState(false);
@@ -167,6 +181,9 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
     setSelectedCarga(carga);
     setOpenReview(true);
     setLoadingReview(true);
+    setStepReview('carga');
+    setFilialData(null);
+    setHorasAdicionalesReview(0);
     
     try {
       const res = await api.get(`/docentes/${carga.docenteId}/cursos`, {
@@ -200,6 +217,24 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
 
       const totalH = lectiva.reduce((sum: number, item: any) => sum + Number(item.horasSemanales || 0), 0);
       setLectivaData({ agrupada: Object.values(grupos), total: totalH });
+
+      // Precargar filial data inmediatamente para las barras de progreso
+      const tieneFilial = carga.docente?.dependencias?.some((d: string) => FILIALES.includes(d));
+      if (tieneFilial) {
+        try {
+          const filialRes = await api.get('/asignacion-filial', {
+            params: { docenteId: carga.docenteId, cicloId: selectedCicloId },
+          });
+          const filial = filialRes.data || null;
+          setFilialData(filial);
+          if (filial?.cursos) {
+            const total = filial.cursos.reduce((sum: number, c: any) => sum + Math.round(c.totalHorasSemanales || 0), 0);
+            setHorasAdicionalesReview(total);
+          }
+        } catch (err) {
+          console.error('Error fetching filial data on review open:', err);
+        }
+      }
     } catch (error) {
       console.error('Error fetching review data:', error);
     } finally {
@@ -213,6 +248,42 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
     if (match) return parseInt(match[0]);
     if (dedicacion.toUpperCase().includes('EXCLUSIVA')) return 40;
     return 0;
+  };
+
+  const esFilialReview = selectedCarga?.docente?.dependencias?.some((d: string) => FILIALES.includes(d)) || false;
+
+  useEffect(() => {
+    if (stepReview === 'filial' && selectedCarga && esFilialReview && !filialData) {
+      setLoadingFilial(true);
+      api.get('/asignacion-filial', {
+        params: { docenteId: selectedCarga.docenteId, cicloId: selectedCicloId },
+      }).then((res) => {
+        setFilialData(res.data || null);
+      }).catch((err) => {
+        console.error('Error fetching filial data:', err);
+      }).finally(() => {
+        setLoadingFilial(false);
+      });
+    }
+  }, [stepReview, selectedCarga, selectedCicloId, esFilialReview, filialData]);
+
+  useEffect(() => {
+    if (filialData?.cursos) {
+      const total = filialData.cursos.reduce((sum: number, c: any) => sum + Math.round(c.totalHorasSemanales || 0), 0);
+      setHorasAdicionalesReview(total);
+    }
+  }, [filialData]);
+
+  const handleAdminStatusChange = async (newStatus: string) => {
+    if (!selectedCarga?.id) return;
+    try {
+      await api.patch(`/carga-no-lectiva/${selectedCarga.id}/estado`, { estado: newStatus });
+      setSelectedCarga((prev: any) => ({ ...prev, estado: newStatus }));
+      fetchCargas();
+      MySwal.fire({ icon: 'success', title: 'Estado actualizado', timer: 1500, showConfirmButton: false });
+    } catch (error: any) {
+      MySwal.fire({ icon: 'error', title: 'Error', text: error.response?.data?.message || 'Error al cambiar estado' });
+    }
   };
 
   const getStatusChipColor = (estado: string) => {
@@ -234,42 +305,11 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
   };
 
   const getLimitesCargaDocente = (docente: any) => {
-    let minHoras = 0;
-    let maxHoras = 0;
-    const dedicacion = (docente?.dedicacion || '').toUpperCase();
-
-    // 1. Determinar límites por dedicación
-    if (dedicacion.includes('EXCLUSIVA') || dedicacion.includes('40') || dedicacion.includes('TIEMPO COMPLETO')) {
-      maxHoras = 22;
-      minHoras = 16;
-    } else if (dedicacion.includes('20') || dedicacion.includes('TP1')) {
-      maxHoras = 20;
-      minHoras = 12;
-    } else if (dedicacion.includes('10') || dedicacion.includes('TP2')) {
-      maxHoras = 10;
-      minHoras = 8;
-    } else if (dedicacion.includes('8') || dedicacion.includes('TP3')) {
-      maxHoras = 8;
-      minHoras = 8;
-    }
-
-    // 2. Ajustar por cargos administrativos
-    const cargo = (docente?.cargoAdministrativo || docente?.cargo || '').toUpperCase();
-    if (cargo.includes('RECTOR') || cargo.includes('VICERRECTOR')) {
-      minHoras = 0;
-      maxHoras = 0;
-    } else if (cargo.includes('DECANO') || cargo.includes('DIRECTOR DE POSTGRADO')) {
-      minHoras = 6;
-    } else if (cargo.includes('DIRECTOR DE ESCUELA') || cargo.includes('DIRECTOR DE DEPARTAMENTO')) {
-      minHoras = 10;
-    } else if (cargo.includes('DIRECTOR DE FILIAL')) {
-      minHoras = 8;
-    }
-
+    const limites = getLimitesReglamento(docente);
     return {
-      min: minHoras,
-      max: maxHoras,
-      topeDiario: 8
+      min: limites.chl.min,
+      max: limites.chl.max ?? 0,
+      topeDiario: 8,
     };
   };
 
@@ -504,9 +544,16 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
                       onChange={(e) => setFiltros({ ...filtros, dedicacion: e.target.value })}
                     >
                       <MenuItem value="todos">Todas las dedicaciones</MenuItem>
-                      <MenuItem value="TIEMPO COMPLETO 40 H">Tiempo Completo 40H</MenuItem>
-                      <MenuItem value="TIEMPO PARCIAL 20 H">Tiempo Parcial 20H</MenuItem>
+                      <MenuItem value="DOCENTE INVESTIGADOR">Docente Investigador</MenuItem>
                       <MenuItem value="DEDICACION EXCLUSIVA">Dedicación Exclusiva</MenuItem>
+                      <MenuItem value="TIEMPO COMPLETO">Tiempo Completo</MenuItem>
+                      <MenuItem value="TIEMPO PARCIAL 20 H">Tiempo Parcial 20H</MenuItem>
+                      <MenuItem value="TIEMPO PARCIAL 16 H">Tiempo Parcial 16H</MenuItem>
+                      <MenuItem value="TIEMPO PARCIAL 12 H">Tiempo Parcial 12H</MenuItem>
+                      <MenuItem value="TIEMPO PARCIAL 10 H">Tiempo Parcial 10H</MenuItem>
+                      <MenuItem value="TIEMPO PARCIAL 08 H">Tiempo Parcial 08H</MenuItem>
+                      <MenuItem value="TIEMPO PARCIAL 06 H">Tiempo Parcial 06H</MenuItem>
+                      <MenuItem value="TIEMPO PARCIAL 04 H">Tiempo Parcial 04H</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
@@ -541,14 +588,16 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
                 .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                 .map((carga) => {
                 const totalNoLectiva = Number(carga.horasPreparacion || 0) + 
-                               Number(carga.horasTutoria || 0) + 
-                               Number(carga.horasInvestigacion || 0) + 
-                               Number(carga.horasCapacitacion || 0) + 
-                               Number(carga.horasGobierno || 0) + 
-                               Number(carga.horasAdministracion || 0) + 
-                               Number(carga.horasAsesoria || 0) + 
-                               Number(carga.horasResponsabilidadSocial || 0) + 
-                               Number(carga.horasComites || 0);
+                                Number(carga.horasTutoria || 0) + 
+                                Number(carga.horasInvestigacion || 0) + 
+                                Number(carga.horasCapacitacion || 0) + 
+                                Number(carga.horasGobierno || 0) + 
+                                Number(carga.horasAdministracion || 0) + 
+                                Number(carga.horasAsesoria || 0) + 
+                                Number(carga.horasResponsabilidadSocial || 0) + 
+                                Number(carga.horasComites || 0) +
+                                Number(carga.horasAaep || 0) +
+                                Number(carga.horasAaai || 0);
 
                 const totalLectiva = (carga.docente?.asignaciones || [])
                   .reduce((sum: number, a: any) => sum + Number(a.horasSemanales || 0), 0);
@@ -563,7 +612,7 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
                         </Avatar>
                         <Box>
                           <Typography sx={{ fontWeight: 700, fontSize: '0.9rem' }}>{carga.docente?.nombreCompleto}</Typography>
-                          <Typography variant="caption" color="textSecondary">{carga.docente?.departamento}</Typography>
+                          <Typography variant="caption" color="textSecondary">{carga.docente?.departamentoAcademico}</Typography>
                         </Box>
                       </Box>
                     </TableCell>
@@ -696,7 +745,7 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
                             </Box>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                               <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#64748b', minWidth: 140 }}>DPTO. ACADÉMICO:</Typography>
-                              <Typography sx={{ fontSize: '0.9rem', color: '#1e293b', fontWeight: 600 }}>{selectedCarga.docente?.departamento || 'INGENIERÍA DE SISTEMAS'}</Typography>
+                              <Typography sx={{ fontSize: '0.9rem', color: '#1e293b', fontWeight: 600 }}>{selectedCarga.docente?.departamentoAcademico || 'INGENIERÍA DE SISTEMAS'}</Typography>
                             </Box>
                           </Box>
                         </Grid>
@@ -705,7 +754,7 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}>
                               <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#64748b', minWidth: 100, textAlign: 'right' }}>CONDICIÓN:</Typography>
                               <Chip 
-                                label={((selectedCarga.docente?.condicion || selectedCarga.docente?.tipoContrato) ?? 'NOMBRADO').toString().toUpperCase()} 
+                                label={(selectedCarga.docente?.condicion ?? 'NOMBRADO').toString().toUpperCase()} 
                                 size="small" 
                                 sx={{ bgcolor: '#e0f2fe', color: '#0369a1', fontWeight: 700, borderRadius: 1, minWidth: 100 }} 
                               />
@@ -730,7 +779,7 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
                               </Box>
                               <Box>
                                 <Typography sx={{ fontWeight: 700, fontSize: '0.75rem', color: '#64748b', mb: 0.5, textTransform: 'uppercase' }}>Modalidad de Dedicación</Typography>
-                                <Typography sx={{ fontSize: '1rem', color: '#003366', fontWeight: 800 }}>{selectedCarga.docente?.dedicacion?.toUpperCase() || 'TIEMPO COMPLETO 40 H'}</Typography>
+                                <Typography sx={{ fontSize: '1rem', color: '#003366', fontWeight: 800 }}>{selectedCarga.docente?.dedicacion?.toUpperCase() || 'TIEMPO COMPLETO'}</Typography>
                               </Box>
                             </Box>
                             <Box sx={{ textAlign: 'right' }}>
@@ -765,7 +814,7 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         <BookIcon sx={{ color: '#FFD700', fontSize: 28 }} />
                         <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                          Declaración de Carga Horaria Asignada
+                          DECLARACION DE LA CARGA ACADEMICA DOCENTE (F01-CAD)
                         </Typography>
                       </Box>
                       <Box sx={{ 
@@ -859,28 +908,192 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
                         </Table>
                       </TableContainer>
 
-                      {/* 2. CARGA NO LECTIVA (Componente Integrado) */}
-                      <FormularioCargaNoLectiva
-                        docenteId={selectedCarga.docenteId}
-                        cicloId={selectedCicloId}
-                        dedicacionTotal={getDedicacionHoras(selectedCarga.docente?.dedicacion)}
-                        horasLectivas={lectivaData.total}
-                        docenteData={{
-                          ...selectedCarga.docente,
-                          facultad: selectedCarga.docente?.facultad || 'INGENIERÍA',
-                          departamento: selectedCarga.docente?.departamento || 'INGENIERÍA DE SISTEMAS',
-                          condicion: ((selectedCarga.docente?.condicion || selectedCarga.docente?.tipoContrato) ?? 'NOMBRADO').toString().toUpperCase(),
-                          categoria: (selectedCarga.docente?.categoria || 'PRINCIPAL').toUpperCase(),
-                          modalidad: selectedCarga.docente?.dedicacion?.toUpperCase() || 'TIEMPO COMPLETO 40 H',
-                          nombreCompleto: selectedCarga.docente?.nombreCompleto
-                        }}
-                        cicloData={cicloData}
-                        cargaLectivaAgrupada={lectivaData.agrupada}
-                        readOnly={true}
-                        onStatusChange={() => {
-                          fetchCargas();
-                        }}
-                      />
+                      {/* Step content */}
+                      {stepReview === 'carga' && (
+                        <FormularioCargaNoLectiva
+                          docenteId={selectedCarga.docenteId}
+                          cicloId={selectedCicloId}
+                          dedicacionTotal={getDedicacionHoras(selectedCarga.docente?.dedicacion)}
+                          horasLectivas={lectivaData.total}
+                          docenteData={{
+                            ...selectedCarga.docente,
+                            facultad: selectedCarga.docente?.facultad || 'INGENIERÍA',
+                            departamentoAcademico: selectedCarga.docente?.departamentoAcademico || 'INGENIERÍA DE SISTEMAS',
+                            condicion: (selectedCarga.docente?.condicion ?? 'NOMBRADO').toString().toUpperCase(),
+                            categoria: (selectedCarga.docente?.categoria || 'PRINCIPAL').toUpperCase(),
+                            modalidad: selectedCarga.docente?.dedicacion?.toUpperCase() || 'TIEMPO COMPLETO',
+                            nombreCompleto: selectedCarga.docente?.nombreCompleto
+                          }}
+                          cicloData={cicloData}
+                          cargaLectivaAgrupada={lectivaData.agrupada}
+                          readOnly={true}
+                          onStatusChange={() => { fetchCargas(); }}
+                          esFilial={esFilialReview}
+                          hideEnviarButton={true}
+                          horasAdicionales={horasAdicionalesReview}
+                          onHorasNoLectivasChange={setHorasNoLectivasReview}
+                          hideAdminActions={true}
+                        />
+                      )}
+
+                      {esFilialReview && stepReview === 'filial' && (
+                        <Box>
+                          {loadingFilial ? (
+                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+                          ) : filialData?.cursos?.length > 0 ? (
+                            <>
+                              <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid #f1f5f9', borderRadius: 2, mb: 3 }}>
+                                <Table size="small">
+                                  <TableHead>
+                                    <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                                      <TableCell sx={{ fontWeight: 800, color: '#475569', fontSize: '0.75rem' }}>#</TableCell>
+                                      <TableCell sx={{ fontWeight: 800, color: '#475569', fontSize: '0.75rem' }}>NOMBRE DEL CURSO</TableCell>
+                                      <TableCell sx={{ fontWeight: 800, color: '#475569', fontSize: '0.75rem' }}>DEPENDENCIA</TableCell>
+                                      <TableCell sx={{ fontWeight: 800, color: '#475569', fontSize: '0.75rem' }}>HORARIO</TableCell>
+                                      <TableCell align="center" sx={{ fontWeight: 800, color: '#475569', fontSize: '0.75rem' }}>TOTAL HRS.</TableCell>
+                                    </TableRow>
+                                  </TableHead>
+                                  <TableBody>
+                                    {filialData.cursos.map((curso: any, idx: number) => {
+                                      const horariosStr = (curso.horarioSemanal || []).map((h: any) => `${h.dia} ${h.horaInicio}-${h.horaFin}`).join(', ');
+                                      return (
+                                        <TableRow key={curso.id || idx} hover>
+                                          <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>{idx + 1}</TableCell>
+                                          <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>{curso.nombre}</TableCell>
+                                          <TableCell sx={{ fontSize: '0.8rem' }}>{curso.dependencia}</TableCell>
+                                          <TableCell sx={{ fontSize: '0.8rem' }}>{horariosStr}</TableCell>
+                                          <TableCell align="center" sx={{ fontWeight: 800, color: '#003366', fontSize: '0.9rem' }}>{Math.round(curso.totalHorasSemanales)} H</TableCell>
+                                        </TableRow>
+                                      );
+                                    })}
+                                  </TableBody>
+                                </Table>
+                              </TableContainer>
+                              <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 2 }}>
+                                <Typography sx={{ fontWeight: 800, fontSize: '1rem', color: '#003366' }}>
+                                  Total Horas Adicionales: {filialData.cursos.reduce((sum: number, c: any) => sum + Math.round(c.totalHorasSemanales || 0), 0)} H
+                                </Typography>
+                              </Box>
+                            </>
+                          ) : (
+                            <Box sx={{ textAlign: 'center', py: 6, color: '#94a3b8' }}>
+                              <Typography sx={{ fontWeight: 600 }}>Sin carga adicional registrada</Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+
+                      {/* Progress bars (solo en step filial para evitar duplicado) */}
+                      {esFilialReview && stepReview === 'filial' && (() => {
+                        const hLect = Math.round(lectivaData.total);
+                        const hNoLect = Math.round(horasNoLectivasReview);
+                        const hAdic = Math.round(horasAdicionalesReview);
+                        const totalGral = hLect + hNoLect + hAdic;
+                        const jornada = getDedicacionHoras(selectedCarga?.docente?.dedicacion);
+                        return (
+                        <Box sx={{ bgcolor: '#f8fafc', p: 3, borderRadius: 3, border: '1px solid #e2e8f0', mb: 4 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', mb: 3 }}>
+                            <Box sx={{ display: 'flex', gap: 4 }}>
+                              <Box>
+                                <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', mb: 0.5 }}>Horas Lectivas</Typography>
+                                <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', color: '#003366' }}>{hLect} H</Typography>
+                              </Box>
+                              <Box>
+                                <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', mb: 0.5 }}>Horas No Lectivas</Typography>
+                                <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', color: '#0369a1' }}>{hNoLect} H</Typography>
+                              </Box>
+                              {esFilialReview && (
+                              <Box>
+                                <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', mb: 0.5 }}>Horas Adicionales</Typography>
+                                <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', color: '#d97706' }}>{hAdic} H</Typography>
+                              </Box>
+                              )}
+                              <Divider orientation="vertical" flexItem />
+                              <Box>
+                                <Typography variant="caption" sx={{ fontWeight: 700, color: '#1e293b', textTransform: 'uppercase', display: 'block', mb: 0.5 }}>Total General</Typography>
+                                <Typography sx={{ fontWeight: 900, fontSize: '1.5rem', color: '#1e293b' }}>{totalGral} / {jornada} H</Typography>
+                              </Box>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 3 }}>
+                              <Typography sx={{ fontWeight: 900, fontSize: '1.2rem', color: '#003366' }}>
+                                {Math.min(100, Math.round((totalGral / (jornada || 40)) * 100))}%
+                              </Typography>
+                            </Box>
+                          </Box>
+                          {/* Barra 1: Jornada */}
+                          <Box sx={{ mb: 3 }}>
+                            <Box sx={{ width: '100%', height: 16, bgcolor: '#e2e8f0', borderRadius: 8, overflow: 'hidden', display: 'flex', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)' }}>
+                              <Box sx={{ width: `${Math.min((hLect / (jornada || 40)) * 100, 100)}%`, height: '100%', bgcolor: '#003366', transition: 'width 0.5s ease-in-out' }} />
+                              <Box sx={{ width: `${Math.min((hNoLect / (jornada || 40)) * 100, Math.max(0, 100 - (hLect / (jornada || 40)) * 100))}%`, height: '100%', bgcolor: '#0369a1', transition: 'width 0.5s ease-in-out' }} />
+                            </Box>
+                          </Box>
+                          {/* Barra 2: Horas Adicionales */}
+                          {esFilialReview && (
+                          <Box sx={{ mb: 3 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
+                              <Typography sx={{ fontWeight: 900, fontSize: '1.2rem', color: hAdic > 10 ? '#dc2626' : '#d97706' }}>
+                                {Math.min(100, Math.round((hAdic / 10) * 100))}%
+                              </Typography>
+                            </Box>
+                            <Box sx={{ width: '100%', height: 16, bgcolor: '#e2e8f0', borderRadius: 8, overflow: 'hidden', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)' }}>
+                              <Box sx={{ width: `${Math.min((hAdic / 10) * 100, 100)}%`, height: '100%', bgcolor: hAdic > 10 ? '#dc2626' : '#d97706', transition: 'width 0.5s ease-in-out', borderRadius: 8 }} />
+                            </Box>
+                          </Box>
+                          )}
+                          {/* Leyenda */}
+                          <Box sx={{ display: 'flex', gap: 3, mt: 1.5 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Box sx={{ width: 12, height: 12, bgcolor: '#003366', borderRadius: '50%' }} />
+                              <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b' }}>Carga Lectiva</Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Box sx={{ width: 12, height: 12, bgcolor: '#0369a1', borderRadius: '50%' }} />
+                              <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b' }}>Carga No Lectiva</Typography>
+                            </Box>
+                            {esFilialReview && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Box sx={{ width: 12, height: 12, bgcolor: '#d97706', borderRadius: '50%' }} />
+                              <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b' }}>Horas Adicionales</Typography>
+                            </Box>
+                            )}
+                          </Box>
+                        </Box>
+                        );
+                      })()}
+
+                      {/* Navigation + Action buttons */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 4, pt: 3, borderTop: '1px solid #e2e8f0' }}>
+                        <Box sx={{ display: 'flex', gap: 2 }}>
+                          {stepReview === 'filial' && (
+                            <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={() => setStepReview('carga')}
+                              sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', px: 3, borderColor: '#003366', color: '#003366' }}>
+                              Atrás
+                            </Button>
+                          )}
+                          {esFilialReview && stepReview === 'carga' && (
+                            <Button variant="contained" endIcon={<ArrowForwardIcon />} onClick={() => setStepReview('filial')}
+                              sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', px: 3, bgcolor: '#003366', color: '#fff', '&:hover': { bgcolor: '#002244' } }}>
+                              Siguiente
+                            </Button>
+                          )}
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 2 }}>
+                          {selectedCarga?.estado !== 'validado' && selectedCarga?.estado !== 'finalizado' && (
+                            <Button variant="contained" color="success" startIcon={<ValidatedIcon />}
+                              onClick={() => handleAdminStatusChange('validado')}
+                              sx={{ borderRadius: 2, px: 4, fontWeight: 800, textTransform: 'none' }}>
+                              Validar Carga
+                            </Button>
+                          )}
+                          {selectedCarga?.estado !== 'borrador' && (
+                            <Button variant="outlined" color="error" startIcon={<DraftIcon />}
+                              onClick={() => handleAdminStatusChange('borrador')}
+                              sx={{ borderRadius: 2, px: 4, fontWeight: 800, textTransform: 'none' }}>
+                              {selectedCarga?.estado === 'finalizado' ? 'Anular Firma / Devolver' : 'Observar / Devolver'}
+                            </Button>
+                          )}
+                        </Box>
+                      </Box>
                     </Box>
                   </Paper>
                 </Grid>

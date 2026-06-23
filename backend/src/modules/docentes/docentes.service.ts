@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { Docente } from '../../entities/docente.entity';
+import { Docente, TipoInvestigacion } from '../../entities/docente.entity';
 import { DocenteCarrera } from '../../entities/docente-carrera.entity';
 import { Carrera } from '../../entities/carrera.entity';
 import { CreateDocenteDto } from './dto/create-docente.dto';
@@ -34,7 +34,13 @@ export class DocentesService {
     const { carreraIds, ...docenteData } = createDocenteDto;
 
     if (docenteData.fechaIngreso === '') docenteData.fechaIngreso = undefined;
-    
+
+    // Si la dedicación no es TC ni DE, forzar investigacion a NINGUNA
+    const esTcDe = docenteData.dedicacion === 'TIEMPO COMPLETO' || docenteData.dedicacion === 'DEDICACION EXCLUSIVA';
+    if (docenteData.investigacion && !esTcDe) {
+      docenteData.investigacion = TipoInvestigacion.NINGUNA;
+    }
+
     if (docenteData.fechaIngreso) {
       const ingreso = new Date(docenteData.fechaIngreso);
       if (!isNaN(ingreso.getTime())) {
@@ -109,7 +115,7 @@ export class DocentesService {
     return `${segment}${tail}`;
   }
 
-  async findAll(query?: { search?: string; tipoContrato?: string; categoria?: string; carreraId?: number }): Promise<Docente[]> {
+  async findAll(query?: { search?: string; condicion?: string; categoria?: string; carreraId?: number }): Promise<Docente[]> {
     const qb = this.docentesRepository.createQueryBuilder('docente');
 
     qb.leftJoinAndSelect('docente.carreras', 'docenteCarrera')
@@ -120,8 +126,8 @@ export class DocentesService {
       qb.andWhere('docente.nombreCompleto ILIKE :search', { search: `%${query.search}%` });
     }
 
-    if (query?.tipoContrato) {
-      qb.andWhere('docente.tipoContrato = :tipoContrato', { tipoContrato: query.tipoContrato });
+    if (query?.condicion) {
+      qb.andWhere('docente.condicion = :condicion', { condicion: query.condicion });
     }
 
     if (query?.categoria) {
@@ -132,7 +138,7 @@ export class DocentesService {
       qb.andWhere('carrera.id = :carreraId', { carreraId: query.carreraId });
     }
 
-    qb.orderBy('docente.tipoContrato', 'ASC')
+    qb.orderBy('docente.condicion', 'ASC')
       .addOrderBy('docente.categoria', 'ASC')
       .addOrderBy('docente.antiguedadAnios', 'DESC');
 
@@ -142,7 +148,7 @@ export class DocentesService {
   async findActive(): Promise<Docente[]> {
     return await this.docentesRepository.find({
       where: { activo: true },
-      order: { tipoContrato: 'ASC', categoria: 'ASC', antiguedadAnios: 'DESC' },
+      order: { condicion: 'ASC', categoria: 'ASC', antiguedadAnios: 'DESC' },
     });
   }
 
@@ -166,7 +172,14 @@ export class DocentesService {
 
     // 1. Normalizar y calcular antigüedad (Evitar NaN)
     if (docenteData.fechaIngreso === '') docenteData.fechaIngreso = undefined;
-    
+
+    // Si la dedicación no es TC ni DE, forzar investigacion a NINGUNA
+    const dedicacionActual = docenteData.dedicacion ?? docente.dedicacion;
+    const esTcDe = dedicacionActual === 'TIEMPO COMPLETO' || dedicacionActual === 'DEDICACION EXCLUSIVA';
+    if (docenteData.investigacion && !esTcDe) {
+      docenteData.investigacion = TipoInvestigacion.NINGUNA;
+    }
+
     if (docenteData.fechaIngreso) {
       const ingreso = new Date(docenteData.fechaIngreso);
       if (!isNaN(ingreso.getTime())) {
@@ -178,25 +191,7 @@ export class DocentesService {
       }
     }
 
-    const carrerasActuales = (docente.carreras || [])
-      .map((rel: any) => Number(rel?.carrera?.id))
-      .filter((value: number) => Number.isFinite(value));
-    const carrerasNuevas = carreraIds !== undefined ? this.normalizeNumericArray(carreraIds) : undefined;
-
     const camposNuevos = this.pickDefinedValues(docenteData);
-    const docenteSinCambios =
-      this.samePrimitive(docente.nombreCompleto, camposNuevos.nombreCompleto ?? docente.nombreCompleto) &&
-      this.samePrimitive(docente.dni ?? null, camposNuevos.dni ?? docente.dni ?? null) &&
-      this.samePrimitive(docente.tipoContrato, camposNuevos.tipoContrato ?? docente.tipoContrato) &&
-      this.samePrimitive(docente.categoria, camposNuevos.categoria ?? docente.categoria) &&
-      this.samePrimitive(docente.codigoIBM ?? '0000', camposNuevos.codigoIBM ?? docente.codigoIBM ?? '0000') &&
-      this.samePrimitive(Number(docente.antiguedadAnios), Number(camposNuevos.antiguedadAnios ?? docente.antiguedadAnios)) &&
-      this.samePrimitive(Boolean(docente.activo), camposNuevos.activo ?? docente.activo) &&
-      (carrerasNuevas === undefined || this.sameArray(carrerasActuales, carrerasNuevas));
-
-    if (docenteSinCambios) {
-      return await this.findOne(id);
-    }
 
     Object.assign(docente, camposNuevos);
     await this.docentesRepository.save(docente);
@@ -243,18 +238,6 @@ export class DocentesService {
     return [...new Set(values.map((value) => Number(value)).filter((value) => Number.isFinite(value)))].sort((left, right) => left - right);
   }
 
-  private samePrimitive(left: any, right: any): boolean {
-    return left === right;
-  }
-
-  private sameArray(left: number[], right: number[]): boolean {
-    if (left.length !== right.length) {
-      return false;
-    }
-
-    return left.every((value, index) => value === right[index]);
-  }
-
   private async syncCarreras(docenteId: number, carreraIds?: number[]) {
     if (carreraIds === undefined) {
       return;
@@ -287,6 +270,7 @@ export class DocentesService {
   async findCourses(id: number, cicloId?: number) {
     const qb = this.asignacionRepo.createQueryBuilder('asig')
       .leftJoinAndSelect('asig.curso', 'curso')
+      .leftJoinAndSelect('curso.curricula', 'curricula')
       .leftJoinAndSelect('asig.grupos', 'grupos')
       .leftJoinAndSelect('asig.ciclo', 'ciclo')
       .where('asig.docenteId = :id', { id });

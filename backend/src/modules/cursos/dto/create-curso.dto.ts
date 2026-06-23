@@ -1,4 +1,4 @@
-import { IsString, IsNumber, Min, IsNotEmpty, IsOptional, Allow } from 'class-validator';
+import { IsString, IsNumber, Min, IsNotEmpty, IsOptional, Allow, IsEnum } from 'class-validator';
 
 export class CreateCursoDto {
   @IsString()
@@ -20,6 +20,10 @@ export class CreateCursoDto {
   @IsString()
   @IsNotEmpty()
   departamento: string;
+
+  @IsOptional()
+  @IsEnum(['ES', 'EL', 'OB', 'OP'])
+  tipoCurso?: 'ES' | 'EL' | 'OB' | 'OP';
 
   @IsNumber()
   @IsOptional()

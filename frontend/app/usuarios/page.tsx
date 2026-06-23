@@ -70,7 +70,7 @@ export default function UsuariosPage() {
   const [docenteFiltros, setDocenteFiltros] = useState({
     carreraId: 'todos',
     categoria: 'todos',
-    tipoContrato: 'todos',
+    condicion: 'todos',
   });
 
   // Paginación
@@ -157,7 +157,7 @@ export default function UsuariosPage() {
     const cumpleCarrera = docenteFiltros.carreraId === 'todos' || 
       d.carreras?.some((dc: any) => dc.carreraId === parseInt(docenteFiltros.carreraId as string));
     const cumpleCategoria = docenteFiltros.categoria === 'todos' || d.categoria === docenteFiltros.categoria;
-    const cumpleContrato = docenteFiltros.tipoContrato === 'todos' || d.tipoContrato === docenteFiltros.tipoContrato;
+    const cumpleContrato = docenteFiltros.condicion === 'todos' || d.condicion === docenteFiltros.condicion;
     
     return cumpleCarrera && cumpleCategoria && cumpleContrato;
   });
@@ -559,9 +559,9 @@ export default function UsuariosPage() {
                         <FormControl fullWidth size="small">
                           <InputLabel>Contrato</InputLabel>
                           <Select
-                            value={docenteFiltros.tipoContrato}
+                            value={docenteFiltros.condicion}
                             label="Contrato"
-                            onChange={(e) => setDocenteFiltros({ ...docenteFiltros, tipoContrato: e.target.value })}
+                            onChange={(e) => setDocenteFiltros({ ...docenteFiltros, condicion: e.target.value })}
                           >
                             <MenuItem value="todos">Todos</MenuItem>
                             <MenuItem value="nombrado">Nombrado</MenuItem>

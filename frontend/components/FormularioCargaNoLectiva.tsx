@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -16,6 +16,13 @@ import {
   IconButton,
   FormControlLabel,
   Checkbox,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Radio,
+  RadioGroup,
+  Alert,
 } from '@mui/material';
 import { 
   Save as SaveIcon, 
@@ -35,7 +42,94 @@ import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 import SignatureCanvas from 'react-signature-canvas';
 
+import { getLimitesReglamento, CARGOS_SIN_FORMATO } from '@/lib/reglamento-utils';
+
 const MySwal = withReactContent(Swal);
+
+const ChlcRow = React.memo(({ row, value, hoursValue, disabled, onDetailChange }: {
+  row: any; value: string; hoursValue: number; disabled: boolean; onDetailChange: (field: string, value: any) => void;
+}) => (
+  <Box>
+    <Grid container spacing={2} alignItems="center">
+      <Grid item xs={12} md={5}>
+        <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
+          {row.num}. {row.label}
+        </Typography>
+      </Grid>
+      <Grid item xs={12} md={5}>
+        <TextField
+          fullWidth multiline minRows={3} variant="outlined"
+          disabled={disabled} placeholder="Detalle de la actividad..."
+          value={value} onChange={(e) => onDetailChange(row.d, e.target.value)}
+          sx={{ '& .MuiOutlinedInput-root': { bgcolor: disabled ? '#f8fafc' : '#ffffff', fontSize: '0.85rem', '& fieldset': { borderColor: '#e2e8f0' }, '&:hover fieldset': { borderColor: '#003366' } } }}
+        />
+      </Grid>
+      <Grid item xs={12} md={2}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+          <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: '#475569' }}>Horas:</Typography>
+          <TextField type="number" size="small" disabled={disabled}
+            value={hoursValue === undefined ? 0 : Math.round(hoursValue)}
+            onChange={(e) => {
+              let val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+              if (isNaN(val)) val = 0;
+              if (row.max !== undefined) val = Math.min(val, row.max);
+              onDetailChange(row.h, val);
+            }}
+            inputProps={{ min: 0, max: row.max, step: 1, style: { textAlign: 'center', fontWeight: 800, color: '#003366' } }}
+            sx={{ width: 70, '& .MuiOutlinedInput-root': { bgcolor: disabled ? '#f8fafc' : '#fff', '& fieldset': { borderColor: '#cbd5e1' } } }}
+          />
+        </Box>
+      </Grid>
+    </Grid>
+    <Divider sx={{ mt: 2, borderStyle: 'dashed', opacity: 0.6 }} />
+  </Box>
+));
+
+const ChnlaRow = React.memo(({ row, value, hoursValue, disabled, onDetailChange, singleLine }: {
+  row: any; value: string; hoursValue: number; disabled: boolean; onDetailChange: (field: string, value: any) => void; singleLine?: boolean;
+}) => (
+  <Box>
+    <Grid container spacing={2} alignItems="center">
+      <Grid item xs={12} md={5}>
+        <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
+          {row.num}. {row.label}
+        </Typography>
+      </Grid>
+      <Grid item xs={12} md={5}>
+        {singleLine ? (
+          <TextField fullWidth variant="outlined" size="small"
+            value={value}
+            InputProps={{ readOnly: true }}
+            sx={{ '& .MuiOutlinedInput-root': { bgcolor: '#ffffff', fontSize: '0.85rem', color: '#000000', '& fieldset': { borderColor: '#e2e8f0' } } }}
+          />
+        ) : (
+          <TextField fullWidth multiline minRows={3} variant="outlined" disabled={disabled}
+            placeholder="Detalle de la actividad..." value={value}
+            onChange={(e) => onDetailChange(row.d, e.target.value)}
+            sx={{ '& .MuiOutlinedInput-root': { bgcolor: disabled ? '#f8fafc' : '#ffffff', fontSize: '0.85rem', '& fieldset': { borderColor: '#e2e8f0' }, '&:hover fieldset': { borderColor: '#003366' } } }}
+          />
+        )}
+      </Grid>
+      <Grid item xs={12} md={2}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+          <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: '#475569' }}>Horas:</Typography>
+          <TextField type="number" size="small" disabled={disabled}
+            value={hoursValue === undefined ? 0 : Math.round(hoursValue)}
+            onChange={(e) => {
+              let val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+              if (isNaN(val)) val = 0;
+              if (row.max !== undefined) val = Math.min(val, row.max);
+              onDetailChange(row.h, val);
+            }}
+            inputProps={{ min: 0, max: row.max, step: 1, style: { textAlign: 'center', fontWeight: 800, color: '#003366' } }}
+            sx={{ width: 70, '& .MuiOutlinedInput-root': { bgcolor: disabled ? '#f8fafc' : '#fff', '& fieldset': { borderColor: '#cbd5e1' } } }}
+          />
+        </Box>
+      </Grid>
+    </Grid>
+    <Divider sx={{ mt: 2, borderStyle: 'dashed', opacity: 0.6 }} />
+  </Box>
+));
 
 interface FormularioCargaNoLectivaProps {
   docenteId: number;
@@ -46,7 +140,13 @@ interface FormularioCargaNoLectivaProps {
   cicloData: any;
   cargaLectivaAgrupada: any[];
   readOnly?: boolean;
+  externalEstado?: string;
   onStatusChange?: (newStatus: string) => void;
+  hideEnviarButton?: boolean;
+  horasAdicionales?: number;
+  onHorasNoLectivasChange?: (horas: number) => void;
+  esFilial?: boolean;
+  hideAdminActions?: boolean;
 }
 
 export default function FormularioCargaNoLectiva({
@@ -58,7 +158,13 @@ export default function FormularioCargaNoLectiva({
   cicloData,
   cargaLectivaAgrupada,
   readOnly = false,
+  externalEstado,
   onStatusChange,
+  hideEnviarButton = false,
+  horasAdicionales = 0,
+  onHorasNoLectivasChange,
+  esFilial = false,
+  hideAdminActions = false,
 }: FormularioCargaNoLectivaProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -86,7 +192,32 @@ export default function FormularioCargaNoLectiva({
     detalleResponsabilidadSocial: '',
     horasComites: 0,
     detalleComites: '',
+    horasAaai: 0,
+    detalleAaai: '',
   });
+
+  const [declaracionOpcion, setDeclaracionOpcion] = useState<number | null>(null);
+  const [showDeclaracionModal, setShowDeclaracionModal] = useState(false);
+  const [selectedOpcionDeclaracion, setSelectedOpcionDeclaracion] = useState<number | null>(null);
+  const [submittingDeclaracion, setSubmittingDeclaracion] = useState(false);
+
+  const DECLARACION_OPTIONS = [
+    { id: 1, label: 'Dedicación Exclusiva (Ordinario)', text: 'Soy docente, ordinario a Dedicación Exclusiva y NO EJERZO cualquier otra actividad o cargo remunerado en otra universidad, entidad pública o privada, fuera de la Universidad Nacional de Trujillo (De conformidad con el Artículo 225° del Estatuto Institucional vigente).', match: (tc: string, cat: string, ded: string) => tc === 'nombrado' && ded === 'DEDICACION EXCLUSIVA' },
+    { id: 2, label: 'Tiempo Completo (Ordinario)', text: 'Soy docente, ordinario a Tiempo Completo y NO EJERZO la misma modalidad en otra entidad pública o privada, así mismo, no tengo otra responsabilidad remunerada en alguna institución pública o privada más de diez (10 horas) semanales, excepto ley expresa que lo permita.', match: (tc: string, cat: string, ded: string) => tc === 'nombrado' && ded === 'TIEMPO COMPLETO' },
+    { id: 3, label: 'Tiempo Parcial (Ordinario)', text: 'Soy docente, ordinario a Tiempo Parcial y NO TENGO incompatibilidad horaria con mi carga académica en la Universidad Nacional de Trujillo y otra institución donde laboro.', match: (tc: string, cat: string, ded: string) => tc === 'nombrado' && ded.startsWith('TIEMPO PARCIAL') },
+    { id: 4, label: 'Investigador - Dedicación Exclusiva', text: 'Soy docente, Investigador de la UNT a Dedicación Exclusiva acreditado con Resolución Vicerrectoral y NO ejerzo cualquier otra actividad o cargo remunerado en otra universidad, entidad pública o privada, fuera de la Universidad Nacional de Trujillo (De conformidad con el Artículo 225° del Estatuto Institucional vigente), así mismo en caso de incumplimiento, me someto a las sanciones dispuestas en el Reglamento del Docente Investigador y Promoción de la Investigación, aprobado por R.C.U. N°281-2021/UNT', match: (tc: string, cat: string, ded: string) => ded === 'DOCENTE INVESTIGADOR' && cat.startsWith('tipo_a') },
+    { id: 5, label: 'Investigador - Tiempo Completo', text: 'Soy docente, Investigador de la UNT a Tiempo Completo acreditado con Resolución Vicerrectoral y NO ejerzo cualquier otra actividad o cargo remunerado en otra universidad, entidad pública o privada, fuera de la Universidad Nacional de Trujillo (De conformidad con el Artículo 225° del Estatuto Institucional vigente), así mismo en caso de incumplimiento, me someto a las sanciones dispuestas en el Reglamento del Docente Investigador y Promoción de la Investigación, aprobado por R.C.U. N°281-2021/UNT', match: (tc: string, cat: string, ded: string) => ded === 'DOCENTE INVESTIGADOR' && cat.startsWith('tipo_b') },
+    { id: 6, label: 'Contratado - Tiempo Completo', text: 'Soy docente, contratado a Tiempo Completo y NO EJERZO la misma modalidad en otra entidad pública o privada, así mismo, no tengo otra responsabilidad remunerada en alguna institución pública o privada más de diez (10 horas) semanales, excepto ley expresa que lo permita.', match: (tc: string, cat: string, ded: string) => tc === 'contratado' && ded.startsWith('TIEMPO COMPLETO') },
+    { id: 7, label: 'Contratado - Tiempo Parcial', text: 'Soy docente, contratado a Tiempo Parcial y NO TENGO incompatibilidad horaria con mi carga académica en la Universidad Nacional de Trujillo y otra institución donde laboro.', match: (tc: string, cat: string, ded: string) => tc === 'contratado' && ded.startsWith('TIEMPO PARCIAL') },
+    { id: 8, label: 'Extraordinario Cesante', text: 'Soy docente, extraordinario cesante, NO ejerzo cualquier otra actividad o cargo remunerado en otra universidad, entidad pública o privada, fuera de la Universidad Nacional de Trujillo.', match: (tc: string, cat: string, ded: string) => tc === 'extraordinario' },
+  ];
+
+  const getFilteredOptions = () => {
+    const tc = (docenteData?.condicion || '').toLowerCase();
+    const cat = (docenteData?.categoria || '').toLowerCase();
+    const ded = (docenteData?.dedicacion || '').toUpperCase();
+    return DECLARACION_OPTIONS.filter(o => o.match(tc, cat, ded));
+  };
 
   useEffect(() => {
     if (docenteId && cicloId) {
@@ -113,10 +244,29 @@ export default function FormularioCargaNoLectiva({
         detalleResponsabilidadSocial: '',
         horasComites: 0,
         detalleComites: '',
+        horasAaai: 0,
+        detalleAaai: '',
       });
       fetchCargaNoLectiva();
     }
   }, [docenteId, cicloId]);
+
+  useEffect(() => {
+    if (externalEstado && data.estado && externalEstado !== data.estado) {
+      setData((prev: any) => ({ ...prev, estado: externalEstado }));
+    }
+  }, [externalEstado]);
+
+  const fetchDeclaracion = async () => {
+    try {
+      const res = await api.get('/carga-academica/declaracion', {
+        params: { docenteId, cicloId },
+      });
+      setDeclaracionOpcion(res.data.declaracionOpcion);
+    } catch {
+      setDeclaracionOpcion(null);
+    }
+  };
 
   const fetchCargaNoLectiva = async () => {
     setLoading(true);
@@ -125,9 +275,14 @@ export default function FormularioCargaNoLectiva({
         params: { docenteId, cicloId },
       });
       if (res.data) {
-        setData(res.data);
+        setData({
+          ...res.data,
+          detalleGobierno: res.data.detalleGobierno || docenteData?.cargoGobierno || '',
+          detalleAaai: res.data.detalleAaai || docenteData?.cargoGestionInstitucional || '',
+        });
         if (!readOnly && onStatusChange) onStatusChange(res.data.estado);
       }
+      fetchDeclaracion();
     } catch (error) {
       console.error('Error fetching carga no lectiva:', error);
     } finally {
@@ -135,12 +290,12 @@ export default function FormularioCargaNoLectiva({
     }
   };
 
-  const handleInputChange = (field: string, value: any) => {
+  const handleInputChange = useCallback((field: string, value: any) => {
     setData((prev: any) => ({
       ...prev,
       [field]: value,
     }));
-  };
+  }, []);
 
   const handleToggleFirmaReportes = async (checked: boolean) => {
     // Actualizar localmente primero para feedback instantáneo
@@ -162,10 +317,28 @@ export default function FormularioCargaNoLectiva({
     }
   };
 
-  // Máximos para cada actividad
-  const maxHorasPreparacion = Math.round(horasLectivas / 2);
-  const maxHorasResponsabilidadSocial = 2;
-  const maxHorasCapacitacion = 5;
+  const limites = getLimitesReglamento(docenteData || {});
+  const totalJornada = limites.totalJornada || dedicacionTotal;
+  const esExento = CARGOS_SIN_FORMATO.includes(docenteData?.cargoGobierno || '');
+
+  // CHNLPE max: 50% de CHL real (valor especial -1) o fijo de tabla
+  const chnlpeMaxReal = limites.chnlpe.max === -1 ? Math.round(Number(horasLectivas) / 2) : limites.chnlpe.max;
+
+  // Máximos para cada actividad (desde reglamento)
+  const maxHorasPreparacion = chnlpeMaxReal;
+  const maxHorasResponsabilidadSocial = limites.chnlcRubros['rsu']?.max ?? 2;
+  const maxHorasCapacitacion = limites.chnlcRubros['capacitacion']?.max ?? 5;
+  const maxHorasTutoria = limites.chnlcRubros['tutoria']?.max ?? 100;
+  const maxHorasInvestigacion = limites.chnlcRubros['investigacion']?.max ?? 100;
+  const maxHorasAsesoria = limites.chnlcRubros['asesoria']?.max ?? 100;
+  const maxHorasGobierno = limites.chnla.max ?? 100;
+  const maxHorasAaai = limites.chnla.max ?? 100;
+  const maxHorasComites = 100;
+  const maxHorasAaep = limites.chnlcRubros['acreditacion']?.max ?? 100;
+
+  const tieneNoLectiva = maxHorasPreparacion > 0 || maxHorasTutoria > 0 || maxHorasInvestigacion > 0 || maxHorasResponsabilidadSocial > 0 || maxHorasAsesoria > 0 || maxHorasCapacitacion > 0 || maxHorasAaep > 0 || maxHorasGobierno > 0;
+  const tieneCHNLC = maxHorasTutoria > 0 || maxHorasInvestigacion > 0 || maxHorasResponsabilidadSocial > 0 || maxHorasAsesoria > 0 || maxHorasCapacitacion > 0 || maxHorasAaep > 0;
+  const tieneCHNLA = maxHorasGobierno > 0;
   
   const totalHorasNoLectivas = 
     Number(data.horasPreparacion || 0) +
@@ -182,10 +355,17 @@ export default function FormularioCargaNoLectiva({
 
   const totalHorasNoLectivasEnteras = Math.round(totalHorasNoLectivas);
   const horasLectivasEnteras = Math.round(horasLectivas);
-  const totalGeneralEntero = horasLectivasEnteras + totalHorasNoLectivasEnteras;
+  const horasAdicionalesEnteras = Math.round(horasAdicionales);
+  const totalGeneralEntero = horasLectivasEnteras + totalHorasNoLectivasEnteras + horasAdicionalesEnteras;
+
+  useEffect(() => {
+    if (onHorasNoLectivasChange) {
+      onHorasNoLectivasChange(totalHorasNoLectivasEnteras);
+    }
+  }, [totalHorasNoLectivasEnteras, onHorasNoLectivasChange]);
   
-  // Botón habilitado solo si totalGeneralEntero >= dedicacionTotal
-  const puedeEnviar = totalGeneralEntero >= dedicacionTotal;
+  // Botón habilitado si totalGeneralEntero >= totalJornada (o si es exento)
+  const puedeEnviar = esExento || totalGeneralEntero >= totalJornada;
 
   // El docente solo puede editar si el estado es 'borrador'
   // Si es finalizado, se bloquea todo permanentemente
@@ -342,17 +522,24 @@ export default function FormularioCargaNoLectiva({
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (skipDeclaration = false) => {
     // Bloquear inmediatamente para evitar doble clic
     if (saving) return;
 
     // Validación de horas totales vs dedicación
-    if (totalGeneralEntero > dedicacionTotal) {
-      MySwal.fire({
+    if (totalGeneralEntero > totalJornada) {
+      await MySwal.fire({
         icon: 'error',
-        title: 'Exceso de Horas',
-        text: `La carga total (${totalGeneralEntero}H) no puede exceder su dedicación de ${dedicacionTotal}H.`,
+        title: 'Error de validación',
+        text: `La carga total (${totalGeneralEntero}H) no puede exceder su total de jornada de ${totalJornada}H.`,
       });
+      return;
+    }
+
+    // Si aún no ha realizado la declaración jurada, mostrar el modal primero
+    if (!skipDeclaration && declaracionOpcion === null) {
+      setSelectedOpcionDeclaracion(null);
+      setShowDeclaracionModal(true);
       return;
     }
 
@@ -404,6 +591,30 @@ export default function FormularioCargaNoLectiva({
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeclaracionSubmit = async () => {
+    if (!selectedOpcionDeclaracion) return;
+    setSubmittingDeclaracion(true);
+    try {
+      await api.patch('/carga-academica/declaracion', {
+        docenteId,
+        cicloId,
+        opcion: selectedOpcionDeclaracion,
+      });
+      setDeclaracionOpcion(selectedOpcionDeclaracion);
+      setShowDeclaracionModal(false);
+      setSelectedOpcionDeclaracion(null);
+      handleSave(true);
+    } catch (error: any) {
+      MySwal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.response?.data?.message || 'Error al enviar la declaración jurada',
+      });
+    } finally {
+      setSubmittingDeclaracion(false);
     }
   };
 
@@ -460,18 +671,6 @@ export default function FormularioCargaNoLectiva({
 
   if (loading) return <CircularProgress size={24} sx={{ m: 2 }} />;
 
-  const rows = [
-    { id: 'Preparacion', label: '2. PREPARACION Y EVALUACION (Max 50% de Trabajo Lectivo)', h: 'horasPreparacion', d: 'detallePreparacion', max: maxHorasPreparacion },
-    { id: 'Tutoria', label: '3. CONSEJERIA Y TUTORIA: señalar número de alumnos y el ciclo academico con los que se desarrolla.', h: 'horasTutoria', d: 'detalleTutoria' },
-    { id: 'Investigacion', label: '4. INVESTIGACIÓN: Consignar el nro de inscripción, código, nombre y duración del proyecto.', h: 'horasInvestigacion', d: 'detalleInvestigacion' },
-    { id: 'Capacitacion', label: '5. CAPACITACIÓN: Señale lo referente a este rubro en el marco de los planes de cada Facultad (Max 5 H)', h: 'horasCapacitacion', d: 'detalleCapacitacion', max: maxHorasCapacitacion },
-    { id: 'Gobierno', label: '6. ACTIVIDADES DE GOBIERNO: Se desempeña cargo indique', h: 'horasGobierno', d: 'detalleGobierno' },
-    { id: 'Administracion', label: '7. ACTIVIDADES DE ADMINISTRACION: Si desempeña cargo indique.', h: 'horasAdministracion', d: 'detalleAdministracion' },
-    { id: 'Asesoria', label: '8. ASESORIA DE TESIS, EXAMENES PROFESIONALES Y EXPERIENCIA PROFESIONAL: Indicar el numero de Resolución Decanal, precisando el nombre y duración de la actividad programada.', h: 'horasAsesoria', d: 'detalleAsesoria' },
-    { id: 'Responsabilidad', label: '9. RESPONSABILIDAD SOCIAL UNIVERSITARIA: Señalar actividad, proyecto programa a ejecutarse en beneficio de la comunidad local o regional. (Max 2 H)', h: 'horasResponsabilidadSocial', d: 'detalleResponsabilidadSocial', max: maxHorasResponsabilidadSocial },
-    { id: 'Comites', label: '10. COMITES TECNICOS Y COMISIONES: Consignar el numero de Resolución autoritativa indicando el lapso de vigencia', h: 'horasComites', d: 'detalleComites' },
-  ];
-
   return (
     <Box>
       {/* Título interno para No Lectiva */}
@@ -492,157 +691,86 @@ export default function FormularioCargaNoLectiva({
       </Box>
 
       {/* Sección 1: CHNLC */}
-      <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#003366', mb: 2, mt: 3 }}>
-        2.1. Carga Horaria No Lectiva Complementaria (CHNLC)
-      </Typography>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {[
-          { num: 1, id: 'PE', label: 'Preparación y Evaluación (PE) (Max 50% de Trabajo Lectivo)', h: 'horasPreparacion', d: 'detallePreparacion', max: maxHorasPreparacion },
-          { num: 2, id: 'TC', label: 'Tutoría y Consejería (TC)', h: 'horasTutoria', d: 'detalleTutoria' },
-          { num: 3, id: 'INV', label: 'Investigación (INV)', h: 'horasInvestigacion', d: 'detalleInvestigacion' },
-          { num: 4, id: 'AAEP', label: 'Autoevaluación y/o Acreditación de la Escuela Profesional (AAEP)', h: 'horasAaep', d: 'detalleAaep' },
-          { num: 5, id: 'FAC', label: 'Formación Académica y Capacitación (FAC) (Max 5 H)', h: 'horasCapacitacion', d: 'detalleCapacitacion', max: maxHorasCapacitacion },
-          { num: 6, id: 'RSU', label: 'Responsabilidad Social Universitaria (RSU) (Max 2 H)', h: 'horasResponsabilidadSocial', d: 'detalleResponsabilidadSocial', max: maxHorasResponsabilidadSocial },
-          { num: 7, id: 'ATEP', label: 'Asesoría de Tesis y Exámenes Profesionales (ATEP)', h: 'horasAsesoria', d: 'detalleAsesoria' },
-        ].map((row) => (
-          <Box key={row.id}>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={5}>
-                <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
-                  {row.num}. {row.label}
-                </Typography>
-              </Grid>
-              <Grid item xs={12} md={5}>
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={1}
-                  variant="outlined"
-                  disabled={readOnly || isLocked}
-                  placeholder="Detalle de la actividad..."
-                  value={data[row.d] || ''}
-                  onChange={(e) => handleInputChange(row.d, e.target.value)}
-                  sx={{ 
-                    '& .MuiOutlinedInput-root': { 
-                      bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#ffffff',
-                      fontSize: '0.85rem',
-                      '& fieldset': { borderColor: '#e2e8f0' },
-                      '&:hover fieldset': { borderColor: '#003366' },
-                    } 
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
-                  <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: '#475569' }}>Horas:</Typography>
-                  <TextField
-                    type="number"
-                    size="small"
-                    disabled={readOnly || isLocked}
-                    value={data[row.h] === undefined ? 0 : Math.round(data[row.h])}
-                    onChange={(e) => {
-                      let val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
-                      if (isNaN(val)) val = 0;
-                      
-                      // Limitar el valor según la actividad
-                      if (row.max !== undefined) {
-                        val = Math.min(val, row.max);
-                      }
-                      
-                      handleInputChange(row.h, val);
-                    }}
-                    inputProps={{ 
-                      min: 0, 
-                      max: row.max,
-                      step: 1,
-                      style: { textAlign: 'center', fontWeight: 800, color: '#003366' } 
-                    }}
-                    sx={{ 
-                      width: 70,
-                      '& .MuiOutlinedInput-root': { 
-                        bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#fff',
-                        '& fieldset': { borderColor: '#cbd5e1' }
-                      }
-                    }}
-                  />
-                </Box>
-              </Grid>
-            </Grid>
-            <Divider sx={{ mt: 2, borderStyle: 'dashed', opacity: 0.6 }} />
-          </Box>
-        ))}
+      {tieneCHNLC && (
+      <Box>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#003366', mb: 2, mt: 3 }}>
+          2.1. Carga Horaria No Lectiva Complementaria (CHNLC)
+        </Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {[
+            { num: 1, id: 'PE', label: 'Preparación y Evaluación (PE) (Max 50% de Trabajo Lectivo)', h: 'horasPreparacion', d: 'detallePreparacion', max: maxHorasPreparacion },
+            { num: 2, id: 'TC', label: 'Tutoría y Consejería (TC)', h: 'horasTutoria', d: 'detalleTutoria', max: maxHorasTutoria },
+            { num: 3, id: 'INV', label: 'Investigación (INV)', h: 'horasInvestigacion', d: 'detalleInvestigacion', max: maxHorasInvestigacion },
+            { num: 4, id: 'AAEP', label: 'Autoevaluación y/o Acreditación de la Escuela Profesional (AAEP)', h: 'horasAaep', d: 'detalleAaep', max: maxHorasAaep },
+            { num: 5, id: 'FAC', label: 'Formación Académica y Capacitación (FAC) (Max 5 H)', h: 'horasCapacitacion', d: 'detalleCapacitacion', max: maxHorasCapacitacion },
+            { num: 6, id: 'RSU', label: 'Responsabilidad Social Universitaria (RSU) (Max 2 H)', h: 'horasResponsabilidadSocial', d: 'detalleResponsabilidadSocial', max: maxHorasResponsabilidadSocial },
+            { num: 7, id: 'ATEP', label: 'Asesoría de Tesis y Exámenes Profesionales (ATEP)', h: 'horasAsesoria', d: 'detalleAsesoria', max: maxHorasAsesoria },
+          ].map((row) => (
+            <ChlcRow
+              key={row.id}
+              row={row}
+              value={data[row.d] || ''}
+              hoursValue={data[row.h]}
+              disabled={readOnly || isLocked}
+              onDetailChange={handleInputChange}
+            />
+          ))}
+        </Box>
       </Box>
+      )}
 
       {/* Sección 2: CHNLA */}
-      <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#003366', mb: 2, mt: 4 }}>
-        2.2. Carga Horaria No Lectiva Administrativa (CHNLA)
-      </Typography>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {[
-          { num: 8, id: 'CC', label: 'Comités y Comisiones Especiales (CC)', h: 'horasComites', d: 'detalleComites' },
-          { num: 9, id: 'AGA', label: 'Actividades de Gobierno o de Autoridad (AGA)', h: 'horasGobierno', d: 'detalleGobierno' },
-          { num: 10, id: 'AAAI', label: 'Actividades de Gestión Institucional (AAAI)', h: 'horasAaai', d: 'detalleAaai' },
-        ].map((row) => (
-          <Box key={row.id}>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={5}>
-                <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
-                  {row.num}. {row.label}
-                </Typography>
-              </Grid>
-              <Grid item xs={12} md={5}>
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={1}
-                  variant="outlined"
-                  disabled={readOnly || isLocked}
-                  placeholder="Detalle de la actividad..."
-                  value={data[row.d] || ''}
-                  onChange={(e) => handleInputChange(row.d, e.target.value)}
-                  sx={{ 
-                    '& .MuiOutlinedInput-root': { 
-                      bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#ffffff',
-                      fontSize: '0.85rem',
-                      '& fieldset': { borderColor: '#e2e8f0' },
-                      '&:hover fieldset': { borderColor: '#003366' },
-                    } 
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
-                  <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: '#475569' }}>Horas:</Typography>
-                  <TextField
-                    type="number"
-                    size="small"
-                    disabled={readOnly || isLocked}
-                    value={data[row.h] === undefined ? 0 : Math.round(data[row.h])}
-                    onChange={(e) => {
-                      let val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
-                      if (isNaN(val)) val = 0;
-                      handleInputChange(row.h, val);
-                    }}
-                    inputProps={{ 
-                      min: 0, 
-                      step: 1,
-                      style: { textAlign: 'center', fontWeight: 800, color: '#003366' } 
-                    }}
-                    sx={{ 
-                      width: 70,
-                      '& .MuiOutlinedInput-root': { 
-                        bgcolor: (readOnly || isLocked) ? '#f8fafc' : '#fff',
-                        '& fieldset': { borderColor: '#cbd5e1' }
-                      }
-                    }}
-                  />
-                </Box>
-              </Grid>
-            </Grid>
-            <Divider sx={{ mt: 2, borderStyle: 'dashed', opacity: 0.6 }} />
-          </Box>
-        ))}
+      {tieneCHNLA && (
+      <Box>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#003366', mb: 2, mt: 4 }}>
+          2.2. Carga Horaria No Lectiva Administrativa (CHNLA)
+        </Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {[
+            { num: 8, id: 'CC', label: 'Comités y Comisiones Especiales (CC)', h: 'horasComites', d: 'detalleComites', max: maxHorasComites },
+            { num: 9, id: 'AGA', label: 'Actividades de Gobierno o de Autoridad (AGA)', h: 'horasGobierno', d: 'detalleGobierno', max: maxHorasGobierno },
+            { num: 10, id: 'AAAI', label: 'Actividades de Gestión Institucional (AAAI)', h: 'horasAaai', d: 'detalleAaai', max: maxHorasAaai },
+          ].map((row) => {
+          if (row.id === 'AGA') {
+            return (
+              <ChnlaRow
+                key={row.id}
+                row={row}
+                value={docenteData?.cargoGobierno || 'Ninguno'}
+                hoursValue={data[row.h]}
+                disabled={readOnly || isLocked}
+                onDetailChange={handleInputChange}
+                singleLine
+              />
+            );
+          }
+          if (row.id === 'AAAI') {
+            return (
+              <ChnlaRow
+                key={row.id}
+                row={row}
+                value={docenteData?.cargoGestionInstitucional || 'Ninguno'}
+                hoursValue={data[row.h]}
+                disabled={readOnly || isLocked}
+                onDetailChange={handleInputChange}
+                singleLine
+              />
+            );
+          }
+          return (
+            <ChnlaRow
+              key={row.id}
+              row={row}
+              value={data[row.d] || ''}
+              hoursValue={data[row.h]}
+              disabled={readOnly || isLocked}
+              onDetailChange={handleInputChange}
+            />
+          );
+        })}
+        </Box>
       </Box>
+      )}
 
         <Box sx={{ mt: 4, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <Box sx={{ 
@@ -661,41 +789,77 @@ export default function FormularioCargaNoLectiva({
                   <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', mb: 0.5 }}>Horas No Lectivas</Typography>
                   <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', color: '#0369a1' }}>{totalHorasNoLectivasEnteras} H</Typography>
                 </Box>
+                <Box>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', mb: 0.5 }}>Horas Adicionales</Typography>
+                  <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', color: '#d97706' }}>{horasAdicionalesEnteras} H</Typography>
+                </Box>
                 <Divider orientation="vertical" flexItem />
                 <Box>
                   <Typography variant="caption" sx={{ fontWeight: 700, color: '#1e293b', textTransform: 'uppercase', display: 'block', mb: 0.5 }}>Total General</Typography>
-                  <Typography sx={{ fontWeight: 900, fontSize: '1.5rem', color: '#1e293b' }}>{totalGeneralEntero} / {dedicacionTotal} H</Typography>
+                  <Typography sx={{ fontWeight: 900, fontSize: '1.5rem', color: '#1e293b' }}>{totalGeneralEntero} / {totalJornada} H</Typography>
                 </Box>
               </Box>
-              <Box sx={{ textAlign: 'right' }}>
+              <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 3 }}>
                 <Typography sx={{ fontWeight: 900, fontSize: '1.2rem', color: '#003366' }}>
-                  {Math.min(100, Math.round((totalGeneralEntero / dedicacionTotal) * 100))}%
+                  {Math.min(100, Math.round((totalGeneralEntero / totalJornada) * 100))}%
                 </Typography>
               </Box>
             </Box>
 
-            <Box sx={{ 
-              width: '100%', 
-              height: 16, 
-              bgcolor: '#e2e8f0', 
-              borderRadius: 8, 
-              overflow: 'hidden',
-              display: 'flex',
-              boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)'
-            }}>
+            {/* Barra 1: Jornada (Lectiva + No Lectiva) */}
+            <Box sx={{ mb: 3 }}>
               <Box sx={{ 
-                width: `${Math.min((horasLectivasEnteras / dedicacionTotal) * 100, 100)}%`, 
-                height: '100%', 
-                bgcolor: '#003366',
-                transition: 'width 0.5s ease-in-out'
-              }} />
-              <Box sx={{ 
-                width: `${Math.min((totalHorasNoLectivasEnteras / dedicacionTotal) * 100, 100 - (horasLectivasEnteras / dedicacionTotal) * 100)}%`, 
-                height: '100%', 
-                bgcolor: '#0369a1',
-                transition: 'width 0.5s ease-in-out'
-              }} />
+                width: '100%', 
+                height: 16, 
+                bgcolor: '#e2e8f0', 
+                borderRadius: 8, 
+                overflow: 'hidden',
+                display: 'flex',
+                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)'
+              }}>
+                <Box sx={{ 
+                  width: `${Math.min((horasLectivasEnteras / totalJornada) * 100, 100)}%`, 
+                  height: '100%', 
+                  bgcolor: '#003366',
+                  transition: 'width 0.5s ease-in-out'
+                }} />
+                <Box sx={{ 
+                  width: `${Math.min((totalHorasNoLectivasEnteras / totalJornada) * 100, Math.max(0, 100 - (horasLectivasEnteras / totalJornada) * 100))}%`, 
+                  height: '100%', 
+                  bgcolor: '#0369a1',
+                  transition: 'width 0.5s ease-in-out'
+                }} />
+              </Box>
             </Box>
+
+            {/* Barra 2: Horas Adicionales (máx 10h) — solo si es filial */}
+            {esFilial && (
+            <Box sx={{ mb: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
+                <Typography sx={{ fontWeight: 900, fontSize: '1.2rem', color: horasAdicionalesEnteras > 10 ? '#dc2626' : '#d97706' }}>
+                  {Math.min(100, Math.round((horasAdicionalesEnteras / 10) * 100))}%
+                </Typography>
+              </Box>
+              <Box sx={{ 
+                width: '100%', 
+                height: 16, 
+                bgcolor: '#e2e8f0', 
+                borderRadius: 8, 
+                overflow: 'hidden',
+                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)'
+              }}>
+                <Box sx={{ 
+                  width: `${Math.min((horasAdicionalesEnteras / 10) * 100, 100)}%`, 
+                  height: '100%', 
+                  bgcolor: horasAdicionalesEnteras > 10 ? '#dc2626' : '#d97706',
+                  transition: 'width 0.5s ease-in-out',
+                  borderRadius: 8,
+                }} />
+              </Box>
+            </Box>
+            )}
+
+            {/* Leyenda consolidada */}
             <Box sx={{ display: 'flex', gap: 3, mt: 1.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Box sx={{ width: 12, height: 12, bgcolor: '#003366', borderRadius: '50%' }} />
@@ -705,10 +869,17 @@ export default function FormularioCargaNoLectiva({
                 <Box sx={{ width: 12, height: 12, bgcolor: '#0369a1', borderRadius: '50%' }} />
                 <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b' }}>Carga No Lectiva</Typography>
               </Box>
+              {esFilial && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Box sx={{ width: 12, height: 12, bgcolor: '#d97706', borderRadius: '50%' }} />
+                <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b' }}>Horas Adicionales</Typography>
+              </Box>
+              )}
             </Box>
           </Box>
         </Box>
 
+      {!hideAdminActions && (
       <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
         {readOnly ? (
           <>
@@ -751,30 +922,31 @@ export default function FormularioCargaNoLectiva({
                    {data.firma ? "Actualizar Firma" : "Firmar Declaración"}
                  </Button>
                )}
-               {data.estado !== 'validado' && (
-                 <Button
-                   variant="contained"
-                   startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-                   onClick={handleSave}
-                   disabled={saving || isLocked || !puedeEnviar}
-                   sx={{ 
-                     ...buttonStyle,
-                     bgcolor: '#003366', 
-                     color: '#fff',
-                     fontSize: '0.8rem',
-                     lineHeight: 1.2,
-                     boxShadow: '0 4px 12px rgba(0,51,102,0.2)',
-                     '&:hover': { bgcolor: '#002244', boxShadow: '0 6px 16px rgba(0,51,102,0.3)' },
-                     '&.Mui-disabled': { bgcolor: '#e2e8f0', color: '#94a3b8' }
-                   }}
-                 >
-                   {saving ? 'Enviando...' : 'Enviar Declaración'}
-                 </Button>
-               )}
+                {!hideEnviarButton && data.estado !== 'validado' && (
+                  <Button
+                    variant="contained"
+                    startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+                    onClick={() => handleSave()}
+                    disabled={saving || isLocked || !puedeEnviar}
+                    sx={{ 
+                      ...buttonStyle,
+                      bgcolor: '#003366', 
+                      color: '#fff',
+                      fontSize: '0.8rem',
+                      lineHeight: 1.2,
+                      boxShadow: '0 4px 12px rgba(0,51,102,0.2)',
+                      '&:hover': { bgcolor: '#002244', boxShadow: '0 6px 16px rgba(0,51,102,0.3)' },
+                      '&.Mui-disabled': { bgcolor: '#e2e8f0', color: '#94a3b8' }
+                    }}
+                  >
+                    {saving ? 'Enviando...' : 'Enviar Declaración'}
+                  </Button>
+                )}
             </Box>
           )
         )}
       </Box>
+      )}
 
       {isFinalizado && !readOnly && (
         <Box sx={{ mt: 3, p: 2, bgcolor: '#f0f9ff', border: '1px solid #00336620', borderRadius: 2, textAlign: 'center' }}>
@@ -867,6 +1039,68 @@ export default function FormularioCargaNoLectiva({
             </label>
           </Box>
         </DialogContent>
+      </Dialog>
+
+      {/* Modal Declaración Jurada */}
+      <Dialog
+        open={showDeclaracionModal}
+        onClose={() => setShowDeclaracionModal(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle sx={{ bgcolor: '#003366', color: 'white', fontWeight: 800, fontSize: '1rem' }}>
+          DECLARACIÓN JURADA DE NO ESTAR INCURSO EN CAUSALES DE INCOMPATIBILIDAD O IMPEDIMENTO LABORAL
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Alert severity="info" sx={{ mb: 3, fontWeight: 500, fontSize: '0.85rem' }}>
+            En el marco de la Ley Universitaria 30220, D.S. N° 418-2017-EF, Estatuto Reformado 2021 y el reglamento de asignación de la Carga Académica de los Docentes de la UNT, DECLARO BAJO JURAMENTO Y EN HONOR A LA VERDAD, que:
+          </Alert>
+
+          <Typography variant="body2" sx={{ mb: 3, fontStyle: 'italic', color: '#1e293b', bgcolor: '#f8fafc', p: 2, borderRadius: 2, border: '1px solid #e2e8f0' }}>
+            NO ESTOY INCURSO en causales de incompatibilidad laboral y NO TENGO impedimento para ejercer la docencia en la Universidad Nacional de Trujillo, de conformidad con lo previsto en el Capítulo VIII de las Incompatibilidades, Impedimentos y sanciones, del Título XII: de los docentes, del Estatuto Institucional vigente, según la especificación siguiente:
+          </Typography>
+
+          <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 2, color: '#003366' }}>
+            DECLARO:
+          </Typography>
+
+          <FormControl component="fieldset" fullWidth>
+            <RadioGroup value={selectedOpcionDeclaracion} onChange={(e) => setSelectedOpcionDeclaracion(Number(e.target.value))}>
+              {getFilteredOptions().map((opt) => (
+                <FormControlLabel
+                  key={opt.id}
+                  value={opt.id}
+                  control={<Radio />}
+                  label={
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#1565c0' }}>
+                        {opt.label}
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.75rem', color: '#475569', lineHeight: 1.5 }}>
+                        {opt.text}
+                      </Typography>
+                    </Box>
+                  }
+                  sx={{ alignItems: 'flex-start', mb: 2, '& .MuiFormControlLabel-label': { width: '100%' } }}
+                />
+              ))}
+            </RadioGroup>
+          </FormControl>
+        </DialogContent>
+        <DialogActions sx={{ p: 3, pt: 0 }}>
+          <Button onClick={() => setShowDeclaracionModal(false)} variant="outlined" color="inherit">
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleDeclaracionSubmit}
+            variant="contained"
+            disabled={!selectedOpcionDeclaracion || submittingDeclaracion}
+            sx={{ bgcolor: '#003366' }}
+          >
+            {submittingDeclaracion ? 'Enviando...' : 'Enviar Declaración'}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

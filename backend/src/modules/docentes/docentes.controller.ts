@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, Req, ForbiddenException } from '@nestjs/common';
 import { DocentesService } from './docentes.service';
 import { CreateDocenteDto } from './dto/create-docente.dto';
 import { UpdateDocenteDto } from './dto/update-docente.dto';
+import { UpdatePerfilDocenteDto } from './dto/update-perfil-docente.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -22,11 +23,11 @@ export class DocentesController {
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR, RolUsuario.DOCENTE)
   findAll(
     @Query('search') search?: string,
-    @Query('tipoContrato') tipoContrato?: string,
+    @Query('condicion') condicion?: string,
     @Query('categoria') categoria?: string,
     @Query('carreraId') carreraId?: string,
   ) {
-    return this.docentesService.findAll({ search, tipoContrato, categoria, carreraId: carreraId ? +carreraId : undefined });
+    return this.docentesService.findAll({ search, condicion, categoria, carreraId: carreraId ? +carreraId : undefined });
   }
 
   @Get('active')
@@ -45,6 +46,15 @@ export class DocentesController {
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
   update(@Param('id') id: string, @Body() updateDocenteDto: UpdateDocenteDto) {
     return this.docentesService.update(+id, updateDocenteDto);
+  }
+
+  @Patch(':id/perfil')
+  @Roles(RolUsuario.DOCENTE)
+  updatePerfil(@Param('id') id: string, @Body() dto: UpdatePerfilDocenteDto, @Req() req: any) {
+    if (req.user.docenteId !== +id) {
+      throw new ForbiddenException('No puedes editar el perfil de otro docente');
+    }
+    return this.docentesService.update(+id, dto as any);
   }
 
   @Delete(':id')

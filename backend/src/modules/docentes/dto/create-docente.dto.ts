@@ -1,6 +1,6 @@
 import { IsString, IsEnum, IsNumber, Min, Max, IsBoolean, IsOptional, IsArray, ValidateNested, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
-import { TipoContrato, Categoria, Facultad, DepartamentoAcademico, CargoAdministrativo } from '../../../database/entities/docente.entity';
+import { TipoContrato, Categoria, Facultad, DepartamentoAcademico, TipoInvestigacion } from '../../../database/entities/docente.entity';
 
 export class CreateDocenteDto {
   @IsString({ message: 'El nombre completo debe ser un texto válido' })
@@ -11,8 +11,8 @@ export class CreateDocenteDto {
   @IsOptional()
   dni?: string;
 
-  @IsEnum(TipoContrato, { message: 'El tipo de contrato debe ser nombrado, contratado o extraordinario' })
-  tipoContrato: TipoContrato;
+  @IsEnum(TipoContrato, { message: 'La condición debe ser nombrado, contratado o extraordinario' })
+  condicion: TipoContrato;
 
   @IsEnum(Categoria, { message: 'La categoría seleccionada no es válida' })
   categoria: Categoria;
@@ -26,12 +26,25 @@ export class CreateDocenteDto {
   departamentoAcademico?: DepartamentoAcademico;
 
   @IsOptional()
-  @IsEnum(CargoAdministrativo, { message: 'El cargo administrativo seleccionado no es válido' })
-  cargoAdministrativo?: CargoAdministrativo;
+  @IsString()
+  cargoGobierno?: string;
+
+  @IsOptional()
+  @IsString()
+  cargoGestionInstitucional?: string;
 
   @IsOptional()
   @IsBoolean()
   esBecario?: boolean;
+
+  @IsOptional()
+  @IsEnum(TipoInvestigacion, { message: 'El tipo de investigación no es válido' })
+  investigacion?: TipoInvestigacion;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  dependencias?: string[];
 
   @IsOptional()
   @IsString({ message: 'La fecha de ingreso debe ser un texto válido' })

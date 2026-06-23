@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Box,
   Button,
@@ -54,6 +54,7 @@ import {
   School as SchoolIcon,
   Groups as GroupsIcon,
   Science as ScienceIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import api from '@/lib/api';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -75,6 +76,7 @@ interface Curso {
   creditos: number;
   cicloAcademico: string;
   departamento: string;
+  tipoCurso?: string | null;
   curriculaId?: number;
 }
 
@@ -122,6 +124,15 @@ export default function CurriculasPage() {
   const [cursosSeleccionadosParaAsignar, setCursosSeleccionadosParaAsignar] = useState<number[]>([]);
   const [departamentos, setDepartamentos] = useState<string[]>([]);
   
+  // Estados para previsualización de importación IA
+  const [previewCursos, setPreviewCursos] = useState<any[]>([]);
+  const [openImportPreviewDialog, setOpenImportPreviewDialog] = useState(false);
+  const [previewFiltroCiclo, setPreviewFiltroCiclo] = useState('todos');
+  const [previewFiltroCreditos, setPreviewFiltroCreditos] = useState('todos');
+  const [previewPage, setPreviewPage] = useState(0);
+  const [previewRowsPerPage] = useState(10);
+  const [savingImport, setSavingImport] = useState(false);
+  
   // Estados para editar y programar cursos
   const [openEditarCursoDialog, setOpenEditarCursoDialog] = useState(false);
   const [selectedCurso, setSelectedCurso] = useState<any>(null);
@@ -156,6 +167,325 @@ export default function CurriculasPage() {
       setValue('nombre', `MALLA CURRICULAR UNT - ${watchAnio}`);
     }
   }, [watchAnio, setValue, selectedCurricula]);
+
+  const ciclosAcademicos = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+  const creditosOpciones = [0, 1, 2, 3, 4, 5, 6];
+
+  const selectedPreviewCount = useMemo(
+    () => previewCursos.filter((c) => Boolean(c.__selected)).length,
+    [previewCursos],
+  );
+
+  const filteredPreviewCursos = useMemo(() => {
+    return previewCursos
+      .map((curso, originalIndex) => ({ curso, originalIndex }))
+      .filter(({ curso }) => {
+        if (previewFiltroCiclo !== 'todos' && String(curso.cicloAcademico) !== String(previewFiltroCiclo)) return false;
+        if (previewFiltroCreditos !== 'todos' && Number(curso.creditos) !== Number(previewFiltroCreditos)) return false;
+        return true;
+      });
+  }, [previewCursos, previewFiltroCiclo, previewFiltroCreditos]);
+
+  const paginatedPreview = useMemo(() => {
+    return filteredPreviewCursos.slice(previewPage * previewRowsPerPage, previewPage * previewRowsPerPage + previewRowsPerPage);
+  }, [filteredPreviewCursos, previewPage, previewRowsPerPage]);
+
+  const PreviewRow = React.memo(({ curso, originalIndex, index, onSelect, onChange, onRemove }: any) => {
+    const [localValues, setLocalValues] = React.useState({
+      codigo: curso.codigo || '',
+      nombre: curso.nombre || '',
+      departamento: curso.departamento || '',
+      cicloAcademico: curso.cicloAcademico || '',
+      creditos: curso.creditos ?? '',
+      tipoCurso: curso.tipoCurso || '',
+    });
+
+    const debounceTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+
+    const handleChange = useCallback((field: string, value: string) => {
+      setLocalValues((prev: any) => ({ ...prev, [field]: value }));
+      
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      
+      debounceTimerRef.current = setTimeout(() => {
+        onChange(originalIndex, field, value);
+      }, 300);
+    }, [originalIndex, onChange]);
+
+    React.useEffect(() => {
+      setLocalValues({
+        codigo: curso.codigo || '',
+        nombre: curso.nombre || '',
+        departamento: curso.departamento || '',
+        cicloAcademico: curso.cicloAcademico || '',
+        creditos: curso.creditos ?? '',
+        tipoCurso: curso.tipoCurso || '',
+      });
+    }, [curso]);
+
+    React.useEffect(() => {
+      return () => {
+        if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current);
+        }
+      };
+    }, []);
+
+    return (
+      <TableRow 
+        key={`${curso.codigo || 'curso'}-${originalIndex}`}
+        sx={{ 
+          bgcolor: curso.__duplicado ? 'rgba(255, 153, 0, 0.05)' : 'inherit',
+          '&:hover': { bgcolor: curso.__duplicado ? 'rgba(255, 153, 0, 0.1)' : '#f8fafc' }
+        }}
+      >
+        <TableCell>
+          <Checkbox
+            checked={Boolean(curso.__selected)}
+            onChange={(e) => onSelect(originalIndex, e.target.checked)}
+            color={curso.__duplicado ? "warning" : "primary"}
+          />
+        </TableCell>
+        <TableCell>{previewPage * previewRowsPerPage + index + 1}</TableCell>
+        <TableCell sx={{ width: 75, px: 0.5 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            <TextField
+              size="small"
+              value={localValues.codigo}
+              onChange={(e) => handleChange('codigo', e.target.value)}
+              error={curso.__duplicado && curso.__motivoDuplicado?.includes('Código')}
+              inputProps={{ sx: { width: 55, p: 0.5, textAlign: 'center' } }}
+            />
+            {curso.__duplicado && curso.__motivoDuplicado?.includes('Código') && (
+              <Typography variant="caption" color="warning.main" sx={{ fontWeight: 700 }}>
+                {curso.__motivoDuplicado}
+              </Typography>
+            )}
+          </Box>
+        </TableCell>
+        <TableCell>
+          <TextField
+            select
+            size="small"
+            value={localValues.cicloAcademico}
+            onChange={(e) => handleChange('cicloAcademico', e.target.value)}
+            sx={{ width: 90 }}
+          >
+            {ciclosAcademicos.map((num) => (
+              <MenuItem key={num} value={`${num}`}>{num}° CICLO</MenuItem>
+            ))}
+          </TextField>
+        </TableCell>
+        <TableCell>
+          <TextField
+            select
+            size="small"
+            value={localValues.tipoCurso || ''}
+            onChange={(e) => handleChange('tipoCurso', e.target.value)}
+            sx={{ width: 80 }}
+          >
+            <MenuItem value="">-</MenuItem>
+            <MenuItem value="ES">ES</MenuItem>
+            <MenuItem value="EL">EL</MenuItem>
+            <MenuItem value="OB">OB</MenuItem>
+            <MenuItem value="OP">OP</MenuItem>
+          </TextField>
+        </TableCell>
+        <TableCell>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            <TextField
+              fullWidth
+              size="small"
+              value={localValues.nombre}
+              onChange={(e) => handleChange('nombre', e.target.value)}
+              error={curso.__duplicado && curso.__motivoDuplicado?.includes('Nombre')}
+            />
+            {curso.__duplicado && curso.__motivoDuplicado?.includes('Nombre') && (
+              <Typography variant="caption" color="warning.main" sx={{ fontWeight: 700 }}>
+                {curso.__motivoDuplicado}
+              </Typography>
+            )}
+          </Box>
+        </TableCell>
+        <TableCell sx={{ width: 60, px: 0.5 }}>
+          <TextField
+            size="small"
+            type="number"
+            value={localValues.creditos}
+            onChange={(e) => handleChange('creditos', e.target.value)}
+            inputProps={{ min: 0, sx: { width: 40, p: 0.5 } }}
+          />
+        </TableCell>
+        <TableCell>
+          <TextField
+            fullWidth
+            size="small"
+            value={localValues.departamento}
+            onChange={(e) => handleChange('departamento', e.target.value)}
+          />
+        </TableCell>
+        <TableCell align="center">
+          <IconButton size="small" color="error" onClick={() => onRemove(originalIndex)}>
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+        </TableCell>
+      </TableRow>
+    );
+  });
+
+  // Handlers for preview dialog
+  const handlePreviewCursoChange = useCallback((index: number, field: string, value: string) => {
+    setPreviewCursos((prev) =>
+      prev.map((curso, i) => {
+        if (i !== index) return curso;
+        if (field === 'creditos') {
+          return { ...curso, [field]: value === '' ? '' : Number(value) };
+        }
+        return { ...curso, [field]: value };
+      }),
+    );
+  }, []);
+
+  const handlePreviewCursoSelect = useCallback((index: number, selected: boolean) => {
+    setPreviewCursos((prev) =>
+      prev.map((curso, i) => (i === index ? { ...curso, __selected: selected } : curso)),
+    );
+  }, []);
+
+  const handleSelectAllPreviewCursos = useCallback(() => {
+    setPreviewCursos((prev) => prev.map((curso) => ({ ...curso, __selected: true })));
+  }, []);
+
+  const handleDeselectAllPreviewCursos = useCallback(() => {
+    setPreviewCursos((prev) => prev.map((curso) => ({ ...curso, __selected: false })));
+  }, []);
+
+  const handleRemovePreviewCurso = useCallback(async (index: number) => {
+    const result = await MySwal.fire({
+      title: '¿Eliminar fila?',
+      text: '¿Deseas eliminar esta fila importada? Esta acción no afectará la base de datos hasta que guardes.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#003366',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+    });
+
+    if (result.isConfirmed) {
+      setPreviewCursos((prev) => prev.filter((_, i) => i !== index));
+    }
+  }, []);
+
+  const handleRemoveSelectedPreviewCursos = async () => {
+    const selectedCount = previewCursos.filter((c) => Boolean(c.__selected)).length;
+    if (selectedCount === 0) {
+      MySwal.fire({
+        icon: 'warning',
+        title: 'Nada seleccionado',
+        text: 'Selecciona al menos un curso para borrar.',
+      });
+      return;
+    }
+
+    const result = await MySwal.fire({
+      title: `Eliminar ${selectedCount} curso(s)?`,
+      text: `Se eliminarán ${selectedCount} cursos de la previsualización. ¿Confirmas?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: 'Sí, eliminar seleccionados',
+      cancelButtonText: 'Cancelar',
+    });
+
+    if (result.isConfirmed) {
+      setPreviewCursos((prev) => prev.filter((c) => !c.__selected));
+      MySwal.fire({ icon: 'success', title: 'Eliminados', text: `${selectedCount} cursos eliminados.` });
+    }
+  };
+
+  const handleConfirmImportCursosPreview = async () => {
+    if (!curriculaParaVerCursos) return;
+
+    if (previewCursos.length === 0) {
+      MySwal.fire({
+        icon: 'warning',
+        title: 'Sin cursos',
+        text: 'No hay cursos en la tabla para guardar.',
+      });
+      return;
+    }
+
+    const cursosSeleccionados = previewCursos.filter((curso) => Boolean(curso.__selected));
+
+    if (cursosSeleccionados.length === 0) {
+      MySwal.fire({
+        icon: 'warning',
+        title: 'Sin selección',
+        text: 'Selecciona al menos un curso para guardarlo.',
+      });
+      return;
+    }
+
+    const invalidIndex = cursosSeleccionados.findIndex(
+      (curso: any) =>
+        !String(curso.codigo || '').trim() ||
+        !String(curso.nombre || '').trim() ||
+        !String(curso.cicloAcademico || '').trim() ||
+        Number.isNaN(Number(curso.creditos)),
+    );
+
+    if (invalidIndex >= 0) {
+      MySwal.fire({
+        icon: 'warning',
+        title: 'Datos incompletos',
+        text: `Revisa la fila ${invalidIndex + 1}. Debe tener código, nombre, ciclo y créditos válidos.`,
+      });
+      return;
+    }
+
+    setSavingImport(true);
+    try {
+      await api.post('/cursos/importar-ia/confirmar', {
+        carreraId: Number(curriculaParaVerCursos.carreraId),
+        curriculaId: curriculaParaVerCursos.id,
+        cursos: cursosSeleccionados.map((curso: any) => ({
+          codigo: String(curso.codigo).trim(),
+          nombre: String(curso.nombre).trim(),
+          cicloAcademico: String(curso.cicloAcademico).trim(),
+          creditos: Number(curso.creditos),
+          departamento: String(curso.departamento || 'General').trim(),
+          tipoCurso: ['ES', 'EL', 'OB', 'OP'].includes(curso.tipoCurso) ? curso.tipoCurso : undefined,
+        })),
+      });
+
+      setOpenImportPreviewDialog(false);
+      setPreviewCursos([]);
+      setPreviewFiltroCiclo('todos');
+      setPreviewFiltroCreditos('todos');
+      setOpenImportarCursosDialog(false);
+      setFileImportarCursos(null);
+
+      MySwal.fire({
+        icon: 'success',
+        title: '¡Importación completada!',
+        text: 'Se guardaron todos los cursos después de tu validación.',
+      });
+      fetchCurriculas();
+    } catch (error: any) {
+      MySwal.fire({
+        icon: 'error',
+        title: 'Error al guardar',
+        text: error.response?.data?.message || 'No se pudieron guardar los cursos importados.',
+      });
+    } finally {
+      setSavingImport(false);
+    }
+  };
 
   const fetchCurriculas = async () => {
     setLoading(true);
@@ -279,23 +609,59 @@ export default function CurriculasPage() {
   };
 
   const processCursosWithIA = async (id: number, file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
       setImportandoCursosConIA(true);
-      await api.post(`/curriculas/${id}/extraer-cursos-pdf`, formData, {
+      // Fetch the curricula first to set as context for preview
+      const curriculaRes = await api.get(`/curriculas/${id}`);
+      setCurriculaParaVerCursos(curriculaRes.data);
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await api.post(`/curriculas/${id}/previsualizar-cursos-pdf`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
 
-      MySwal.fire('¡Éxito!', 'Los cursos se han extraído y asignado correctamente', 'success');
-      fetchCurriculas();
-      setOpenImportarCursosDialog(false);
-      setFileImportarCursos(null);
-    } catch (error) {
-      MySwal.fire('Error', 'No se pudieron extraer los cursos del PDF', 'error');
+      const cursosExtraidos = Array.isArray(response.data?.cursos) ? response.data.cursos : [];
+      if (cursosExtraidos.length === 0) {
+        MySwal.fire({
+          icon: 'warning',
+          title: 'Sin resultados',
+          text: 'La IA no encontró cursos en el PDF. Prueba con otro documento o ajusta el contenido.',
+        });
+        return;
+      }
+
+      // Marcar duplicados contra los cursos ya existentes en la curricula
+      const existingCursos = curriculaRes.data.cursos || [];
+      const cursosConDuplicados = cursosExtraidos.map((curso: any) => {
+        const esDuplicadoCodigo = existingCursos.some((c: any) =>
+          String(c.codigo || '').toLowerCase() === String(curso.codigo || '').toLowerCase()
+        );
+        const esDuplicadoNombre = existingCursos.some((c: any) =>
+          String(c.nombre || '').toLowerCase() === String(curso.nombre || '').toLowerCase()
+        );
+        const duplicado = esDuplicadoCodigo || esDuplicadoNombre;
+
+        return {
+          ...curso,
+          __selected: !duplicado,
+          __duplicado: duplicado,
+          __motivoDuplicado: esDuplicadoCodigo ? 'Código ya registrado' : (esDuplicadoNombre ? 'Nombre ya registrado' : ''),
+        };
+      });
+
+      setPreviewCursos(cursosConDuplicados);
+      setPreviewFiltroCiclo('todos');
+      setPreviewFiltroCreditos('todos');
+      setPreviewPage(0);
+      setOpenImportPreviewDialog(true);
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || error?.message || 'No se pudieron extraer los cursos del PDF';
+      console.error('[processCursosWithIA] Error:', msg, error);
+      MySwal.fire('Error', msg, 'error');
     } finally {
       setImportandoCursosConIA(false);
     }
@@ -315,18 +681,52 @@ export default function CurriculasPage() {
         formData.append('file', fileImportarCursos);
       }
       
-      await api.post(`/curriculas/${curriculaParaVerCursos.id}/extraer-cursos-pdf`, formData, {
+      const response = await api.post(`/curriculas/${curriculaParaVerCursos.id}/previsualizar-cursos-pdf`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
 
-      MySwal.fire('¡Éxito!', 'Los cursos se han extraído y asignado correctamente', 'success');
-      fetchCurriculas();
+      const cursosExtraidos = Array.isArray(response.data?.cursos) ? response.data.cursos : [];
+      if (cursosExtraidos.length === 0) {
+        MySwal.fire({
+          icon: 'warning',
+          title: 'Sin resultados',
+          text: 'La IA no encontró cursos en el PDF. Prueba con otro documento o ajusta el contenido.',
+        });
+        return;
+      }
+
+      // Marcar duplicados contra los cursos ya existentes en la curricula
+      const existingCursos = curriculaParaVerCursos.cursos || [];
+      const cursosConDuplicados = cursosExtraidos.map((curso: any) => {
+        const esDuplicadoCodigo = existingCursos.some((c: any) =>
+          String(c.codigo || '').toLowerCase() === String(curso.codigo || '').toLowerCase()
+        );
+        const esDuplicadoNombre = existingCursos.some((c: any) =>
+          String(c.nombre || '').toLowerCase() === String(curso.nombre || '').toLowerCase()
+        );
+        const duplicado = esDuplicadoCodigo || esDuplicadoNombre;
+
+        return {
+          ...curso,
+          __selected: !duplicado,
+          __duplicado: duplicado,
+          __motivoDuplicado: esDuplicadoCodigo ? 'Código ya registrado' : (esDuplicadoNombre ? 'Nombre ya registrado' : ''),
+        };
+      });
+
+      setPreviewCursos(cursosConDuplicados);
+      setPreviewFiltroCiclo('todos');
+      setPreviewFiltroCreditos('todos');
+      setPreviewPage(0);
       setOpenImportarCursosDialog(false);
       setFileImportarCursos(null);
-    } catch (error) {
-      MySwal.fire('Error', 'No se pudieron extraer los cursos del PDF', 'error');
+      setOpenImportPreviewDialog(true);
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || error?.message || 'No se pudieron extraer los cursos del PDF';
+      console.error('[handleImportarCursosConIA] Error:', msg, error);
+      MySwal.fire('Error', msg, 'error');
     } finally {
       setImportandoCursosConIA(false);
     }
@@ -345,6 +745,7 @@ export default function CurriculasPage() {
       cicloAcademico: '1',
       creditos: 4,
       departamento: '',
+      tipoCurso: '',
       carreraId: curriculaParaVerCursos?.carreraId,
     });
     setOpenCrearCursoDialog(true);
@@ -363,6 +764,7 @@ export default function CurriculasPage() {
         carreraId: curriculaParaVerCursos.carreraId,
         curriculaId: curriculaParaVerCursos.id,
       };
+      if (payload.tipoCurso === '') payload.tipoCurso = null;
       await api.post('/cursos', payload);
       MySwal.fire('¡Creado!', 'Curso creado y asignado a la malla curricular', 'success');
       handleCloseCrearCursoDialog();
@@ -564,6 +966,7 @@ export default function CurriculasPage() {
       cicloAcademico: curso.cicloAcademico,
       creditos: curso.creditos,
       departamento: curso.departamento,
+      tipoCurso: curso.tipoCurso || '',
       carreraId: curriculaParaVerCursos?.carreraId,
     });
     setOpenEditarCursoDialog(true);
@@ -578,6 +981,7 @@ export default function CurriculasPage() {
     if (!selectedCurso) return;
 
     try {
+      if (data.tipoCurso === '') data.tipoCurso = null;
       await api.patch(`/cursos/${selectedCurso.id}`, data);
       MySwal.fire('¡Actualizado!', 'Curso actualizado exitosamente', 'success');
       handleCloseEditarCursoDialog();
@@ -1252,7 +1656,8 @@ export default function CurriculasPage() {
                       <TableCell sx={{ color: 'white', fontWeight: 700, width: '50px' }}>N°</TableCell>
                       <TableCell sx={{ color: 'white', fontWeight: 700 }}>Código</TableCell>
                       <TableCell sx={{ color: 'white', fontWeight: 700 }}>Ciclo</TableCell>
-                      <TableCell sx={{ color: 'white', fontWeight: 700 }}>Nombre</TableCell>
+                      <TableCell sx={{ color: 'white', fontWeight: 700 }}>Tipo</TableCell>
+                      <TableCell sx={{ color: 'white', fontWeight: 700 }}>Curso</TableCell>
                       <TableCell sx={{ color: 'white', fontWeight: 700 }}>Departamento</TableCell>
                       <TableCell sx={{ color: 'white', fontWeight: 700 }}>Créditos</TableCell>
                       <TableCell sx={{ color: 'white', fontWeight: 700, textAlign: 'center' }}>Acciones</TableCell>
@@ -1268,6 +1673,22 @@ export default function CurriculasPage() {
                             <Chip label={curso.codigo} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
                           </TableCell>
                           <TableCell>{curso.cicloAcademico}° CICLO</TableCell>
+                          <TableCell>
+                            {curso.tipoCurso ? (
+                              <Chip
+                                label={curso.tipoCurso}
+                                size="small"
+                                variant="outlined"
+                                sx={{
+                                  fontWeight: 700,
+                                  color: curso.tipoCurso === 'ES' ? '#667eea' : curso.tipoCurso === 'EL' ? '#ff9900' : curso.tipoCurso === 'OB' ? '#43e97b' : '#e91e63',
+                                  borderColor: curso.tipoCurso === 'ES' ? '#667eea' : curso.tipoCurso === 'EL' ? '#ff9900' : curso.tipoCurso === 'OB' ? '#43e97b' : '#e91e63',
+                                }}
+                              />
+                            ) : (
+                              <Typography variant="body2" color="textSecondary">-</Typography>
+                            )}
+                          </TableCell>
                           <TableCell>
                             <Typography sx={{ fontWeight: 600 }}>{curso.nombre}</Typography>
                           </TableCell>
@@ -1355,7 +1776,7 @@ export default function CurriculasPage() {
                 </Grid>
 
                 {/* Segunda fila: Ciclo, Créditos y Departamento */}
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={3}>
                   <FormControl fullWidth variant="outlined">
                     <InputLabel id="ciclo-label">Ciclo Académico</InputLabel>
                     <Controller
@@ -1379,7 +1800,7 @@ export default function CurriculasPage() {
                     />
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={3}>
                   <TextField
                     fullWidth
                     type="number"
@@ -1392,7 +1813,25 @@ export default function CurriculasPage() {
                     InputProps={{ inputProps: { min: 1 } }}
                   />
                 </Grid>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={3}>
+                  <Controller
+                    name="tipoCurso"
+                    control={controlCurso}
+                    render={({ field }) => (
+                      <FormControl fullWidth variant="outlined">
+                        <InputLabel>Tipo</InputLabel>
+                        <Select {...field} label="Tipo">
+                          <MenuItem value="">Sin tipo</MenuItem>
+                          <MenuItem value="ES">ES</MenuItem>
+                          <MenuItem value="EL">EL</MenuItem>
+                          <MenuItem value="OB">OB</MenuItem>
+                          <MenuItem value="OP">OP</MenuItem>
+                        </Select>
+                      </FormControl>
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={12} md={3}>
                   <Controller
                     name="departamento"
                     control={controlCurso}
@@ -1468,7 +1907,7 @@ export default function CurriculasPage() {
                 </Grid>
 
                 {/* Segunda fila: Ciclo, Créditos y Departamento */}
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={3}>
                   <FormControl fullWidth variant="outlined">
                     <InputLabel id="ciclo-editar-label">Ciclo Académico</InputLabel>
                     <Controller
@@ -1492,7 +1931,7 @@ export default function CurriculasPage() {
                     />
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={3}>
                   <TextField
                     fullWidth
                     type="number"
@@ -1505,7 +1944,25 @@ export default function CurriculasPage() {
                     InputProps={{ inputProps: { min: 1 } }}
                   />
                 </Grid>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={3}>
+                  <Controller
+                    name="tipoCurso"
+                    control={controlCurso}
+                    render={({ field }) => (
+                      <FormControl fullWidth variant="outlined">
+                        <InputLabel>Tipo</InputLabel>
+                        <Select {...field} label="Tipo">
+                          <MenuItem value="">Sin tipo</MenuItem>
+                          <MenuItem value="ES">ES</MenuItem>
+                          <MenuItem value="EL">EL</MenuItem>
+                          <MenuItem value="OB">OB</MenuItem>
+                          <MenuItem value="OP">OP</MenuItem>
+                        </Select>
+                      </FormControl>
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={12} md={3}>
                   <Controller
                     name="departamento"
                     control={controlCurso}
@@ -1789,7 +2246,8 @@ export default function CurriculasPage() {
                     <TableCell sx={{ fontWeight: 700, color: 'white' }}>N°</TableCell>
                     <TableCell sx={{ fontWeight: 700, color: 'white' }}>Código</TableCell>
                     <TableCell sx={{ fontWeight: 700, color: 'white' }}>Ciclo</TableCell>
-                    <TableCell sx={{ fontWeight: 700, color: 'white' }}>Nombre</TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: 'white' }}>Tipo</TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: 'white' }}>Curso</TableCell>
                     <TableCell sx={{ fontWeight: 700, color: 'white' }}>Departamento</TableCell>
                     <TableCell sx={{ fontWeight: 700, color: 'white' }}>Créditos</TableCell>
                   </TableRow>
@@ -1806,6 +2264,22 @@ export default function CurriculasPage() {
                       <TableCell sx={{ fontWeight: 600 }}>{index + 1}</TableCell>
                       <TableCell sx={{ fontWeight: 600 }}>{curso.codigo}</TableCell>
                       <TableCell>{curso.cicloAcademico}° CICLO</TableCell>
+                      <TableCell>
+                        {curso.tipoCurso ? (
+                          <Chip
+                            label={curso.tipoCurso}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              fontWeight: 700,
+                              color: curso.tipoCurso === 'ES' ? '#667eea' : curso.tipoCurso === 'EL' ? '#ff9900' : curso.tipoCurso === 'OB' ? '#43e97b' : '#e91e63',
+                              borderColor: curso.tipoCurso === 'ES' ? '#667eea' : curso.tipoCurso === 'EL' ? '#ff9900' : curso.tipoCurso === 'OB' ? '#43e97b' : '#e91e63',
+                            }}
+                          />
+                        ) : (
+                          <Typography variant="body2" color="textSecondary">-</Typography>
+                        )}
+                      </TableCell>
                       <TableCell>{curso.nombre}</TableCell>
                       <TableCell>{curso.departamento}</TableCell>
                       <TableCell>{curso.creditos} créditos</TableCell>
@@ -1828,6 +2302,182 @@ export default function CurriculasPage() {
           >
             Asignar {cursosSeleccionadosParaAsignar.length} Curso{cursosSeleccionadosParaAsignar.length !== 1 ? 's' : ''}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Diálogo de Previsualización Importación IA */}
+      <Dialog
+        open={openImportPreviewDialog}
+        onClose={() => !savingImport && setOpenImportPreviewDialog(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: '#003366', color: 'white', fontWeight: 700 }}>
+          Verifica y edita antes de guardar
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+            La IA extrajo los cursos. Corrige especialmente los créditos y luego guarda todo en un solo paso.
+          </Typography>
+
+          <Grid container spacing={2} sx={{ mb: 2 }} alignItems="center">
+            <Grid item xs={12} md={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Filtrar por ciclo</InputLabel>
+                <Select
+                  value={previewFiltroCiclo}
+                  label="Filtrar por ciclo"
+                  onChange={(e) => setPreviewFiltroCiclo(String(e.target.value))}
+                >
+                  <MenuItem value="todos">Todos los ciclos</MenuItem>
+                  {ciclosAcademicos.map((ciclo) => (
+                    <MenuItem key={ciclo} value={String(ciclo)}>{ciclo}° Ciclo</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Filtrar por créditos</InputLabel>
+                <Select
+                  value={previewFiltroCreditos}
+                  label="Filtrar por créditos"
+                  onChange={(e) => setPreviewFiltroCreditos(String(e.target.value))}
+                >
+                  <MenuItem value="todos">Todos los créditos</MenuItem>
+                  {creditosOpciones.map((creditos) => (
+                    <MenuItem key={creditos} value={String(creditos)}>{creditos} créditos</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={() => {
+                  setPreviewFiltroCiclo('todos');
+                  setPreviewFiltroCreditos('todos');
+                }}
+                sx={{ height: 40, borderRadius: 2, fontWeight: 600, justifyContent: 'flex-start' }}
+              >
+                Limpiar filtros
+              </Button>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <Typography variant="body2" color="textSecondary">
+                    Seleccionados: {selectedPreviewCount} de {previewCursos.length}
+                  </Typography>
+                  <Button size="small" variant="outlined" onClick={handleSelectAllPreviewCursos} sx={{ fontWeight: 600 }}>
+                    Seleccionar Todo
+                  </Button>
+                  <Button size="small" variant="outlined" color="inherit" onClick={handleDeselectAllPreviewCursos} sx={{ fontWeight: 600 }}>
+                    Deseleccionar Todo
+                  </Button>
+                  <Button size="small" variant="outlined" color="error" onClick={handleRemoveSelectedPreviewCursos} sx={{ fontWeight: 600 }}>
+                    Borrar seleccionados
+                  </Button>
+                </Box>
+                {previewCursos.some(c => c.__duplicado) && (
+                  <Chip 
+                    label="Se detectaron duplicados desmarcados por seguridad" 
+                    color="warning" 
+                    size="small" 
+                    sx={{ fontWeight: 700 }}
+                  />
+                )}
+              </Box>
+            </Grid>
+          </Grid>
+
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#f4f7fb' }}>
+                  <TableCell sx={{ fontWeight: 700, width: 70 }}>OK</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: 50 }}>N°</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: 75, textAlign: 'center' }}>Código</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: 100 }}>Ciclo</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: 90 }}>Tipo</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Curso</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: 60 }}>Créditos</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: 160 }}>Departamento</TableCell>
+                  <TableCell sx={{ fontWeight: 700, textAlign: 'center', width: 90 }}>Acción</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredPreviewCursos.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} sx={{ textAlign: 'center', py: 3 }}>
+                      No hay cursos para mostrar con los filtros actuales.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedPreview.map(({ curso, originalIndex }, index) => (
+                    <PreviewRow
+                      key={`${curso.codigo || 'curso'}-${originalIndex}`}
+                      curso={curso}
+                      originalIndex={originalIndex}
+                      index={index}
+                      onSelect={handlePreviewCursoSelect}
+                      onChange={handlePreviewCursoChange}
+                      onRemove={handleRemovePreviewCurso}
+                    />
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+            <TablePagination
+              component="div"
+              count={filteredPreviewCursos.length}
+              page={previewPage}
+              onPageChange={(_e, newPage) => setPreviewPage(newPage)}
+              rowsPerPage={previewRowsPerPage}
+              rowsPerPageOptions={[10]}
+              onRowsPerPageChange={() => {}}
+              labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 3, justifyContent: 'space-between' }}>
+          <Button
+            onClick={handleImportarCursosConIA}
+            variant="outlined"
+            color="primary"
+            disabled={importandoCursosConIA || savingImport}
+            sx={{ fontWeight: 600, borderColor: '#003366', color: '#003366' }}
+            startIcon={importandoCursosConIA ? <CircularProgress size={18} color="inherit" /> : <AutoAwesomeIcon />}
+          >
+            {importandoCursosConIA ? 'Reextrayendo...' : 'Reextraer PDF'}
+          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              onClick={() => {
+                setOpenImportPreviewDialog(false);
+                setPreviewCursos([]);
+                setPreviewFiltroCiclo('todos');
+                setPreviewFiltroCreditos('todos');
+              }}
+              color="inherit"
+              disabled={savingImport}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmImportCursosPreview}
+              variant="contained"
+              disabled={savingImport || selectedPreviewCount === 0}
+              sx={{ bgcolor: '#003366', fontWeight: 600 }}
+              startIcon={savingImport ? <CircularProgress size={18} color="inherit" /> : <HistoryIcon />}
+            >
+              {savingImport ? 'Guardando...' : 'Guardar Todo'}
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
 

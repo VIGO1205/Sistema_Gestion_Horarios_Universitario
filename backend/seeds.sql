@@ -30,7 +30,7 @@ INSERT INTO "carreras" ("nombre", "facultad", "codigo") VALUES
 
 
 -- 3. Docentes
-INSERT INTO "docentes" ("nombreCompleto", "dni", "tipoContrato", "categoria", "antiguedadAnios", "fechaIngreso", "activo") VALUES
+INSERT INTO "docentes" ("nombreCompleto", "dni", "condicion", "categoria", "antiguedadAnios", "fechaIngreso", "activo") VALUES
 ('Cesar Arellano Salazar', '10000001', 'NOMBRADO', 'PRINCIPAL', 20, '2004-01-01', true),
 ('Marcelino Torres Villanueva', '10000002', 'NOMBRADO', 'PRINCIPAL', 25, '1999-01-01', true),
 ('Everson Agreda Gamboa', '10000003', 'NOMBRADO', 'PRINCIPAL', 15, '2009-01-01', true),
@@ -50,7 +50,29 @@ INSERT INTO "docentes" ("nombreCompleto", "dni", "tipoContrato", "categoria", "a
 ('Juan Luis Cordova Otero', '10000017', 'NOMBRADO', 'AUXILIAR', 3, '2021-01-01', true);
 
 
--- 4. Aulas
+-- 4. Lugares
+INSERT INTO "lugares" ("codigo", "nombre") VALUES
+('F01', 'CC. Agropecuarias'),
+('F02', 'CC. Biológicas'),
+('F03', 'CC. Económicas'),
+('F04', 'CC. Físicas y Matemáticas'),
+('F05', 'CC. Sociales'),
+('F06', 'Derecho y Ciencias Políticas'),
+('F07', 'Educación y Comunicación'),
+('F08', 'Enfermería'),
+('F09', 'Estomatología'),
+('F10', 'Farmacia y Bioquímica'),
+('F11', 'Ingeniería'),
+('F12', 'Ingeniería Química'),
+('F13', 'Medicina'),
+('F14', 'Filial Valle Jequetepeque'),
+('F15', 'Filial Huamachuco'),
+('F16', 'Filial Santiago de Chuco'),
+('OA', 'Oficina Administrativa'),
+('SC', 'Salida de Campo');
+
+
+-- 5. Aulas
 INSERT INTO "aulas" ("nombre", "tipo", "capacidad", "disponible") VALUES
 ('101', 'TEORIA', 40, true),
 ('102', 'TEORIA', 40, true),
@@ -70,13 +92,13 @@ INSERT INTO "aulas" ("nombre", "tipo", "capacidad", "disponible") VALUES
 ('LAB 06', 'LABORATORIO', 25, true);
 
 
--- 5. Usuarios
+-- 6. Usuarios
 INSERT INTO "usuarios" ("email", "passwordHash", "rol", "activo") VALUES
 ('admin@unt.edu.pe', '$2a$10$0nWz6QSr45daMtzXJZLHIOz1wmUy.KJkPcOy.NcONurGTTLLef1Wy', 'ADMIN', true),
 ('coordinador@unt.edu.pe', '$2a$10$U/GdS6BDJ4Vlvq79OeZVROtS91R.q6EQjEwI3yB99GSDWYf4cnBf.', 'COORDINADOR', true);
 
 
--- 6. Usuarios de Docentes
+-- 7. Usuarios de Docentes
 INSERT INTO "usuarios" ("email", "passwordHash", "rol", "activo", "docenteId")
 SELECT
   LOWER(SPLIT_PART("nombreCompleto", ' ', 1)) || '.' || "dni" || '@unt.edu.pe',
@@ -87,7 +109,7 @@ SELECT
 FROM "docentes";
 
 
--- 7. Asignaciones Docente-Carrera
+-- 8. Asignaciones Docente-Carrera
 INSERT INTO "docente_carrera" ("docenteId", "carreraId")
 SELECT
   d."id",

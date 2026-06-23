@@ -1,5 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { Horario } from './horario.entity';
+import { Lugar } from './lugar.entity';
 
 export enum TipoAula {
   TEORIA = 'teoría',
@@ -23,6 +24,13 @@ export class Aula {
 
   @Column({ type: 'boolean', default: true })
   disponible: boolean;
+
+  @Column({ type: 'integer', nullable: true })
+  lugarId: number | null;
+
+  @ManyToOne(() => Lugar, (lugar) => lugar.aulas)
+  @JoinColumn({ name: 'lugarId' })
+  lugar: Lugar | null;
 
   @CreateDateColumn()
   createdAt: Date;

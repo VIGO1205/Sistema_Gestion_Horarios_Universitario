@@ -49,7 +49,7 @@ export class AsignadorHorariosService {
 
   /**
    * Algoritmo principal de asignación jerárquica
-   * Ordena docentes por: tipo_contrato -> categoría -> antigüedad
+   * Ordena docentes por: condicion -> categoría -> antigüedad
    * Luego asigna horarios respetando la jerarquía
    */
   async generarHorariosAutomaticos(cicloNombre: string): Promise<any> {
@@ -148,7 +148,7 @@ export class AsignadorHorariosService {
       .createQueryBuilder('d')
       .where('d.activo = :activo', { activo: true })
       .orderBy(
-        `CASE d.tipoContrato WHEN '${TipoContrato.NOMBRADO}' THEN 1 WHEN '${TipoContrato.CONTRATADO}' THEN 2 END`,
+        `CASE d.condicion WHEN '${TipoContrato.NOMBRADO}' THEN 1 WHEN '${TipoContrato.CONTRATADO}' THEN 2 END`,
         'ASC',
       )
       .addOrderBy(

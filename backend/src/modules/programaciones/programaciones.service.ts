@@ -40,16 +40,11 @@ export class ProgramacionesService {
 
   private calcularCreditos(p: Partial<ProgramacionCursoCiclo>): number {
     const horasT = Number(p.horasTeoria || 0);
-    // Si hay horas pero numGrupos es 0, asumimos 1 para el cálculo
-    const gruposT = horasT > 0 ? Math.max(1, Number(p.numGruposTeoria || 0)) : 0;
-    
     const horasP = Number(p.horasPractica || 0);
-    const gruposP = horasP > 0 ? Math.max(1, Number(p.numGruposPractica || 0)) : 0;
-    
     const horasL = Number(p.horasLaboratorio || 0);
 
-    // Fórmula: T*GT + (P*GP)/2 + L/2
-    return (horasT * gruposT) + ((horasP * gruposP) / 2) + (horasL / 2);
+    // Fórmula UNT: T + P/2 + L/2 (los grupos no afectan los créditos)
+    return horasT + (horasP / 2) + (horasL / 2);
   }
 
   async create(dto: CreateProgramacionDto): Promise<ProgramacionCursoCiclo> {
@@ -74,8 +69,7 @@ export class ProgramacionesService {
     if (creditosCalculados !== Number(curso.creditos)) {
       throw new BadRequestException(
         `La programación no coincide con los créditos del curso (${curso.creditos}). ` +
-        `Calculado: ${creditosCalculados} (T:${data.horasTeoria}x${data.numGruposTeoria}, ` +
-        `P:${data.horasPractica}x${data.numGruposPractica}, L:${data.horasLaboratorio}).`
+        `Calculado: ${creditosCalculados} (T:${data.horasTeoria}h, P:${data.horasPractica}h, L:${data.horasLaboratorio}h).`
       );
     }
 
@@ -181,7 +175,7 @@ export class ProgramacionesService {
     await this.programacionRepo.delete(id);
   }
 
-  async getCargaAcademica(cicloId: number, carreraId?: number, cicloAcademico?: number, curriculaId?: number) {
+  async getCargaAcademica(cicloId: number, carreraId?: number, cicloAcademico?: number, curriculaId?: number, cursoId?: number) {
     // Obtener todas las programaciones para el ciclo
     const query = this.programacionRepo.createQueryBuilder('p')
       .leftJoinAndSelect('p.curso', 'curso')
@@ -198,6 +192,10 @@ export class ProgramacionesService {
 
     if (curriculaId) {
       query.andWhere('curso.curriculaId = :curriculaId', { curriculaId });
+    }
+
+    if (cursoId) {
+      query.andWhere('p.cursoId = :cursoId', { cursoId });
     }
 
     const programaciones = await query.getMany();
@@ -241,7 +239,7 @@ export class ProgramacionesService {
     const totalHorasT = asignaciones
       .filter(a => a.tipoClase === TipoClase.TEORIA)
       .reduce((sum, a) => sum + a.horasSemanales * a.grupos.length, 0);
-    
+
     const totalHorasP = asignaciones
       .filter(a => a.tipoClase === TipoClase.PRACTICA)
       .reduce((sum, a) => sum + a.horasSemanales * a.grupos.length, 0);

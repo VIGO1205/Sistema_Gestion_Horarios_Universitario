@@ -129,6 +129,7 @@ export default function CursosPage() {
       departamento: curso.departamento || '',
       cicloAcademico: curso.cicloAcademico || '',
       creditos: curso.creditos ?? '',
+      tipoCurso: curso.tipoCurso || '',
     });
 
     const debounceTimerRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -152,6 +153,7 @@ export default function CursosPage() {
         departamento: curso.departamento || '',
         cicloAcademico: curso.cicloAcademico || '',
         creditos: curso.creditos ?? '',
+        tipoCurso: curso.tipoCurso || '',
       });
     }, [curso]);
 
@@ -221,6 +223,21 @@ export default function CursosPage() {
         </TableCell>
         <TableCell>
           <TextField
+            select
+            fullWidth
+            size="small"
+            value={localValues.tipoCurso || ''}
+            onChange={(e) => handleChange('tipoCurso', e.target.value)}
+          >
+            <MenuItem value="">-</MenuItem>
+            <MenuItem value="ES">ES</MenuItem>
+            <MenuItem value="EL">EL</MenuItem>
+            <MenuItem value="OB">OB</MenuItem>
+            <MenuItem value="OP">OP</MenuItem>
+          </TextField>
+        </TableCell>
+        <TableCell>
+          <TextField
             fullWidth
             size="small"
             value={localValues.cicloAcademico}
@@ -287,6 +304,7 @@ export default function CursosPage() {
       creditos: 4,
       departamento: '',
       carreraId: '',
+      tipoCurso: '',
     }
   });
 
@@ -464,6 +482,7 @@ export default function CursosPage() {
         creditos: curso.creditos,
         departamento: curso.departamento || '',
         carreraId: curso.carreraId || '',
+        tipoCurso: curso.tipoCurso || '',
       });
     } else {
       setSelectedCurso(null);
@@ -474,6 +493,7 @@ export default function CursosPage() {
         creditos: 4,
         departamento: '',
         carreraId: '',
+        tipoCurso: '',
       });
     }
     setOpenDialog(true);
@@ -488,6 +508,9 @@ export default function CursosPage() {
     try {
       // Limpiar payload
       const { id, createdAt, updatedAt, asignaciones, horarios, ...payload } = data;
+      if (payload.tipoCurso === '') {
+        payload.tipoCurso = null;
+      }
       
       if (selectedCurso) {
         await api.patch(`/cursos/${selectedCurso.id}`, payload);
@@ -670,6 +693,7 @@ export default function CursosPage() {
           cicloAcademico: String(curso.cicloAcademico).trim(),
           creditos: Number(curso.creditos),
           departamento: String(curso.departamento || 'General').trim(),
+          tipoCurso: ['ES', 'EL', 'OB', 'OP'].includes(curso.tipoCurso) ? curso.tipoCurso : undefined,
         })),
       });
 
@@ -987,9 +1011,10 @@ export default function CursosPage() {
               <TableCell sx={{ color: 'white', fontWeight: 700, width: '50px' }}>N°</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CURRICULA</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CÓDIGO</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 700 }}>CICLO</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 700 }}>TIPO</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CURSO</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>DEPARTAMENTO</TableCell>
-              <TableCell sx={{ color: 'white', fontWeight: 700 }}>CICLO</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CRÉDITOS</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700, textAlign: 'center' }}>ACCIONES</TableCell>
             </TableRow>
@@ -997,7 +1022,7 @@ export default function CursosPage() {
           <TableBody>
             {cursosFiltrados.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} sx={{ py: 10, textAlign: 'center' }}>
+                <TableCell colSpan={9} sx={{ py: 10, textAlign: 'center' }}>
                   <Typography color="textSecondary">No se encontraron cursos.</Typography>
                 </TableCell>
               </TableRow>
@@ -1017,11 +1042,27 @@ export default function CursosPage() {
                   <TableCell>
                     <Chip label={curso.codigo} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
                   </TableCell>
+                  <TableCell>{curso.cicloAcademico}° Ciclo</TableCell>
+                  <TableCell>
+                    {curso.tipoCurso ? (
+                      <Chip
+                        label={curso.tipoCurso}
+                        size="small"
+                        variant="outlined"
+                        sx={{
+                          fontWeight: 700,
+                          color: curso.tipoCurso === 'ES' ? '#667eea' : curso.tipoCurso === 'EL' ? '#ff9900' : curso.tipoCurso === 'OB' ? '#43e97b' : '#e91e63',
+                          borderColor: curso.tipoCurso === 'ES' ? '#667eea' : curso.tipoCurso === 'EL' ? '#ff9900' : curso.tipoCurso === 'OB' ? '#43e97b' : '#e91e63',
+                        }}
+                      />
+                    ) : (
+                      <Typography variant="body2" color="textSecondary">-</Typography>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Typography sx={{ fontWeight: 600 }}>{curso.nombre}</Typography>
                   </TableCell>
                   <TableCell>{curso.departamento}</TableCell>
-                  <TableCell>{curso.cicloAcademico}° Ciclo</TableCell>
                   <TableCell>{curso.creditos} créditos</TableCell>
                   <TableCell align="center">
                     <Tooltip title="Editar">
@@ -1349,7 +1390,7 @@ export default function CursosPage() {
                   )}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <Controller
                   name="departamento"
                   control={control}
@@ -1366,7 +1407,7 @@ export default function CursosPage() {
                   )}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <Controller
                   name="cicloAcademico"
                   control={control}
@@ -1382,7 +1423,25 @@ export default function CursosPage() {
                   )}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
+                <Controller
+                  name="tipoCurso"
+                  control={control}
+                  render={({ field }) => (
+                    <FormControl fullWidth>
+                      <InputLabel>Tipo</InputLabel>
+                      <Select {...field} label="Tipo">
+                        <MenuItem value="">Sin tipo</MenuItem>
+                        <MenuItem value="ES">ES</MenuItem>
+                        <MenuItem value="EL">EL</MenuItem>
+                        <MenuItem value="OB">OB</MenuItem>
+                        <MenuItem value="OP">OP</MenuItem>
+                      </Select>
+                    </FormControl>
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
                 <Controller
                   name="creditos"
                   control={control}
@@ -1657,6 +1716,7 @@ export default function CursosPage() {
                   <TableCell sx={{ fontWeight: 700 }}>Código</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Nombre</TableCell>
                   <TableCell sx={{ fontWeight: 700, width: 160 }}>Departamento</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: 90 }}>TIPO</TableCell>
                   <TableCell sx={{ fontWeight: 700, width: 100 }}>Ciclo</TableCell>
                   <TableCell sx={{ fontWeight: 700, width: 100 }}>Créditos</TableCell>
                   <TableCell sx={{ fontWeight: 700, textAlign: 'center', width: 90 }}>Acción</TableCell>
@@ -1665,7 +1725,7 @@ export default function CursosPage() {
               <TableBody>
                 {filteredPreviewCursos.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} sx={{ textAlign: 'center', py: 3 }}>
+                    <TableCell colSpan={9} sx={{ textAlign: 'center', py: 3 }}>
                       No hay cursos para mostrar con los filtros actuales.
                     </TableCell>
                   </TableRow>

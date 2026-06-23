@@ -276,7 +276,7 @@ export class HorariosService {
         .createQueryBuilder('d')
         .where('d.activo = :activo', { activo: true })
         .orderBy(
-          `CASE d.tipoContrato WHEN 'nombrado' THEN 1 WHEN 'contratado' THEN 2 END`,
+          `CASE d.condicion WHEN 'nombrado' THEN 1 WHEN 'contratado' THEN 2 END`,
           'ASC',
         )
         .addOrderBy(

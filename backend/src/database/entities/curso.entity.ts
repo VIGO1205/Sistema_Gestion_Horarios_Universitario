@@ -6,18 +6,19 @@ import { ProgramacionCursoCiclo } from './programacion-curso-ciclo.entity';
 import { Curricula } from './curricula.entity';
 
 export enum TipoCurso {
-  TEORIA = 'teoria',
-  LABORATORIO = 'laboratorio',
-  AMBOS = 'ambos',
+  ESPECIFICO = 'ES',
+  ELECTIVO = 'EL',
+  OBLIGATORIO = 'OB',
+  OP = 'OP',
 }
 
 @Entity('cursos')
-@Index('idx_curso_codigo', ['codigo'])
+@Index('idx_curso_codigo_curricula', ['codigo', 'curriculaId'], { unique: true })
 export class Curso {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'varchar', length: 20, unique: true })
+  @Column({ type: 'varchar', length: 20 })
   codigo: string;
 
   @Column({ type: 'varchar', length: 200 })
@@ -31,6 +32,9 @@ export class Curso {
 
   @Column({ type: 'varchar', length: 100, default: 'General' })
   departamento: string;
+
+  @Column({ type: 'enum', enum: TipoCurso, nullable: true })
+  tipoCurso: TipoCurso | null;
 
   @Column({ name: 'carrera_id', type: 'integer', nullable: true })
   carreraId: number;

@@ -84,8 +84,8 @@ export class CurriculasService {
     };
   }
 
-  // Método para extraer y asignar cursos a una malla existente desde PDF
-  async extractCursosFromPDF(id: number, file?: Express.Multer.File): Promise<any> {
+  // Método para previsualizar cursos desde PDF (sin guardar)
+  async previewCursosFromPDF(id: number, file?: Express.Multer.File): Promise<any> {
     const curricula = await this.findOne(id);
     
     let fileBuffer: Buffer;
@@ -108,8 +108,23 @@ export class CurriculasService {
     
     const cursosExtraidos = await this.iaService.parseCursosFromText(pdfText);
 
-    const savedCursos = await this.cursosService.confirmImportFromIA(curricula.carreraId, cursosExtraidos, curricula.id);
+    const cursos = cursosExtraidos
+      .map((data: any) => this.cursosService.normalizeCursoData(data))
+      .filter((data: any) => data.codigo || data.nombre);
+    
+    return {
+      message: 'Previsualización generada correctamente.',
+      count: cursos.length,
+      carreraId: curricula.carreraId,
+      curriculaId: curricula.id,
+      cursos,
+    };
+  }
 
+  // Método para confirmar y guardar cursos previsualizados
+  async confirmImportCursosFromPreview(id: number, cursos: any[]): Promise<any> {
+    const curricula = await this.findOne(id);
+    const savedCursos = await this.cursosService.confirmImportFromIA(curricula.carreraId, cursos, curricula.id);
     const curriculaConCursos = await this.findOne(curricula.id);
     
     return {

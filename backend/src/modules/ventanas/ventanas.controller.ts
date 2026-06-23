@@ -96,11 +96,11 @@ export class VentanasController {
   @Get('cola')
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
   getCola(
-    @Query('tipoContrato') tipoContrato?: string,
+    @Query('condicion') condicion?: string,
     @Query('categoria') categoria?: string,
     @Query('ventanaId') ventanaId?: string,
   ) {
-    return this.ventanasService.getCola(tipoContrato, categoria, ventanaId ? +ventanaId : undefined);
+    return this.ventanasService.getCola(condicion, categoria, ventanaId ? +ventanaId : undefined);
   }
 
   @Get('atendidos')
@@ -112,11 +112,11 @@ export class VentanasController {
   @Get('en-atencion')
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
   getEnAtencion(
-    @Query('tipoContrato') tipoContrato?: string,
+    @Query('condicion') condicion?: string,
     @Query('categoria') categoria?: string,
     @Query('ventanaId') ventanaId?: string,
   ) {
-    return this.ventanasService.getEnAtencion(tipoContrato, categoria, ventanaId ? +ventanaId : undefined);
+    return this.ventanasService.getEnAtencion(condicion, categoria, ventanaId ? +ventanaId : undefined);
   }
 
   @Get('count-docentes')

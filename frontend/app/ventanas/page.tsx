@@ -1138,7 +1138,7 @@ export default function VentanasPage() {
                             primary={<Typography sx={{ fontWeight: 700, color: '#333' }}>{doc.nombreCompleto}</Typography>}
                             secondary={
                               <Typography variant="caption" sx={{ fontWeight: 600, color: '#666' }}>
-                                {doc.tipoContrato.toUpperCase()} • {doc.antiguedadAnios} años antig.
+                                {doc.condicion.toUpperCase()} • {doc.antiguedadAnios} años antig.
                               </Typography>
                             }
                           />

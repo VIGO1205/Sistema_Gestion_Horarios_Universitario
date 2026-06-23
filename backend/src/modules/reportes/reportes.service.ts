@@ -15,6 +15,7 @@ import { Carrera } from '../../entities/carrera.entity';
 import { CargaAcademica } from '../../entities/carga-academica.entity';
 import { CicloAcademico } from '../../entities/ciclo-academico.entity';
 import { CiclosService } from '../ciclos/ciclos.service';
+import { AsignacionFilialService } from '../asignacion-filial/asignacion-filial.service';
 
 @Injectable()
 export class ReportesService {
@@ -40,26 +41,43 @@ export class ReportesService {
     @InjectRepository(CicloAcademico)
     private cicloRepo: Repository<CicloAcademico>,
     private ciclosService: CiclosService,
+    private asignacionFilialService: AsignacionFilialService,
   ) {}
 
   async crearReportesAutomaticos(docenteId: number, cicloId: number): Promise<void> {
     const formatos = [
       { formato: TipoFormato.FORMATO_1_CARGA_CENTRAL, sede: 'Sede Central' },
       { formato: TipoFormato.FORMATO_2_DJ_CENTRAL, sede: 'Sede Central' },
-      { formato: TipoFormato.FORMATO_1_CARGA_DESCONCENTRADA, sede: 'Sedes Desconcentradas', estado: EstadoReporte.STANDBY },
-      { formato: TipoFormato.FORMATO_2_DJ_DESCONCENTRADA, sede: 'Sedes Desconcentradas' },
       { formato: TipoFormato.FORMATO_3_HORARIO, sede: 'Sede Central' },
     ];
 
+    // Check if docente has dependencias (not just ['Ninguno'])
+    const docente = await this.docenteRepo.findOne({ where: { id: docenteId } });
+    const tieneDependencias = docente?.dependencias && 
+      (docente.dependencias.length > 1 || 
+        (docente.dependencias.length === 1 && docente.dependencias[0] !== 'Ninguno'));
+    
+    // Check if there's an asignacion filial
+    const asignacionFilial = await this.asignacionFilialService.findByDocenteAndCiclo(docenteId, cicloId);
+    
+    if (tieneDependencias && asignacionFilial) {
+      formatos.push({ formato: TipoFormato.FORMATO_4_CARGA_ADICIONAL, sede: 'Filiales y Centros' });
+    }
+
     for (const f of formatos) {
-      const reporte = this.reporteRepo.create({
-        docenteId,
-        cicloId,
-        formato: f.formato,
-        sede: f.sede,
-        estado: f.estado || EstadoReporte.PENDIENTE,
+      const existing = await this.reporteRepo.findOne({
+        where: { docenteId, cicloId, formato: f.formato }
       });
-      await this.reporteRepo.save(reporte);
+      if (!existing) {
+        const reporte = this.reporteRepo.create({
+          docenteId,
+          cicloId,
+          formato: f.formato,
+          sede: f.sede,
+          estado: EstadoReporte.PENDIENTE,
+        });
+        await this.reporteRepo.save(reporte);
+      }
     }
   }
 
@@ -99,7 +117,6 @@ export class ReportesService {
       relations: ['docente']
     });
     if (!reporte) throw new BadRequestException('Reporte no encontrado');
-    if (reporte.estado === EstadoReporte.STANDBY) throw new BadRequestException('Este reporte está en standby');
 
     // Verificar si el docente tiene una firma guardada en su perfil
     if (!reporte.docente?.firmaBase64) {
@@ -128,12 +145,12 @@ export class ReportesService {
     // Delegar según el formato
     if (reporte.formato === TipoFormato.FORMATO_2_DJ_CENTRAL) {
       await this.generarFormato2DJCentral(doc, reporte);
-    } else if (reporte.formato === TipoFormato.FORMATO_2_DJ_DESCONCENTRADA) {
-      await this.generarFormato2DJDesconcentrada(doc, reporte);
     } else if (reporte.formato === TipoFormato.FORMATO_3_HORARIO) {
       await this.generarFormato3Horario(doc, reporte);
+    } else if (reporte.formato === TipoFormato.FORMATO_4_CARGA_ADICIONAL) {
+      await this.generarFormato4CargaAdicional(doc, reporte);
     } else {
-      // Por defecto el Formato 1 (o mientras implementamos el resto)
+      // Por defecto el Formato 1
       await this.generarFormato1Carga(doc, reporte);
     }
 
@@ -141,6 +158,274 @@ export class ReportesService {
     const filename = `${reporte.formato} - ${reporte.docente.nombreCompleto}.pdf`;
 
     return { pdf: pdfBuffer, filename };
+  }
+
+  private async generarFormato4CargaAdicional(doc: any, reporte: Reporte) {
+    const docenteId = reporte.docenteId;
+    const cicloId = reporte.cicloId;
+
+    const docente = await this.docenteRepo.findOne({ where: { id: docenteId } });
+    const docenteCarrera = await this.docenteCarreraRepo.findOne({
+      where: { docente: { id: docenteId } },
+      relations: ['carrera']
+    });
+    const facultad = docenteCarrera?.carrera?.facultad || 'INGENIERÍA';
+    const departamento = docenteCarrera?.carrera?.nombre || 'INGENIERÍA DE SISTEMAS';
+
+    const asignacionFilial = await this.asignacionFilialService.findByDocenteAndCiclo(docenteId, cicloId);
+
+    const cargaAcademica = await this.cargaAcademicaRepo.findOne({
+      where: { docenteId, cicloId },
+      relations: ['docente']
+    });
+    const firma = (reporte.estado === EstadoReporte.FIRMADO) ? (cargaAcademica?.docente?.firmaBase64 || null) : null;
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 15;
+    const contentWidth = pageWidth - 2 * margin;
+
+    const formatDatePDF = (date: any) => {
+      if (!date) return '-';
+      const dateStr = String(date);
+      const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
+      return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+    };
+
+    let currentY = 25;
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('times', 'bold');
+    doc.setFontSize(14);
+    doc.text('FORMATO', pageWidth / 2, currentY, { align: 'center' });
+
+    currentY += 8;
+    doc.setFontSize(12);
+    const title1 = 'DECLARACIÓN DE CARGA HORARIA LECTIVA ASIGNADA EN FILIALES,';
+    const title2 = 'POSTGRADO, SEGUNDAS ESPECIALIDADES Y CENTROS DE PRODUCCIÓN Y EXTENSIÓN UNIVERSITARIA';
+    doc.text(title1, pageWidth / 2, currentY, { align: 'center' });
+    currentY += 6;
+    doc.text(title2, pageWidth / 2, currentY, { align: 'center' });
+    currentY += 15;
+
+    // --- Facultad and Departamento académico
+    doc.setFontSize(9);
+    doc.setFont('times', 'bold');
+    doc.text(`FACULTAD: ${facultad}`, margin, currentY);
+    doc.text(`DPTO. ACADÉMICO: ${departamento}`, margin + 90, currentY);
+    currentY += 10;
+
+    // --- Datos del docente: table
+    doc.setFontSize(9);
+    const teacherCols = [55, 35, 35, 45];
+    let xPos = margin;
+    const teacherHeaders = ['NOMBRES Y APELLIDOS', 'CONDICIÓN', 'CATEGORÍA', 'MODALIDAD'];
+    teacherHeaders.forEach((h, i) => {
+      doc.rect(xPos, currentY, teacherCols[i], 7);
+      doc.setFont('times', 'bold');
+      doc.text(h, xPos + teacherCols[i] / 2, currentY + 4.5, { align: 'center' });
+      xPos += teacherCols[i];
+    });
+
+    currentY +=7;
+    xPos = margin;
+
+    // Condicion: Regular or Contratado with (X)
+    const condicion = docente?.condicion || '';
+    const condicionText = `${condicion === 'nombrado' ? 'REGULAR' : 'CONTRATADO'} (X)`;
+
+    // Categoria: Principal, Asociado, Auxiliar, etc. with (X)
+    const categoria = docente?.categoria || '';
+    let categoriaText = '';
+    const categorias = ['PRINCIPAL', 'ASOCIADO', 'AUXILIAR', 'TIPO_A1', 'TIPO_A2', 'TIPO_A3', 'TIPO_B1', 'TIPO_B2', 'TIPO_B3', 'JEFE_PRACTICA'];
+    categorias.forEach(cat => {
+      if (cat === categoria) {
+        categoriaText += `${cat.replace(/_/g, ' ')} (X) `;
+      } else {
+        categoriaText += `${cat.replace(/_/g, ' ')} ( ) `;
+      }
+    });
+
+    // Modalidad: Tiempo completo, parcial, etc.
+    const modalidad = docente?.dedicacion || '';
+    let modalidadText = 'DE (X) TC ( ) TP ( ) ';
+    if (modalidad.includes('COMPLETO')) modalidadText = 'DE ( ) TC (X) TP ( ) ';
+    if (modalidad.includes('PARCIAL')) modalidadText = 'DE ( ) TC ( ) TP (X) ';
+
+    const teacherValues = [
+      (docente?.nombreCompleto || '').toUpperCase(),
+      condicionText,
+      categoriaText,
+      modalidadText
+    ];
+
+    teacherValues.forEach((v, i) => {
+      doc.rect(xPos, currentY, teacherCols[i], i === 0 ? 15 : 30);
+      doc.setFont('times', 'normal');
+      const splitText = doc.splitTextToSize(v, teacherCols[i] - 4);
+      doc.text(splitText, xPos + 2, currentY + 4);
+      xPos += teacherCols[i];
+    });
+
+    // Codigo docente in first cell bottom
+    xPos = margin;
+    doc.setFont('times', 'normal');
+    doc.setFontSize(9);
+    doc.text(`CÓDIGO: ${docente?.codigoIBM || ''}`, xPos + 2, currentY + 20);
+
+    currentY += 35;
+
+    // --- Año académico, semestre, inicio y fin
+    const cicloNombre = reporte.ciclo.nombre || '';
+    const anio = cicloNombre.split('-')[0] || '';
+    const semestre = cicloNombre.split('-')[1] || '';
+    const fechaInicio = formatDatePDF(reporte.ciclo.fechaInicio);
+    const fechaFin = formatDatePDF(reporte.ciclo.fechaFin);
+
+    doc.setFont('times', 'bold');
+    doc.setFontSize(9);
+    doc.rect(margin, currentY, contentWidth, 7);
+    doc.text(`AÑO ACADEMICO: ${anio}   SEMESTRE: ${semestre}     INICIO: ${fechaInicio}   -   TÉRMINO: ${fechaFin}`, pageWidth / 2, currentY + 4.5, { align: 'center' });
+
+    currentY += 15;
+
+    // --- Table: Curso, Dependencia, Fechas, Horario, Total Horas
+    const tableHeaders = ['CURSO', 'DEPENDENCIA', 'FECHA DE INICIO/\nTÉRMINO', 'HORARIO SEMANAL', 'TOTAL HORAS'];
+    const tableColWidths = [40, 35, 35, 45, 20];
+
+    xPos = margin;
+    doc.setFontSize(8);
+    doc.setFont('times', 'bold');
+    tableHeaders.forEach((h, i) => {
+      doc.rect(xPos, currentY, tableColWidths[i], 12);
+      const splitHeader = doc.splitTextToSize(h, tableColWidths[i] - 4);
+      doc.text(splitHeader, xPos + tableColWidths[i]/2, currentY + 4, { align: 'center' });
+      xPos += tableColWidths[i];
+    });
+
+    currentY += 12;
+    doc.setFont('times', 'normal');
+
+    let totalGeneralHoras = 0;
+    if (asignacionFilial && asignacionFilial.cursos) {
+      asignacionFilial.cursos.forEach(curso => {
+        xPos = margin;
+
+        // Curso nombre
+        const cursoText = curso.nombre || '';
+        const cursoLines = doc.splitTextToSize(cursoText, tableColWidths[0]-4);
+
+        // Dependencia
+        const depText = curso.dependencia || '';
+        const depLines = doc.splitTextToSize(depText, tableColWidths[1]-4);
+
+        // Fechas
+        const fechaInicioCurso = formatDatePDF(asignacionFilial.fechaInicio);
+        const fechaFinCurso = formatDatePDF(asignacionFilial.fechaFin);
+        const fechasText = `F.I: ${fechaInicioCurso}\nF.T: ${fechaFinCurso}`;
+
+        // Horario semanal
+        let horarioText = '';
+        (curso.horarioSemanal || []).forEach(horario => {
+          const mapDias: Record<string, string> = {
+            'Lunes': 'Lunes',
+            'Martes': 'Martes',
+            'Miércoles': 'Miércoles',
+            'Jueves': 'Jueves',
+            'Viernes': 'Viernes',
+            'Sábado': 'Sábado',
+          };
+          horarioText += `${mapDias[horario.dia] || horario.dia} ${horario.horaInicio.substring(0,5)}-${horario.horaFin.substring(0,5)}\n`;
+        });
+        const horarioLines = doc.splitTextToSize(horarioText, tableColWidths[3]-4);
+
+        const totalHoras = curso.totalHorasSemanales || 0;
+        totalGeneralHoras += totalHoras;
+
+        const rowHeight = Math.max(
+          8,
+          cursoLines.length*3.5 +4,
+          depLines.length*3.5 +4,
+          horarioLines.length*3.5 +4
+        );
+
+        doc.rect(xPos, currentY, tableColWidths[0], rowHeight);
+        doc.text(cursoLines, xPos + 2, currentY +4);
+        xPos += tableColWidths[0];
+
+        doc.rect(xPos, currentY, tableColWidths[1], rowHeight);
+        doc.text(depLines, xPos + 2, currentY +4);
+        xPos += tableColWidths[1];
+
+        doc.rect(xPos, currentY, tableColWidths[2], rowHeight);
+        doc.text(doc.splitTextToSize(fechasText, tableColWidths[2]-4), xPos + 2, currentY +4);
+        xPos += tableColWidths[2];
+
+        doc.rect(xPos, currentY, tableColWidths[3], rowHeight);
+        doc.text(horarioLines, xPos + 2, currentY +4);
+        xPos += tableColWidths[3];
+
+        doc.rect(xPos, currentY, tableColWidths[4], rowHeight);
+        doc.setFont('times', 'bold');
+        doc.text(String(totalHoras), xPos + tableColWidths[4]/2, currentY + rowHeight/2 +1, { align: 'center' });
+
+        currentY += rowHeight;
+      });
+    }
+
+    // Total horas row
+    xPos = margin;
+    doc.setFont('times', 'bold');
+    doc.rect(xPos, currentY, contentWidth - tableColWidths[4], 7);
+    doc.rect(xPos + contentWidth - tableColWidths[4], currentY, tableColWidths[4],7);
+    doc.text(String(totalGeneralHoras), xPos + contentWidth - tableColWidths[4]/2, currentY +4.5, { align: 'center' });
+    currentY +=12;
+
+    // --- Fecha actual
+    doc.setFont('times', 'normal');
+    doc.setFontSize(9);
+    const fechaActual = new Date().toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' });
+    doc.text(`Trujillo, ${fechaActual}`, pageWidth - margin, currentY, { align: 'right' });
+
+    currentY +=20;
+
+    // --- Firma del profesor
+    const firmaWidth =50;
+    doc.line(margin + 10, currentY, margin+10 + firmaWidth, currentY);
+    doc.setFont('times', 'bold');
+    doc.text('Firma del Profesor', margin+10 + firmaWidth/2, currentY+5, {align:'center'});
+    if (firma) {
+      try { doc.addImage(firma, 'PNG', margin +15, currentY-18, 40,15); } catch (e) {}
+    }
+
+    // --- V.B. Decano
+    doc.line(pageWidth - margin -10 - firmaWidth, currentY, pageWidth - margin -10, currentY);
+    doc.text('V° B°', pageWidth - margin -10 - firmaWidth/2, currentY +5, { align: 'center' });
+    currentY += 5;
+    doc.setFontSize(11);
+    doc.text('DECANO', pageWidth - margin -10 - firmaWidth/2, currentY +8, { align: 'center' });
+
+    // --- Signature row 2: Director de Dpto and Director de Unidad
+    currentY += 40;
+    const spacing = (contentWidth - 2*firmaWidth)/2;
+    let xFirma = margin;
+
+    // Director de Dpto
+    doc.line(xFirma, currentY, xFirma + firmaWidth, currentY);
+    doc.setFontSize(9);
+    doc.setFont('times', 'bold');
+    doc.text('Director del Departamento Académico', xFirma + firmaWidth/2, currentY +5, { align: 'center' });
+
+    // Director de Unidad
+    xFirma += firmaWidth + spacing;
+    doc.line(xFirma, currentY, xFirma + firmaWidth, currentY);
+    doc.text('Director de la Unidad Académica', xFirma + firmaWidth/2, currentY +5, { align: 'center' });
+
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(150,150,150);
+      doc.text(`Página ${i} de ${pageCount} - Generado por Sistema de Horarios UNT`, pageWidth / 2, 290, { align: 'center' });
+    }
   }
 
   private async generarFormato1Carga(doc: any, reporte: Reporte) {
@@ -184,10 +469,9 @@ export class ReportesService {
     // --- TÍTULOS ---
     let currentY = 20;
     doc.setTextColor(0, 0, 0);
-    doc.setFontSize(12);
-    doc.setFont('times', 'normal');
-    doc.text('FORMATO N° 1', pageWidth / 2, currentY, { align: 'center' });
-    doc.text('DECLARACION DE CARGA HORARIA ASIGNADA', pageWidth / 2, currentY + 6, { align: 'center' });
+    doc.setFont('times', 'bold');
+    doc.setFontSize(14);
+    doc.text('DECLARACION DE LA CARGA ACADEMICA DOCENTE (F01-CAD)', pageWidth / 2, currentY, { align: 'center' });
 
     // --- SECCIÓN I: DATOS DEL PROFESOR ---
     currentY += 15;
@@ -233,7 +517,7 @@ export class ReportesService {
     xOffset = margin;
     const teacherValues = [
       (docente?.nombreCompleto || '').toUpperCase(),
-      (docente?.tipoContrato || '').toUpperCase(),
+      (docente?.condicion || '').toUpperCase(),
       (docente?.categoria || '').toUpperCase(),
       (docente?.dedicacion || '').toUpperCase()
     ];
@@ -471,12 +755,9 @@ export class ReportesService {
 
     // --- ENCABEZADO ---
     let currentY = 35;
+    doc.setFont('times', 'bold');
     doc.setFontSize(12);
-    doc.text('FORMATO Nº 2', pageWidth / 2, currentY, { align: 'center' });
-    currentY += 8;
-    
-    doc.setFont('times', 'normal');
-    const title = 'DECLARACION JURADA DE NO ESTAR INCURSO EN CAUSALES DE INCOMPATIBILIDAD O IMPEDIMENTO LABORAL';
+    const title = 'DECLARACION JURADA DE NO ESTAR INCURSO EN CAUSALES DE INCOMPATIBILIDAD O IMPEDIMENTO LABORAL (F02-CAD)';
     const splitTitle = doc.splitTextToSize(title, contentWidth - 40); 
     doc.text(splitTitle, pageWidth / 2, currentY, { align: 'center' });
     currentY += (splitTitle.length * 6) + 15;
@@ -494,7 +775,7 @@ export class ReportesService {
     const p2 = 'NO ESTOY INCURSO en causales de incompatibilidad laboral y NO TENGO impedimento para ejercer la docencia en la Universidad Nacional de Trujillo, de conformidad con lo previsto en el capitulo VII de las Incompatibilidades e Impedimentos, del Titulo VI: Los Profesores, del Estatuto Institucional vigente.';
     currentY = drawParagraph(p2, currentY);
 
-    const condicion = (docente?.tipoContrato || 'Nombrado').charAt(0).toUpperCase() + (docente?.tipoContrato || 'Nombrado').slice(1).toLowerCase();
+    const condicion = (docente?.condicion || 'Nombrado').charAt(0).toUpperCase() + (docente?.condicion || 'Nombrado').slice(1).toLowerCase();
     const dedicacion = docente?.dedicacion || 'Tiempo Completo 40 H';
     const p3 = `Soy docente ${condicion}, a ${dedicacion} y NO desempeño cargo público o privado en horas que coincidan con el horario establecido en la Universidad Nacional de Trujillo (De conformidad con los articulos 270ro y 277ro del Estatuto Institucional vigente).`;
     currentY = drawParagraph(p3, currentY);
@@ -555,173 +836,6 @@ export class ReportesService {
     const nota = 'Nota: Los docentes deben suscribir de forma obligatoria el presente formato en cada Semestre Académico, en el reverso de la Declaracion de Carga Horaria Asignada';
     const splitNota = doc.splitTextToSize(nota, contentWidth - 30); 
     doc.text(splitNota, pageWidth / 2, 275, { align: 'center' });
-  }
-
-  private async generarFormato2DJDesconcentrada(doc: any, reporte: Reporte) {
-    const docenteId = reporte.docenteId;
-    const cicloId = reporte.cicloId;
-
-    const docente = await this.docenteRepo.findOne({ where: { id: docenteId } });
-    const docenteCarrera = await this.docenteCarreraRepo.findOne({
-      where: { docente: { id: docenteId } },
-      relations: ['carrera']
-    });
-    const facultad = docenteCarrera?.carrera?.facultad || 'INGENIERÍA';
-    const departamento = docenteCarrera?.carrera?.nombre || 'INGENIERÍA DE SISTEMAS';
-
-    const cargaAcademica = await this.cargaAcademicaRepo.findOne({
-      where: { docenteId, cicloId },
-      relations: ['docente']
-    });
-    const firma = (reporte.estado === EstadoReporte.FIRMADO) ? (cargaAcademica?.docente?.firmaBase64 || null) : null;
-
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 20;
-    const contentWidth = pageWidth - 2 * margin;
-
-    doc.setFont('times', 'normal');
-    doc.setTextColor(0, 0, 0);
-
-    // Helper para justificar líneas sin sangría
-    const justifyLine = (text: string, x: number, y: number, width: number) => {
-      const words = text.split(/\s+/).filter(w => w.length > 0);
-      if (words.length <= 1) {
-        doc.text(text, x, y);
-        return;
-      }
-      const totalWordsWidth = words.reduce((sum, word) => sum + doc.getTextWidth(word), 0);
-      const spaceBetweenWords = (width - totalWordsWidth) / (words.length - 1);
-      let currentX = x;
-      words.forEach((word, i) => {
-        doc.text(word, currentX, y);
-        currentX += doc.getTextWidth(word) + spaceBetweenWords;
-      });
-    };
-
-    const drawJustifiedParagraph = (text: string, y: number) => {
-      const lines = doc.splitTextToSize(text, contentWidth);
-      lines.forEach((line: string, index: number) => {
-        if (index === lines.length - 1) {
-          doc.text(line, margin, y, { align: 'left' });
-        } else {
-          justifyLine(line, margin, y, contentWidth);
-        }
-        y += 6;
-      });
-      return y + 4; // Separación entre párrafos
-    };
-
-    // --- ENCABEZADO ---
-    let currentY = 10; 
-    doc.setFontSize(10); // Bajado de 10.7 a 10
-    const headerTitle = 'DECLARACION JURADA DE LOS DOCENTES QUE PRESTAN SERVICIOS EN SEDES DESCENTRALIZADAS';
-    const splitHeader = doc.splitTextToSize(headerTitle, contentWidth - 40);
-    doc.text(splitHeader, pageWidth / 2, currentY, { align: 'center' });
-    
-    // Separación título-texto: 10mm desde la última línea del título
-    currentY = 10 + (splitHeader.length * 5) + 10; 
-
-    // --- CUERPO ---
-    doc.setFontSize(10); // Asegurar 10px para el cuerpo
-    const nombreDocente = (docente?.nombreCompleto || '').toUpperCase();
-    const dni = docente?.dni || '________';
-    const codigoIbm = docente?.codigoIBM || '0000';
-
-    // Párrafo 1
-    const p1 = `Yo, ${nombreDocente} identificado con DNI. Nro ${dni} con Código IBM Nro ${codigoIbm} del Departamento Académico Dpto. de ${departamento} Facultad de ${facultad}; en el marco del reglamento de funcionamiento de Sedes Descentralizadas (RCU Nro 072 CU-COG-2005/UNT) y la Directiva Nro 01-2007-VAC/UNT sobre Racionalización Académica del Personal Docentes que labora en las Sedes descentralizadas (R.C.U. Nro 576-2007/UNT) DECLARO BAJO JURAMENTO Y EN HONOR A LA VERDAD QUE:`;
-    currentY = drawJustifiedParagraph(p1, currentY);
-
-    // Párrafo 2: Forzar a 2 líneas
-    const p2 = 'EN MI PRESTACION DE SERVICIOS EN SEDES DESCENTRALIZADAS NO ESTOY INCURSO EN INCOMPATIBILIDAD HORARIA NI CONTRAVENGO LA SIGUIENTE NORMATIVIDAD INSTITUCIONAL:';
-    const linesP2 = doc.splitTextToSize(p2, contentWidth); 
-    linesP2.forEach((line: string, index: number) => {
-      if (index === 0) {
-        justifyLine(line, margin, currentY, contentWidth);
-      } else {
-        doc.text(line, margin, currentY, { align: 'left' });
-      }
-      currentY += 5;
-    });
-    currentY += 4;
-
-    // Párrafos de Normativa (1 al 5)
-    const normativa = [
-      'Los docentes ordinarios a Dedicación Exclusiva y Tiempo Completo solo pueden tener carga horaria máxima de diez (10) horas semanales (num. 1 de la Directiva).',
-      'Los docentes que ejercen cargos académicos y administrativos de: Jefe de Departamento Académico, Director de Escuela Académico Profesional, Director de Sección de Postgrado, Profesor Secretario de Facultad. Jefe de Oficina General, o cargos Directivos en Centros de Producción o líneas de Rentabilidad pueden asumir carga máxima de 05 horas semanales, siempre que sea en forma excepcional y por no contar con docente de la especialidad habilitada para asumir dicha carga. (num. 2 y 3 de la Directiva RCU Nro 005-2009/UNT y art.23 del Reglamento).',
-      'Los docentes que ejercen cargo de Decano o Director de Postgrado y aquellos que prestan servicios en Centros de Producción y línea de Rentabilidad no pueden asumir carga horaria en Sedes Descentralizadas. (num. 3 de la Directiva ya art 23 del Reglamento).',
-      'Los docentes beneficiados con becas de estudio de maestria o doctorado o Segunda especialidad solo pueden tener carga horaria máxima de tres (03) horas semanales. (num. 4 de la Directiva).',
-      'El desarrollo de la carga en sede descentralizada no puede inferir con la carga lectiva y no lectiva asignada en la Sede Central; salvo el caso de las Sedes de Cascas, Huamachuco, Tayabamba y Santiago de Chuco en que se debe contar con Licencia por comisión de servicios y carta de compromiso del docente que asumiría la carga horaria en la Sede Central (num. 5 y 7 de la Directiva y art. 23 del Reglamento).'
-    ];
-
-    normativa.forEach(text => {
-      currentY = drawJustifiedParagraph(text, currentY);
-    });
-
-    // Normativa 6: Forzar a 2 líneas
-    const norm6 = 'Los docentes que asumen carga horaria en las Sedes de Huamachuco, Cascas, Santiago de Chuco y Tayabamba no pueden asumir labores labores durante el mismo periodo en otra Sede (num. 6 de la Directiva).';
-    const linesNorm6 = doc.splitTextToSize(norm6, contentWidth);
-    linesNorm6.forEach((line: string, index: number) => {
-      if (index === 0) {
-        justifyLine(line, margin, currentY, contentWidth);
-      } else {
-        doc.text(line, margin, currentY, { align: 'left' });
-      }
-      currentY += 6;
-    });
-    currentY += 4;
-
-    // Párrafo final (Combinado): Forzado EXACTO como la imagen
-    const pf1 = 'En caso de faltar a la verdad así como de incurrir en incompatibilidad horaria contraviniendo los dispositivos pre-citados me avengo a las sanciones que correspondan,';
-    const pf2 = 'y autorizo al funcionario competente disponga el descuento del pago por mis servicios en Sedes Descentralizadas, conforme al monto que la unidad de remuneraciones liquide como pago indebido por el periodo ilegalmente laborado.';
-    
-    // Obtener todas las líneas del bloque completo para controlar el estilo por línea
-    const fullFinalText = pf1 + ' ' + pf2;
-    const allFinalLines = doc.splitTextToSize(fullFinalText, contentWidth);
-    
-    allFinalLines.forEach((line: string, index: number) => {
-      // Estilo normal para las primeras 2 líneas, cursiva y negrita para la 3ra y 4ta
-      if (index >= 2) {
-        doc.setFont('times', 'bolditalic');
-      } else {
-        doc.setFont('times', 'normal');
-      }
-
-      if (index === allFinalLines.length - 1) {
-        doc.text(line, margin, currentY, { align: 'left' });
-      } else {
-        justifyLine(line, margin, currentY, contentWidth);
-      }
-      currentY += 6;
-    });
-
-    // --- FECHA ---
-    currentY += 4; // Separación igual a la de los párrafos (4mm)
-    doc.setFont('times', 'normal');
-    const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-    const d = new Date();
-    const fechaTexto = `Trujillo, ${d.getDate()} de ${meses[d.getMonth()]} del ${d.getFullYear()}`;
-    doc.text(fechaTexto, pageWidth - margin, currentY, { align: 'right' });
-
-    // --- FIRMA ---
-    currentY += 20; 
-    const rightX = pageWidth - margin - 40;
-    doc.line(rightX - 35, currentY, rightX + 35, currentY);
-    currentY += 6; // Aumentado de 2.5 a 6 para dar espacio real
-    doc.setFont('times', 'bold');
-    doc.text('FIRMA DEL DECLARANTE', rightX, currentY, { align: 'center' });
-    currentY += 5; // Aumentado de 2.5 a 5
-    doc.text(`DNI: ${dni}`, rightX, currentY, { align: 'center' });
-
-    if (firma) {
-      try { doc.addImage(firma, 'PNG', rightX - 25, currentY - 25, 50, 15); } catch (e) {}
-    }
-
-    // --- NOTA AL PIE (Y=287, 10mm desde el borde inferior) ---
-    doc.setFont('times', 'normal');
-    doc.setFontSize(8);
-    const nota = 'Nota: Los docentes deben suscribir de forma obligatoria el presente formato para prestar servicios en cada Sede Descentralizada, al reverso de la Declaración de la Carga Horaria';
-    const splitNota = doc.splitTextToSize(nota, contentWidth - 30);
-    doc.text(splitNota, pageWidth / 2, 287, { align: 'center' });
   }
 
   private agruparCargaLectiva(cargaLectiva: any[], horarios: any[]) {
@@ -801,7 +915,7 @@ export class ReportesService {
     let currentY = 20;
     doc.setFont('times', 'bold');
     doc.setFontSize(10); 
-    doc.text('HORARIO SEMANAL DE LA CARGA ACADÉMICA DOCENTE (F03-CAD)', pageWidth / 2, currentY, { align: 'center' });
+    doc.text('HORARIO SEMANAL DE LA CARGA ACADEMICA DOCENTE (F03-CAD)', pageWidth / 2, currentY, { align: 'center' });
     
     currentY += 10;
     doc.setFontSize(9);
@@ -1218,7 +1332,7 @@ export class ReportesService {
 
     const teacherValues = [
       (docente?.nombreCompleto || '').toUpperCase(),
-      (docente?.tipoContrato || '').toUpperCase(),
+      (docente?.condicion || '').toUpperCase(),
       (docente?.categoria || '').toUpperCase(),
       (docente?.dedicacion || '').toUpperCase()
     ];
@@ -1373,7 +1487,7 @@ export class ReportesService {
     worksheet.getCell(`H${currentRow}`).alignment = { horizontal: 'center', vertical: 'top' };
 
     const excelBuffer = await workbook.xlsx.writeBuffer();
-    const filename = `(${reporte.formato}) - ${reporte.docente.nombreCompleto}.xlsx`;
+    const filename = `${reporte.formato} - ${reporte.docente.nombreCompleto}.xlsx`;
 
     return { excel: Buffer.from(excelBuffer), filename };
   }

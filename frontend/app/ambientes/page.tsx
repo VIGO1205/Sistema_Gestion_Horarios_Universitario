@@ -39,6 +39,7 @@ import {
   DeleteSweep as DeleteSweepIcon,
   People as PeopleIcon,
   Category as CategoryIcon,
+  Business as BusinessIcon,
 } from '@mui/icons-material';
 import api from '@/lib/api';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -51,10 +52,12 @@ const MySwal = withReactContent(Swal);
 export default function AmbientesPage() {
   const [loading, setLoading] = useState(true);
   const [ambientes, setAmbientes] = useState<any[]>([]);
+  const [lugares, setLugares] = useState<any[]>([]);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [filtros, setFiltros] = useState({
     search: '',
     tipo: 'todos',
+    lugarId: 'todos',
   });
 
   // Estado para la paginación
@@ -77,16 +80,18 @@ export default function AmbientesPage() {
       tipo: 'teoría',
       capacidad: 40,
       disponible: true,
+      lugarId: null,
     }
   });
 
   useEffect(() => {
     fetchAmbientes();
+    fetchLugares();
   }, []);
 
   useEffect(() => {
     setPage(0);
-  }, [filtros.search, filtros.tipo]);
+  }, [filtros.search, filtros.tipo, filtros.lugarId]);
 
   const fetchAmbientes = async () => {
     setLoading(true);
@@ -105,6 +110,15 @@ export default function AmbientesPage() {
     }
   };
 
+  const fetchLugares = async () => {
+    try {
+      const response = await api.get('/lugares');
+      setLugares(response.data);
+    } catch (error) {
+      console.error('Error fetching lugares:', error);
+    }
+  };
+
   const handleChangePage = (_: unknown, newPage: number) => {
     setPage(newPage);
   };
@@ -120,14 +134,18 @@ export default function AmbientesPage() {
         !filtros.search ||
         String(ambiente.nombre || '').toLowerCase().includes(filtros.search.toLowerCase());
       const coincideTipo = filtros.tipo === 'todos' || ambiente.tipo === filtros.tipo;
-      return coincideBusqueda && coincideTipo;
+      const coincideLugar = filtros.lugarId === 'todos' || ambiente.lugar?.id === Number(filtros.lugarId);
+      return coincideBusqueda && coincideTipo && coincideLugar;
     });
   }, [ambientes, filtros]);
 
   const handleOpenDialog = (ambiente: any = null) => {
     if (ambiente) {
       setSelectedAmbiente(ambiente);
-      reset(ambiente);
+      reset({
+        ...ambiente,
+        lugarId: ambiente.lugar?.id ?? null,
+      });
     } else {
       setSelectedAmbiente(null);
       reset({
@@ -135,6 +153,7 @@ export default function AmbientesPage() {
         tipo: 'teoría',
         capacidad: 40,
         disponible: true,
+        lugarId: null,
       });
     }
     setOpenDialog(true);
@@ -148,7 +167,10 @@ export default function AmbientesPage() {
   const onSubmit = async (data: any) => {
     try {
       // Limpiar el payload para enviar solo lo que el DTO espera
-      const { id, createdAt, updatedAt, ...payload } = data;
+      const { id, createdAt, updatedAt, lugar, ...payload } = data;
+      if (payload.lugarId === '' || payload.lugarId === null) {
+        payload.lugarId = null;
+      }
 
       if (selectedAmbiente) {
         await api.patch(`/aulas/${selectedAmbiente.id}`, payload);
@@ -272,7 +294,7 @@ export default function AmbientesPage() {
                 fullWidth 
                 variant="outlined" 
                 startIcon={<DeleteSweepIcon />}
-                onClick={() => setFiltros({ search: '', tipo: 'todos' })}
+                onClick={() => setFiltros({ search: '', tipo: 'todos', lugarId: 'todos' })}
                 sx={{ borderRadius: 2, fontWeight: 600, color: '#666', borderColor: '#ddd' }}
               >
                 Limpiar
@@ -296,21 +318,38 @@ export default function AmbientesPage() {
           </Grid>
 
           {showAdvancedFilters && (
-            <Grid item xs={12}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Tipo de Aula</InputLabel>
-                <Select
-                  value={filtros.tipo}
-                  label="Tipo de Aula"
-                  onChange={(e) => setFiltros({ ...filtros, tipo: e.target.value })}
-                >
-                  <MenuItem value="todos">Todos los Tipos</MenuItem>
-                  {tiposAula.map(t => (
-                    <MenuItem key={t.id} value={t.id}>{t.nombre}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
+            <>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Tipo de Aula</InputLabel>
+                  <Select
+                    value={filtros.tipo}
+                    label="Tipo de Aula"
+                    onChange={(e) => setFiltros({ ...filtros, tipo: e.target.value })}
+                  >
+                    <MenuItem value="todos">Todos los Tipos</MenuItem>
+                    {tiposAula.map(t => (
+                      <MenuItem key={t.id} value={t.id}>{t.nombre}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Lugar</InputLabel>
+                  <Select
+                    value={filtros.lugarId}
+                    label="Lugar"
+                    onChange={(e) => setFiltros({ ...filtros, lugarId: e.target.value })}
+                  >
+                    <MenuItem value="todos">Todos los Lugares</MenuItem>
+                    {lugares.map(l => (
+                      <MenuItem key={l.id} value={l.id}>{l.codigo} - {l.nombre}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            </>
           )}
         </Grid>
       </Paper>
@@ -323,6 +362,7 @@ export default function AmbientesPage() {
               <TableCell sx={{ color: 'white', fontWeight: 700, width: '50px' }}>N°</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>AMBIENTE</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>TIPO DE AULA</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 700 }}>LUGAR</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CAPACIDAD</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>ESTADO</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700, textAlign: 'center' }}>ACCIONES</TableCell>
@@ -331,7 +371,7 @@ export default function AmbientesPage() {
           <TableBody>
             {ambientesFiltrados.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} sx={{ py: 10, textAlign: 'center' }}>
+                <TableCell colSpan={7} sx={{ py: 10, textAlign: 'center' }}>
                   <Typography color="textSecondary">No se encontraron ambientes.</Typography>
                 </TableCell>
               </TableRow>
@@ -362,6 +402,18 @@ export default function AmbientesPage() {
                         fontWeight: 600 
                       }}
                     />
+                  </TableCell>
+                  <TableCell>
+                    {ambiente.lugar ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <BusinessIcon fontSize="small" color="action" />
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {ambiente.lugar.codigo} - {ambiente.lugar.nombre}
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <Typography variant="body2" color="textSecondary">-</Typography>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -409,11 +461,12 @@ export default function AmbientesPage() {
       {/* Diálogo CRUD */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <form onSubmit={handleSubmit(onSubmit)}>
-          <DialogTitle sx={{ bgcolor: '#003366', color: 'white', fontWeight: 700 }}>
+          <DialogTitle sx={{ bgcolor: '#003366', color: 'white', fontWeight: 700, py: 2.5 }}>
             {selectedAmbiente ? 'Editar Ambiente' : 'Nuevo Ambiente'}
           </DialogTitle>
-          <DialogContent sx={{ pt: 4, overflowY: 'visible' }}>
-            <Grid container spacing={3} sx={{ pt: 1 }}>
+          <DialogContent sx={{ overflowY: 'visible' }}>
+            <Box sx={{ pt: 4, pb: 1, px: 0 }}>
+            <Grid container spacing={2.5}>
               <Grid item xs={12}>
                 <Controller
                   name="nombre"
@@ -477,7 +530,29 @@ export default function AmbientesPage() {
                   )}
                 />
               </Grid>
+              <Grid item xs={12}>
+                <Controller
+                  name="lugarId"
+                  control={control}
+                  render={({ field }) => (
+                    <FormControl fullWidth>
+                      <InputLabel>Lugar</InputLabel>
+                      <Select {...field} label="Lugar" value={field.value ?? ''}>
+                        <MenuItem value="">
+                          <em>Sin lugar</em>
+                        </MenuItem>
+                        {lugares.map((l) => (
+                          <MenuItem key={l.id} value={l.id}>
+                            {l.codigo} - {l.nombre}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
+                />
+              </Grid>
             </Grid>
+            </Box>
           </DialogContent>
           <DialogActions sx={{ p: 3 }}>
             <Button onClick={handleCloseDialog} color="inherit" sx={{ fontWeight: 600 }}>

@@ -20,12 +20,14 @@ export class ProgramacionesController {
     @Query('carreraId') carreraId?: string,
     @Query('cicloAcademico') cicloAcademico?: string,
     @Query('curriculaId') curriculaId?: string,
+    @Query('cursoId') cursoId?: string,
   ) {
     return this.service.getCargaAcademica(
       cicloId,
       carreraId ? Number(carreraId) : undefined,
       cicloAcademico ? Number(cicloAcademico) : undefined,
       curriculaId ? Number(curriculaId) : undefined,
+      cursoId ? Number(cursoId) : undefined,
     );
   }
 

@@ -52,6 +52,7 @@ import {
   Email as EmailIcon,
   Send as TelegramIcon,
   CalendarMonth as CalendarIcon,
+  InfoOutlined as InfoIcon,
 } from '@mui/icons-material';
 import api from '@/lib/api';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -68,7 +69,7 @@ export default function DocentesPage() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [filtros, setFiltros] = useState({
     search: '',
-    tipoContrato: 'todos',
+    condicion: 'todos',
     categoria: 'todos',
     carreraId: 'todos',
     dedicacion: 'todos',
@@ -118,11 +119,7 @@ export default function DocentesPage() {
       { id: 'asociado', nombre: 'Asociado' },
       { id: 'auxiliar', nombre: 'Auxiliar' },
       { id: 'tipo_a1', nombre: 'Tipo A1' },
-      { id: 'tipo_a2', nombre: 'Tipo A2' },
-      { id: 'tipo_a3', nombre: 'Tipo A3' },
       { id: 'tipo_b1', nombre: 'Tipo B1' },
-      { id: 'tipo_b2', nombre: 'Tipo B2' },
-      { id: 'tipo_b3', nombre: 'Tipo B3' },
       { id: 'jefe_practica', nombre: 'Jefe de Práctica' },
     ],
   };
@@ -141,9 +138,19 @@ export default function DocentesPage() {
     { id: 'ingenieria', nombre: 'Ingeniería' },
     { id: 'ingenieria_quimica', nombre: 'Ingeniería Química' },
     { id: 'medicina', nombre: 'Medicina' },
-    { id: 'valle_jequetepeque', nombre: 'Valle Jequetepeque' },
-    { id: 'huamachuco', nombre: 'Huamachuco' },
-    { id: 'santiago_de_chuco', nombre: 'Santiago de Chuco' },
+  ];
+
+  const DEPENDENCIAS = [
+    'Ninguno',
+    'Filial Valle Jequetepeque',
+    'Filial Huamachuco',
+    'Filial Santiago de Chuco',
+    'Escuela de Posgrado',
+    'Segunda Especialidad',
+    'CEPUNT',
+    'CIDUNT',
+    'Centro Educativo Experimental "Rafael Narváez Cadenillas"',
+    'Otro Centro de Producción',
   ];
 
   const departamentosAcademicos = [
@@ -197,61 +204,101 @@ export default function DocentesPage() {
     { id: 'salud_del_adulto_y_salud_familiar_y_comunitaria', nombre: 'Salud del Adulto y Salud Familiar y Comunitaria' },
   ];
 
-  const cargosAdministrativos = [
-    { id: 'ninguno', nombre: 'Ninguno' },
-    { id: 'rector_vicerrector', nombre: 'Rector/Vicerrector' },
-    { id: 'decano_director_postgrado', nombre: 'Decano/Director de Postgrado' },
-    { id: 'director_escuela_departamento', nombre: 'Director de Escuela/Departamento' },
-    { id: 'director_filial', nombre: 'Director de Filial' },
+  const CARGOS_GOBIERNO = [
+    'Rector',
+    'Vicerrector Académico',
+    'Vicerrector de Investigación',
+    'Decano',
+    'Director de la Escuela de Posgrado',
+    'Integrante de Asamblea Universitaria',
+    'Integrante de Consejo de Facultad',
+  ];
+
+  const CARGOS_GESTION_INSTITUCIONAL = [
+    'Director de la Unidad de Posgrado',
+    'Director de Filial',
+    'Director de Escuela Profesional',
+    'Director de Departamento Académico',
+    'Director de Segunda Especialidad',
+    'Jefe de la Oficina de Gestión de la Calidad',
+    'Director de Responsabilidad Social Universitaria',
+    'Director de Servicios Educativos de Extensión',
+    'Jefe de la Oficina de Relaciones Nacionales e Internacionales',
+    'Centro de Arbitraje y Administración de Junta de Resolución de Disputas',
+    'Director de Admisión',
+    'Director de Procesos Académicos',
+    'Director de Bienestar Universitario',
+    'Director de Investigación y Ética',
+    'Director de Innovación y Transferencia Tecnológica',
+    'Director de Institutos de Investigación y Desarrollo',
+    'Director de Producción de Bienes y Servicios',
+    'Miembro de la Comisión Permanente de Fiscalización',
+    'Defensor Universitario',
+    'Miembro del Tribunal de Honor',
+    'Miembro del Comité Electoral',
+    'Directivo de CEPUNT',
+    'Directivo de CIDUNT',
+    'Directivos del Centro Educativo Experimental "Rafael Narváez Cadenillas"',
+    'Presidente de Comité de Calidad de Facultad o Programa',
+    'Presidente de Comité de Currículo de Facultad o Programa',
+    'Integrante de Comisión Académica o Administrativa Especial',
   ];
 
   const dedicacionesDocente = {
     ordinario: [
-      'DOCENTE INVESTIGADOR',
       'DEDICACION EXCLUSIVA',
-      'TIEMPO COMPLETO 40 H',
+      'TIEMPO COMPLETO',
       'TIEMPO PARCIAL 20 H',
       'TIEMPO PARCIAL 12 H',
       'TIEMPO PARCIAL 10 H',
-      'TIEMPO PARCIAL 4 H',
+      'TIEMPO PARCIAL 04 H',
     ],
     extraordinario: [
       'DEDICACION EXCLUSIVA',
-      'TIEMPO COMPLETO 40 H',
+      'TIEMPO COMPLETO',
       'TIEMPO PARCIAL 20 H',
       'TIEMPO PARCIAL 12 H',
       'TIEMPO PARCIAL 10 H',
     ],
     contratado: [
-      'TIEMPO COMPLETO A1/B1',
-      'TIEMPO PARCIAL A2/B2 16 H',
-      'TIEMPO PARCIAL A3/B3 8 H',
+      'TIEMPO COMPLETO',
+      'TIEMPO PARCIAL 16 H',
+      'TIEMPO PARCIAL 04 H',
     ],
   };
 
-  const normalizeDedicacion = (val: string, tipoContrato: string = 'ordinario') => {
-    const disponibles = (dedicacionesDocente as any)[tipoContrato] || dedicacionesDocente.ordinario;
-    if (!val) return disponibles[0] || 'TIEMPO COMPLETO 40 H';
+  const normalizeDedicacion = (val: string, condicion: string = 'ordinario') => {
+    const disponibles = (dedicacionesDocente as any)[condicion] || dedicacionesDocente.ordinario;
+    if (!val) return disponibles[0] || 'TIEMPO COMPLETO';
     const normalized = val.toUpperCase().trim();
 
     const match = disponibles.find((d: string) => d === normalized);
     if (match) return match;
 
     const flexibleMatch = disponibles.find((d: string) => d.replace(/\s/g, '') === normalized.replace(/\s/g, ''));
-    return flexibleMatch || disponibles[0] || 'TIEMPO COMPLETO 40 H';
+    return flexibleMatch || disponibles[0] || 'TIEMPO COMPLETO';
   };
+
+  const TIPOS_INVESTIGACION = [
+    { id: 'NINGUNA', nombre: 'Ninguna' },
+    { id: 'INVESTIGADOR', nombre: 'Docente Investigador (DI)' },
+    { id: 'RENACYT', nombre: 'Docente RENACYT (DR)' },
+  ];
 
   const { control, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
       nombreCompleto: '',
       dni: '',
-      tipoContrato: 'nombrado',
+      condicion: 'nombrado',
       categoria: 'principal',
       facultad: '',
       departamentoAcademico: '',
-      cargoAdministrativo: 'ninguno',
+      cargoGobierno: 'NINGUNO',
+      cargoGestionInstitucional: 'NINGUNO',
       esBecario: false,
-      dedicacion: 'TIEMPO COMPLETO 40 H',
+      dependencias: ['Ninguno'],
+      investigacion: 'NINGUNA',
+      dedicacion: 'TIEMPO COMPLETO',
       fechaIngreso: '',
       telefono: '',
       emailPersonal: '',
@@ -263,12 +310,38 @@ export default function DocentesPage() {
     },
   });
 
-  // Watch tipoContrato para actualizar categorías y dedicaciones disponibles
-  const watchedTipoContrato = watch('tipoContrato');
+  // Watch condicion y categoria para actualizar categorías y dedicaciones disponibles
+  const watchedCondicion = watch('condicion');
+  const watchedCategoria = watch('categoria');
+  const watchedDedicacion = watch('dedicacion');
+  const watchedEsBecario = watch('esBecario');
+  const esTcDe = ['TIEMPO COMPLETO', 'DEDICACION EXCLUSIVA'].includes(watchedDedicacion);
 
-  // Obtener categorías y dedicaciones según el tipo de contrato seleccionado
-  const getCategoriasDisponibles = () => (categoriasDocente as any)[watchedTipoContrato] || categoriasDocente.ordinario;
-  const getDedicacionesDisponibles = () => (dedicacionesDocente as any)[watchedTipoContrato] || dedicacionesDocente.ordinario;
+  const getCategoriasDisponibles = () => {
+    const key = watchedCondicion === 'nombrado' ? 'ordinario' : watchedCondicion;
+    return (categoriasDocente as any)[key] || categoriasDocente.ordinario;
+  };
+
+  // Obtener dedicaciones disponibles según condición y categoría
+  const getDedicacionesDisponibles = () => {
+    const key = watchedCondicion === 'nombrado' ? 'ordinario' : watchedCondicion;
+    const base = (dedicacionesDocente as any)[key] || dedicacionesDocente.ordinario;
+    // Si hay una categoría específica con mapeo directo, filtrar solo la dedicación correspondiente
+    if (!watchedCategoria) return base;
+    if (['tipo_a1', 'tipo_b1'].includes(watchedCategoria)) {
+      return base.filter((d: string) => d === 'TIEMPO COMPLETO');
+    }
+    if (['tipo_a2', 'tipo_b2'].includes(watchedCategoria)) {
+      return base.filter((d: string) => d === 'TIEMPO PARCIAL 16 H');
+    }
+    if (['tipo_a3', 'tipo_b3'].includes(watchedCategoria)) {
+      return ['TIEMPO PARCIAL 08 H'];
+    }
+    if (['jefe_practica'].includes(watchedCategoria)) {
+      return ['TIEMPO COMPLETO', 'TIEMPO PARCIAL 20 H', 'TIEMPO PARCIAL 12 H', 'TIEMPO PARCIAL 10 H'];
+    }
+    return base;
+  };
 
   useEffect(() => {
     fetchDocentes();
@@ -277,7 +350,7 @@ export default function DocentesPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [filtros.search, filtros.tipoContrato, filtros.categoria, filtros.carreraId, filtros.dedicacion]);
+  }, [filtros.search, filtros.condicion, filtros.categoria, filtros.carreraId, filtros.dedicacion]);
 
   const fetchCarreras = async () => {
     try {
@@ -307,7 +380,7 @@ export default function DocentesPage() {
     return docentes.filter((docente: any) => {
       const texto = `${docente.nombreCompleto || ''} ${docente.dni || ''}`.toLowerCase();
       const coincideBusqueda = !filtros.search || texto.includes(filtros.search.toLowerCase());
-      const coincideTipo = filtros.tipoContrato === 'todos' || docente.tipoContrato === filtros.tipoContrato;
+      const coincideTipo = filtros.condicion === 'todos' || docente.condicion === filtros.condicion;
       const coincideCategoria = filtros.categoria === 'todos' || docente.categoria === filtros.categoria;
       const coincideDedicacion = filtros.dedicacion === 'todos' || docente.dedicacion === filtros.dedicacion;
 
@@ -330,8 +403,8 @@ export default function DocentesPage() {
           .map((rel: any) => rel.carrera?.id)
           .filter(Boolean);
 
-        const tipoContrato = docenteRes.data?.tipoContrato ?? docente.tipoContrato ?? 'nombrado';
-        const key = tipoContrato === 'nombrado' ? 'ordinario' : tipoContrato;
+        const condicion = docenteRes.data?.condicion ?? docente.condicion ?? 'nombrado';
+        const key = condicion === 'nombrado' ? 'ordinario' : condicion;
         const categoriasDisponibles = (categoriasDocente as any)[key] || categoriasDocente.ordinario;
         let categoria = docenteRes.data?.categoria ?? docente.categoria ?? 'principal';
         if (!categoriasDisponibles.some((c: any) => c.id === categoria)) {
@@ -341,12 +414,15 @@ export default function DocentesPage() {
         reset({
           nombreCompleto: docenteRes.data?.nombreCompleto ?? docente.nombreCompleto ?? '',
           dni: docenteRes.data?.dni ?? docente.dni ?? '',
-          tipoContrato,
+          condicion,
           categoria,
           facultad: docenteRes.data?.facultad ?? docente.facultad ?? '',
           departamentoAcademico: docenteRes.data?.departamentoAcademico ?? docente.departamentoAcademico ?? '',
-          cargoAdministrativo: docenteRes.data?.cargoAdministrativo ?? docente.cargoAdministrativo ?? 'ninguno',
+          cargoGobierno: docenteRes.data?.cargoGobierno || docente.cargoGobierno || 'NINGUNO',
+          cargoGestionInstitucional: docenteRes.data?.cargoGestionInstitucional || docente.cargoGestionInstitucional || 'NINGUNO',
           esBecario: docenteRes.data?.esBecario ?? docente.esBecario ?? false,
+          dependencias: docenteRes.data?.dependencias ?? docente.dependencias ?? ['Ninguno'],
+          investigacion: docenteRes.data?.investigacion ?? 'NINGUNA',
           dedicacion: normalizeDedicacion(docenteRes.data?.dedicacion || docente.dedicacion, key),
           fechaIngreso: docenteRes.data?.fechaIngreso ? new Date(docenteRes.data.fechaIngreso).toISOString().split('T')[0] : '',
           telefono: docenteRes.data?.telefono ?? '',
@@ -358,8 +434,8 @@ export default function DocentesPage() {
           carreraIds,
         });
       } catch (error) {
-        const tipoContrato = docente.tipoContrato ?? 'nombrado';
-        const key = tipoContrato === 'nombrado' ? 'ordinario' : tipoContrato;
+        const condicion = docente.condicion ?? 'nombrado';
+        const key = condicion === 'nombrado' ? 'ordinario' : condicion;
         const categoriasDisponibles = (categoriasDocente as any)[key] || categoriasDocente.ordinario;
         let categoria = docente.categoria ?? 'principal';
         if (!categoriasDisponibles.some((c: any) => c.id === categoria)) {
@@ -369,12 +445,15 @@ export default function DocentesPage() {
         reset({
           nombreCompleto: docente.nombreCompleto ?? '',
           dni: docente.dni ?? '',
-          tipoContrato,
+          condicion,
           categoria,
           facultad: docente.facultad ?? '',
           departamentoAcademico: docente.departamentoAcademico ?? '',
-          cargoAdministrativo: docente.cargoAdministrativo ?? 'ninguno',
+          cargoGobierno: docente.cargoGobierno || 'NINGUNO',
+          cargoGestionInstitucional: docente.cargoGestionInstitucional || 'NINGUNO',
           esBecario: docente.esBecario ?? false,
+          dependencias: docente.dependencias ?? ['Ninguno'],
+          investigacion: docente.investigacion ?? 'NINGUNA',
           dedicacion: normalizeDedicacion(docente.dedicacion, key),
           fechaIngreso: docente.fechaIngreso ? new Date(docente.fechaIngreso).toISOString().split('T')[0] : '',
           telefono: docente.telefono ?? '',
@@ -394,13 +473,16 @@ export default function DocentesPage() {
       reset({
         nombreCompleto: '',
         dni: '',
-        tipoContrato: 'nombrado',
+        condicion: 'nombrado',
         categoria: categoriasDisponibles[0]?.id || 'principal',
         facultad: '',
         departamentoAcademico: '',
-        cargoAdministrativo: 'ninguno',
+        cargoGobierno: 'NINGUNO',
+        cargoGestionInstitucional: 'NINGUNO',
         esBecario: false,
-        dedicacion: dedicacionesDisponibles[0] || 'TIEMPO COMPLETO 40 H',
+        dependencias: ['Ninguno'],
+        investigacion: 'NINGUNA',
+        dedicacion: dedicacionesDisponibles[0] || 'TIEMPO COMPLETO',
         fechaIngreso: '',
         telefono: '',
         emailPersonal: '',
@@ -552,7 +634,7 @@ export default function DocentesPage() {
                 onClick={() => {
                   setFiltros({
                     search: '',
-                    tipoContrato: 'todos',
+                    condicion: 'todos',
                     categoria: 'todos',
                     carreraId: 'todos',
                     dedicacion: 'todos'
@@ -599,13 +681,13 @@ export default function DocentesPage() {
               </Grid>
               <Grid item xs={12} md={3}>
                 <FormControl fullWidth size="small">
-                  <InputLabel>Tipo de Contrato</InputLabel>
+                  <InputLabel>Condición</InputLabel>
                   <Select
-                    value={filtros.tipoContrato}
-                    label="Tipo de Contrato"
-                    onChange={(e) => setFiltros({ ...filtros, tipoContrato: e.target.value })}
+                    value={filtros.condicion}
+                    label="Condición"
+                    onChange={(e) => setFiltros({ ...filtros, condicion: e.target.value })}
                   >
-                    <MenuItem value="todos">Todos los Contratos</MenuItem>
+                    <MenuItem value="todos">Todas las Condiciones</MenuItem>
                     {tiposContrato.map(tipo => (
                       <MenuItem key={tipo.id} value={tipo.id}>{tipo.nombre}</MenuItem>
                     ))}
@@ -657,8 +739,9 @@ export default function DocentesPage() {
               <TableCell sx={{ color: 'white', fontWeight: 700, width: '50px' }}>N°</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>DOCENTE</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>DNI</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 700 }}>CONDICIÓN</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>CATEGORÍA</TableCell>
-              <TableCell sx={{ color: 'white', fontWeight: 700 }}>CONTRATO</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 700 }}>DEDICACIÓN</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>ANTIGÜEDAD</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700 }}>ESTADO</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 700, textAlign: 'center' }}>ACCIONES</TableCell>
@@ -667,7 +750,7 @@ export default function DocentesPage() {
           <TableBody>
             {docentesFiltrados.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} sx={{ py: 10, textAlign: 'center' }}>
+                <TableCell colSpan={9} sx={{ py: 10, textAlign: 'center' }}>
                   <Typography color="textSecondary">No se encontraron docentes.</Typography>
                 </TableCell>
               </TableRow>
@@ -685,18 +768,19 @@ export default function DocentesPage() {
                     <TableCell>{docente.dni || '---'}</TableCell>
                     <TableCell>
                       <Chip
+                        label={tiposContrato.find(t => t.id === docente.condicion.toLowerCase())?.nombre || docente.condicion}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
                         label={Object.values(categoriasDocente).flat().find(c => c.id === docente.categoria?.toLowerCase())?.nombre || docente.categoria}
                         size="small"
                         sx={{ bgcolor: 'rgba(102, 126, 234, 0.1)', color: '#667eea', fontWeight: 600 }}
                       />
                     </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={tiposContrato.find(t => t.id === docente.tipoContrato.toLowerCase())?.nombre || docente.tipoContrato}
-                        size="small"
-                        variant="outlined"
-                      />
-                    </TableCell>
+                    <TableCell>{docente.dedicacion}</TableCell>
                     <TableCell>{docente.antiguedadAnios} años</TableCell>
                     <TableCell>
                       <Chip
@@ -955,25 +1039,26 @@ export default function DocentesPage() {
                   Datos Laborales
                 </Typography>
                 <Grid container spacing={2}>
-                  {/* Fila 1: Tipo de Contrato, Categoría y Dedicación (cascada) */}
+                  {/* Fila 1: Condición, Categoría y Dedicación (cascada) */}
                   <Grid item xs={12} md={4}>
                     <Controller
-                      name="tipoContrato"
+                      name="condicion"
                       control={control}
                       render={({ field }) => (
                         <FormControl fullWidth>
-                          <InputLabel shrink>Tipo de Contrato</InputLabel>
+                          <InputLabel shrink>Condición</InputLabel>
                           <Select
                             {...field}
-                            label="Tipo de Contrato"
+                            label="Condición"
                             onChange={(e) => {
                               field.onChange(e);
-                              // Cuando cambia el tipo de contrato, actualizamos categoría y dedicación
+                              // Cuando cambia la condición, actualizamos categoría y dedicación
                               const nuevoTipo = e.target.value;
-                              const nuevasCategorias = (categoriasDocente as any)[nuevoTipo] || categoriasDocente.ordinario;
-                              const nuevasDedicaciones = (dedicacionesDocente as any)[nuevoTipo] || dedicacionesDocente.ordinario;
+                              const key = nuevoTipo === 'nombrado' ? 'ordinario' : nuevoTipo;
+                              const nuevasCategorias = (categoriasDocente as any)[key] || categoriasDocente.ordinario;
+                              const nuevasDedicaciones = (dedicacionesDocente as any)[key] || dedicacionesDocente.ordinario;
                               setValue('categoria', nuevasCategorias[0]?.id || 'principal');
-                              setValue('dedicacion', nuevasDedicaciones[0] || 'TIEMPO COMPLETO 40 H');
+                              setValue('dedicacion', nuevasDedicaciones[0] || 'TIEMPO COMPLETO');
                             }}
                           >
                             {tiposContrato.map(tipo => (
@@ -991,7 +1076,26 @@ export default function DocentesPage() {
                       render={({ field }) => (
                         <FormControl fullWidth>
                           <InputLabel shrink>Categoría</InputLabel>
-                          <Select {...field} label="Categoría">
+                          <Select {...field} label="Categoría" onChange={(e) => {
+                            field.onChange(e);
+                            const key = watchedCondicion === 'nombrado' ? 'ordinario' : watchedCondicion;
+                            // Auto-asignar dedicación según categorías específicas
+                            const categoriaId = e.target.value;
+                            if (['tipo_a1', 'tipo_b1'].includes(categoriaId)) {
+                              // A1/B1 → TC para contratado, o primera disponible para otros
+                              const disponibles = (dedicacionesDocente as any)[key] || dedicacionesDocente.ordinario;
+                              const tc = disponibles.find((d: string) => d === 'TIEMPO COMPLETO');
+                              setValue('dedicacion', tc || disponibles[0] || 'TIEMPO COMPLETO');
+                            } else if (['tipo_a2', 'tipo_b2'].includes(categoriaId)) {
+                              const disponibles = (dedicacionesDocente as any)[key] || dedicacionesDocente.ordinario;
+                              const tp16 = disponibles.find((d: string) => d === 'TIEMPO PARCIAL 16 H');
+                              setValue('dedicacion', tp16 || disponibles[0] || 'TIEMPO COMPLETO');
+                            } else if (['tipo_a3', 'tipo_b3'].includes(categoriaId)) {
+                              setValue('dedicacion', 'TIEMPO PARCIAL 08 H');
+                            } else if (['jefe_practica'].includes(categoriaId)) {
+                              setValue('dedicacion', 'TIEMPO COMPLETO');
+                            }
+                          }}>
                             {getCategoriasDisponibles().map((cat: any) => (
                               <MenuItem key={cat.id} value={cat.id}>{cat.nombre}</MenuItem>
                             ))}
@@ -1007,7 +1111,13 @@ export default function DocentesPage() {
                       render={({ field }) => (
                         <FormControl fullWidth>
                           <InputLabel shrink>Dedicación</InputLabel>
-                          <Select {...field} label="Dedicación">
+                          <Select {...field} label="Dedicación" onChange={(e) => {
+                            field.onChange(e);
+                            const nuevoValor = e.target.value;
+                            if (!['TIEMPO COMPLETO', 'DEDICACION EXCLUSIVA'].includes(nuevoValor)) {
+                              setValue('investigacion', 'NINGUNA');
+                            }
+                          }}>
                             {getDedicacionesDisponibles().map((ded: string) => (
                               <MenuItem key={ded} value={ded}>{ded}</MenuItem>
                             ))}
@@ -1017,7 +1127,137 @@ export default function DocentesPage() {
                     />
                   </Grid>
 
-                  {/* Fila 2: Facultad y Departamento Académico */}
+                  {/* Fila 2: Checkbox Docente becado */}
+                  <Grid item xs={12}>
+                    <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
+                      <Controller
+                        name="esBecario"
+                        control={control}
+                        render={({ field }) => (
+                          <FormControl fullWidth>
+                            <FormControlLabel
+                              control={<Checkbox {...field} checked={field.value} />}
+                              label="¿Docente becado por la UNT?"
+                              sx={{ mb: 0.5 }}
+                            />
+                            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, ml: 4 }}>
+                              <InfoIcon sx={{ fontSize: 16, color: 'text.secondary', mt: '2px' }} />
+                              <Typography variant="caption" color="text.secondary">
+                                Un Docente solventado por la UNT NO puede tomar carga adicional en Filiales. (Art. 14.1)
+                              </Typography>
+                            </Box>
+                          </FormControl>
+                        )}
+                      />
+                    </Box>
+                  </Grid>
+
+                  {/* Fila 3: Tipo de Investigación (izq) + Dependencias (der) */}
+                  <>
+                    <Grid item xs={12} md={6}>
+                      {esTcDe ? (
+                        <Controller
+                          name="investigacion"
+                          control={control}
+                          render={({ field }) => (
+                            <FormControl fullWidth>
+                              <InputLabel shrink>Tipo de Investigación</InputLabel>
+                              <Select {...field} label="Tipo de Investigación">
+                                {TIPOS_INVESTIGACION.map(tipo => (
+                                  <MenuItem key={tipo.id} value={tipo.id}>{tipo.nombre}</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          )}
+                        />
+                      ) : (
+                        <Box sx={{
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 1,
+                          px: 1.75,
+                          minHeight: 56,
+                          bgcolor: '#f8fafc',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          boxSizing: 'border-box',
+                        }}>
+                          <InfoIcon sx={{ fontSize: 18, color: '#94a3b8' }} />
+                          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                            Solo disponible para docentes TC o DE
+                          </Typography>
+                        </Box>
+                      )}
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      {!esTcDe ? (
+                        <Box sx={{
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 1,
+                          px: 1.75,
+                          minHeight: 56,
+                          bgcolor: '#f8fafc',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          boxSizing: 'border-box',
+                        }}>
+                          <InfoIcon sx={{ fontSize: 18, color: '#94a3b8' }} />
+                          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                            Solo disponible para docentes TC o DE
+                          </Typography>
+                        </Box>
+                      ) : watchedEsBecario ? (
+                        <Box sx={{
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 1,
+                          px: 1.75,
+                          minHeight: 56,
+                          bgcolor: '#f8fafc',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          boxSizing: 'border-box',
+                        }}>
+                          <InfoIcon sx={{ fontSize: 18, color: '#94a3b8' }} />
+                          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                            Docentes becados no pueden registrar dependencias
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <Controller
+                          name="dependencias"
+                          control={control}
+                          render={({ field: { onChange, value } }) => (
+                            <Autocomplete
+                              multiple
+                              options={DEPENDENCIAS}
+                              value={value || ['Ninguno']}
+                              onChange={(_, newValue) => {
+                                if (newValue.includes('Ninguno') && newValue.length > 1) {
+                                  onChange(newValue.filter(v => v !== 'Ninguno'));
+                                } else if (!newValue.includes('Ninguno') && newValue.length === 0) {
+                                  onChange(['Ninguno']);
+                                } else {
+                                  onChange(newValue);
+                                }
+                              }}
+                              renderInput={(params) => (
+                                <TextField
+                                  {...params}
+                                  label="Dependencias"
+                                  placeholder="Seleccione dependencias..."
+                                  InputLabelProps={{ shrink: true }}
+                                />
+                              )}
+                            />
+                          )}
+                        />
+                      )}
+                    </Grid>
+                  </>
+
+                  {/* Fila 4: Facultad y Departamento Académico */}
                   <Grid item xs={12} md={6}>
                     <Controller
                       name="facultad"
@@ -1051,17 +1291,18 @@ export default function DocentesPage() {
                     />
                   </Grid>
 
-                  {/* Fila 3: Cargo Administrativo y Es Becario */}
+                  {/* Fila 5: Cargos de Gobierno y Gestión */}
                   <Grid item xs={12} md={6}>
                     <Controller
-                      name="cargoAdministrativo"
+                      name="cargoGobierno"
                       control={control}
                       render={({ field }) => (
                         <FormControl fullWidth>
-                          <InputLabel>Cargo Administrativo</InputLabel>
-                          <Select {...field} label="Cargo Administrativo">
-                            {cargosAdministrativos.map(cargo => (
-                              <MenuItem key={cargo.id} value={cargo.id}>{cargo.nombre}</MenuItem>
+                          <InputLabel shrink>Cargo de Gobierno</InputLabel>
+                          <Select {...field} label="Cargo de Gobierno">
+                            <MenuItem value="NINGUNO">Ninguno</MenuItem>
+                            {CARGOS_GOBIERNO.map(cargo => (
+                              <MenuItem key={cargo} value={cargo}>{cargo}</MenuItem>
                             ))}
                           </Select>
                         </FormControl>
@@ -1070,20 +1311,22 @@ export default function DocentesPage() {
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Controller
-                      name="esBecario"
+                      name="cargoGestionInstitucional"
                       control={control}
                       render={({ field }) => (
                         <FormControl fullWidth>
-                          <FormControlLabel
-                            control={<Checkbox {...field} checked={field.value} />}
-                            label="Es Becario"
-                          />
+                          <InputLabel shrink>Cargo de Gestión Institucional</InputLabel>
+                          <Select {...field} label="Cargo de Gestión Institucional">
+                            <MenuItem value="NINGUNO">Ninguno</MenuItem>
+                            {CARGOS_GESTION_INSTITUCIONAL.map(cargo => (
+                              <MenuItem key={cargo} value={cargo}>{cargo}</MenuItem>
+                            ))}
+                          </Select>
                         </FormControl>
                       )}
                     />
                   </Grid>
-
-                  {/* Fila 4: Carreras que enseña */}
+                  {/* Fila 7: Carreras que enseña */}
                   <Grid item xs={12}>
                     <Controller
                       name="carreraIds"

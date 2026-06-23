@@ -111,7 +111,7 @@ export class VentanasService implements OnModuleInit {
           { cicloId, estadoValidado: EstadoCargaAcademica.VALIDADO }
         )
         .where({
-          tipoContrato: nivel.tipo,
+          condicion: nivel.tipo,
           categoria: nivel.categoria,
           activo: true,
           ventanaId: IsNull(),
@@ -639,7 +639,7 @@ export class VentanasService implements OnModuleInit {
           ventanaId: Not(IsNull()), // Solo los que ya tienen ventana asignada
         },
         order: {
-          tipoContrato: 'ASC',
+          condicion: 'ASC',
           categoria: 'ASC',
           antiguedadAnios: 'DESC',
         },
@@ -691,7 +691,7 @@ export class VentanasService implements OnModuleInit {
     return { estado: docente.estadoSeleccion };
   }
 
-  async getCola(tipoContrato?: string, categoria?: string, ventanaId?: number): Promise<Docente[]> {
+  async getCola(condicion?: string, categoria?: string, ventanaId?: number): Promise<Docente[]> {
     const where: any = {
       estadoSeleccion: EstadoSeleccion.EN_ESPERA,
       activo: true,
@@ -705,8 +705,8 @@ export class VentanasService implements OnModuleInit {
           antiguedadAnios: 'DESC',
         },
       });
-    } else if (tipoContrato && tipoContrato !== 'todos') {
-      where.tipoContrato = tipoContrato;
+    } else if (condicion && condicion !== 'todos') {
+      where.condicion = condicion;
     }
 
     if (!ventanaId && categoria && categoria !== 'todos') {
@@ -716,7 +716,7 @@ export class VentanasService implements OnModuleInit {
     return await this.docenteRepo.find({
       where,
       order: {
-        tipoContrato: 'ASC',
+        condicion: 'ASC',
         categoria: 'ASC',
         antiguedadAnios: 'DESC',
       },
@@ -735,7 +735,7 @@ export class VentanasService implements OnModuleInit {
     });
   }
 
-  async getEnAtencion(tipoContrato?: string, categoria?: string, ventanaId?: number): Promise<Docente | null> {
+  async getEnAtencion(condicion?: string, categoria?: string, ventanaId?: number): Promise<Docente | null> {
     const where: any = {
       estadoSeleccion: EstadoSeleccion.EN_ATENCION,
       activo: true,
@@ -744,8 +744,8 @@ export class VentanasService implements OnModuleInit {
     if (ventanaId) {
       where.ventanaId = ventanaId;
       return await this.docenteRepo.findOne({ where });
-    } else if (tipoContrato && tipoContrato !== 'todos') {
-      where.tipoContrato = tipoContrato;
+    } else if (condicion && condicion !== 'todos') {
+      where.condicion = condicion;
     }
 
     if (!ventanaId && categoria && categoria !== 'todos') {
@@ -833,9 +833,9 @@ export class VentanasService implements OnModuleInit {
     for (const tipo of tiposContrato) {
       for (const catBase of categoriasBase) {
         const [atendidos, pendientes, enAtencion] = await Promise.all([
-          this.docenteRepo.count({ where: { tipoContrato: tipo as any, categoria: catBase as any, estadoSeleccion: EstadoSeleccion.FINALIZADO, activo: true } }),
-          this.docenteRepo.count({ where: { tipoContrato: tipo as any, categoria: catBase as any, estadoSeleccion: EstadoSeleccion.EN_ESPERA, activo: true } }),
-          this.docenteRepo.count({ where: { tipoContrato: tipo as any, categoria: catBase as any, estadoSeleccion: EstadoSeleccion.EN_ATENCION, activo: true } }),
+          this.docenteRepo.count({ where: { condicion: tipo as any, categoria: catBase as any, estadoSeleccion: EstadoSeleccion.FINALIZADO, activo: true } }),
+          this.docenteRepo.count({ where: { condicion: tipo as any, categoria: catBase as any, estadoSeleccion: EstadoSeleccion.EN_ESPERA, activo: true } }),
+          this.docenteRepo.count({ where: { condicion: tipo as any, categoria: catBase as any, estadoSeleccion: EstadoSeleccion.EN_ATENCION, activo: true } }),
         ]);
 
         const total = atendidos + pendientes + enAtencion;

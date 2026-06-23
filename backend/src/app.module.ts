@@ -10,6 +10,7 @@ import { ReportesModule } from './modules/reportes/reportes.module';
 import { DocentesModule } from './modules/docentes/docentes.module';
 import { CursosModule } from './modules/cursos/cursos.module';
 import { AulasModule } from './modules/aulas/aulas.module';
+import { LugaresModule } from './modules/lugares/lugares.module';
 import { CiclosModule } from './modules/ciclos/ciclos.module';
 import { CarrerasModule } from './modules/carreras/carreras.module';
 import { CurriculasModule } from './modules/curriculas/curriculas.module';
@@ -19,6 +20,8 @@ import { ProgramacionesModule } from './modules/programaciones/programaciones.mo
 import { VentanasModule } from './modules/ventanas/ventanas.module';
 import { NotificacionesModule } from './modules/notificaciones/notificaciones.module';
 import { CargaNoLectivaModule } from './modules/carga-no-lectiva/carga-no-lectiva.module';
+import { CargaAcademicaModule } from './modules/carga-academica/carga-academica.module';
+import { AsignacionFilialModule } from './modules/asignacion-filial/asignacion-filial.module';
 import { Usuario } from './entities/usuario.entity';
 import { Docente } from './entities/docente.entity';
 import { Curso } from './entities/curso.entity';
@@ -37,6 +40,9 @@ import { Reporte } from './entities/reporte.entity';
 import { CargaAcademica } from './entities/carga-academica.entity';
 import { ConfiguracionGrilla } from './entities/configuracion-grilla.entity';
 import { Curricula } from './entities/curricula.entity';
+import { Lugar } from './entities/lugar.entity';
+import { AsignacionFilial } from './entities/asignacion-filial.entity';
+import { CursoFilial } from './entities/curso-filial.entity';
 
 @Module({
   imports: [
@@ -57,7 +63,8 @@ import { Curricula } from './entities/curricula.entity';
           Usuario, Docente, Curso, Aula, CicloAcademico, Horario, 
           AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, 
           Carrera, DocenteCarrera, VentanaAtencion, Notificacion, 
-          CargaNoLectiva, CargaAcademica, Reporte, ConfiguracionGrilla, Curricula
+          CargaNoLectiva, CargaAcademica, Reporte, ConfiguracionGrilla, Curricula, Lugar,
+          AsignacionFilial, CursoFilial
         ];
         
         // Si hay DATABASE_URL (Render), la usamos directamente con SSL opcional
@@ -95,6 +102,7 @@ import { Curricula } from './entities/curricula.entity';
     DocentesModule,
     CursosModule,
     AulasModule,
+    LugaresModule,
     CiclosModule,
     CarrerasModule,
     CurriculasModule,
@@ -104,6 +112,8 @@ import { Curricula } from './entities/curricula.entity';
     VentanasModule,
     NotificacionesModule,
     CargaNoLectivaModule,
+    CargaAcademicaModule,
+    AsignacionFilialModule,
   ],
   controllers: [AppController],
   providers: [AppService],

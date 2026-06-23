@@ -63,6 +63,7 @@ import {
   VerifiedUser as VerifiedUserIcon,
 } from '@mui/icons-material';
 import api from '@/lib/api';
+import { getLimitesReglamento } from '@/lib/reglamento-utils';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
@@ -202,6 +203,12 @@ export default function CargaAcademicaPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getCurriculaLabel = (curriculaId: number | null | undefined) => {
+    if (!curriculaId) return '';
+    const curricula = curriculas.find(c => c.id === Number(curriculaId));
+    return curricula ? <Typography component="span" sx={{ color: '#1565c0', fontWeight: 600 }}>(MC - {curricula.anio})</Typography> : '';
   };
 
   const handleOpenProgDialog = (curso: any = null) => {
@@ -394,6 +401,9 @@ export default function CargaAcademicaPage() {
         // Transformar asignaciones del backend
         const asignacionesTransformadas = curso.asignaciones.map((asig: any) => ({
           ...asig,
+          horasSemanales: asig.grupos?.length
+            ? Math.round(asig.horasSemanales / asig.grupos.length)
+            : asig.horasSemanales,
           grupos: asig.grupos.map((g: any) => ({ numeroGrupo: g.numeroGrupo }))
         }));
 
@@ -580,41 +590,27 @@ export default function CargaAcademicaPage() {
   const numberToLetter = (num: number) => String.fromCharCode(64 + num);
 
   const calcularCreditosLocales = (curso: any) => {
-    const horasL = Number(curso.horasLaboratorio || 0);
-
-    let totalPuntosT = 0;
-    let totalPuntosP = 0;
-    let totalPuntosL = 0;
-    
-    // Solo sumamos si hay asignaciones reales y con docente seleccionado
     if (!curso.asignaciones || curso.asignaciones.length === 0) return 0;
 
-    curso.asignaciones.forEach((asig: any) => {
-      // SOLO sumamos al progreso si hay un docente seleccionado
-      if (!asig.docenteId) return;
+    // Los créditos se calculan por tipo de clase del curso (lo que ve 1 estudiante)
+    // no sumando por docente × grupos. Si al menos un docente cubre un tipo,
+    // ese tipo aporta sus créditos completos.
+    const hasTeoria = curso.asignaciones.some((a: any) => 
+      a.docenteId && String(a.tipoClase || '').toLowerCase() === 'teoria'
+    );
+    const hasPractica = curso.asignaciones.some((a: any) => 
+      a.docenteId && String(a.tipoClase || '').toLowerCase() === 'practica'
+    );
+    const hasLab = curso.asignaciones.some((a: any) => 
+      a.docenteId && String(a.tipoClase || '').toLowerCase() === 'laboratorio'
+    );
 
-      const horasAsig = Number(asig.horasSemanales || 0);
-      const numGrupos = asig.grupos?.length || 0;
-      const tipo = String(asig.tipoClase || '').toLowerCase();
+    let total = 0;
+    if (hasTeoria) total += Number(curso.horasTeoria || 0);
+    if (hasPractica) total += Number(curso.horasPractica || 0) / 2;
+    if (hasLab) total += Number(curso.horasLaboratorio || 0) / 2;
 
-      if (tipo === 'teoria') {
-        totalPuntosT += horasAsig * numGrupos;
-      } else if (tipo === 'practica') {
-        totalPuntosP += (horasAsig * numGrupos) / 2;
-      } else if (tipo === 'laboratorio') {
-        // En laboratorio, los grupos NO multiplican créditos.
-        // Si el docente tiene grupos, sumamos horasAsig / 2.
-        if (numGrupos > 0) {
-          totalPuntosL += horasAsig / 2;
-        }
-      }
-    });
-
-    // Ajuste final para Laboratorio: El crédito de L no debe exceder HorasL / 2
-    const creditosLMax = horasL / 2;
-    const creditosL = Math.min(creditosLMax, totalPuntosL);
-
-    return totalPuntosT + totalPuntosP + creditosL;
+    return total;
   };
 
   const getStatusColor = (curso: any) => {
@@ -633,17 +629,12 @@ export default function CargaAcademicaPage() {
       curso.asignaciones.forEach((asig: any) => {
         if (asig.docenteId === docenteId && asig.docenteId) {
           const horasAsig = Number(asig.horasSemanales || 0);
-          const numGrupos = asig.grupos?.length || 0;
           const tipo = String(asig.tipoClase || '').toLowerCase();
 
           if (tipo === 'teoria') {
-            totalCreditos += horasAsig * numGrupos;
-          } else if (tipo === 'practica') {
-            totalCreditos += (horasAsig * numGrupos) / 2;
-          } else if (tipo === 'laboratorio') {
-            if (numGrupos > 0) {
-              totalCreditos += horasAsig / 2;
-            }
+            totalCreditos += horasAsig;
+          } else if (tipo === 'practica' || tipo === 'laboratorio') {
+            totalCreditos += horasAsig / 2;
           }
         }
       });
@@ -678,42 +669,11 @@ export default function CargaAcademicaPage() {
   };
 
   const getLimitesCargaDocente = (docente: any) => {
-    let minHoras = 0;
-    let maxHoras = 0;
-    const dedicacion = (docente?.dedicacion || '').toUpperCase();
-
-    // 1. Determinar límites por dedicación
-    if (dedicacion.includes('EXCLUSIVA') || dedicacion.includes('40') || dedicacion.includes('TIEMPO COMPLETO')) {
-      maxHoras = 22;
-      minHoras = 16;
-    } else if (dedicacion.includes('20') || dedicacion.includes('TP1')) {
-      maxHoras = 20;
-      minHoras = 12;
-    } else if (dedicacion.includes('10') || dedicacion.includes('TP2')) {
-      maxHoras = 10;
-      minHoras = 8;
-    } else if (dedicacion.includes('8') || dedicacion.includes('TP3')) {
-      maxHoras = 8;
-      minHoras = 8;
-    }
-
-    // 2. Ajustar por cargos administrativos
-    const cargo = (docente?.cargoAdministrativo || docente?.cargo || '').toUpperCase();
-    if (cargo.includes('RECTOR') || cargo.includes('VICERRECTOR')) {
-      minHoras = 0;
-      maxHoras = 0;
-    } else if (cargo.includes('DECANO') || cargo.includes('DIRECTOR DE POSTGRADO')) {
-      minHoras = 6;
-    } else if (cargo.includes('DIRECTOR DE ESCUELA') || cargo.includes('DIRECTOR DE DEPARTAMENTO')) {
-      minHoras = 10;
-    } else if (cargo.includes('DIRECTOR DE FILIAL')) {
-      minHoras = 8;
-    }
-
+    const limites = getLimitesReglamento(docente);
     return {
-      min: minHoras,
-      max: maxHoras,
-      topeDiario: 8
+      min: limites.chl.min,
+      max: limites.chl.max ?? 0,
+      topeDiario: 8,
     };
   };
 
@@ -793,13 +753,25 @@ export default function CargaAcademicaPage() {
       for (const cursoEdit of docenteCursosEdit) {
         const cursoProg = cursoEdit.cursoProgramacion;
         const cursoId = cursoProg.cursoId || cursoProg.id;
-        
-        const cursoEnCarga = cargaAcademica.find((c: any) => 
-          (c.cursoId === cursoId || c.id === cursoId)
-        );
-        
-        const existingAsignaciones = (cursoEnCarga?.asignaciones || [])
-          .filter((a: any) => a.docenteId !== selectedDocente.id);
+
+        // Obtener asignaciones actuales del backend (data fresca)
+        let existingAsignaciones: any[] = [];
+        try {
+          const freshRes = await api.get(`/programacion-curso-ciclo/carga-academica/${filtros.cicloId}?cursoId=${cursoId}`);
+          const freshData = Array.isArray(freshRes.data) ? freshRes.data : [];
+          const freshCurso = freshData.find((c: any) => c.cursoId === cursoId || c.id === cursoId);
+          if (freshCurso) {
+            existingAsignaciones = (freshCurso.asignaciones || [])
+              .filter((a: any) => a.docenteId !== selectedDocente.id);
+          }
+        } catch (e) {
+          // Fallback: usar data en memoria si falla la petición
+          const cursoEnCarga = cargaAcademica.find((c: any) => 
+            (c.cursoId === cursoId || c.id === cursoId)
+          );
+          existingAsignaciones = (cursoEnCarga?.asignaciones || [])
+            .filter((a: any) => a.docenteId !== selectedDocente.id);
+        }
         
         const existingPayload = existingAsignaciones.map((a: any) => ({
           docenteId: a.docenteId,
@@ -820,7 +792,7 @@ export default function CargaAcademicaPage() {
           cicloId: Number(filtros.cicloId),
           asignaciones: [...existingPayload, ...newPayload],
         };
-        
+
         await api.post('/programacion-curso-ciclo/carga-academica', payload);
       }
       
@@ -863,6 +835,9 @@ export default function CargaAcademicaPage() {
         <Tabs 
           value={activeTab} 
           onChange={(_, v) => setActiveTab(v)}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
           sx={{ mb: 4, borderBottom: 1, borderColor: 'divider' }}
         >
           <Tab 
@@ -1049,7 +1024,9 @@ export default function CargaAcademicaPage() {
                           <ListItemText
                             primary={
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <Typography sx={{ fontWeight: 700, fontSize: '0.9rem' }}>{curso.curso?.nombre}</Typography>
+                                <Typography sx={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                                  {curso.curso?.nombre} {getCurriculaLabel(curso.curso?.curriculaId)}
+                                </Typography>
                                 <Chip
                                   size="small"
                                   label={`${curso.creditosAsignados || 0}/${curso.curso?.creditos} C`}
@@ -1301,7 +1278,7 @@ export default function CargaAcademicaPage() {
                   >
                     {ciclos.map(c => (
                       <MenuItem key={c.id} value={c.id}>
-                        {c.nombre} {c.nombre.includes('2026-I') ? '(Actual)' : ''}
+                    {c.nombre}{c.esActual ? ' (Actual)' : ''}
                       </MenuItem>
                     ))}
                   </Select>
@@ -1408,7 +1385,7 @@ export default function CargaAcademicaPage() {
                                 }
                                 secondary={
                                   <Typography variant="caption" color="textSecondary">
-                                    {formatEnumText(docente.categoria)} | {formatEnumText(docente.tipoContrato)}
+                                    {formatEnumText(docente.categoria)} | {formatEnumText(docente.condicion)}
                                   </Typography>
                                 }
                               />
@@ -1433,7 +1410,7 @@ export default function CargaAcademicaPage() {
                       </Typography>
                       <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
                         <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap' }}>
-                          <PersonIcon fontSize="inherit" /> {formatEnumText(selectedDocente.categoria)} | {formatEnumText(selectedDocente.tipoContrato)}
+                          <PersonIcon fontSize="inherit" /> {formatEnumText(selectedDocente.categoria)} | {formatEnumText(selectedDocente.condicion)}
                         </Typography>
                         <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           <AccessTimeIcon fontSize="inherit" /> {calcularHorasDocente(selectedDocente.id)}H / {getLimitesCargaDocente(selectedDocente).max}H (Min: {getLimitesCargaDocente(selectedDocente).min}H)
@@ -1525,7 +1502,9 @@ export default function CargaAcademicaPage() {
                               <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, border: '1px solid #e2e8f0' }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                                   <Box>
-                                    <Typography sx={{ fontWeight: 700 }}>{cp.curso?.nombre}</Typography>
+                                    <Typography sx={{ fontWeight: 700 }}>
+                                      {cp.curso?.nombre} {getCurriculaLabel(cp.curso?.curriculaId)}
+                                    </Typography>
                                     <Typography variant="caption" color="textSecondary">
                                       Código: {cp.curso?.codigo} | Ciclo: {cp.curso?.cicloAcademico}°
                                     </Typography>
@@ -1733,20 +1712,26 @@ export default function CargaAcademicaPage() {
                 <Select
                   value={progData.cursoId}
                   label="Curso a Programar"
-                  onChange={(e) => setProgData({ ...progData, cursoId: e.target.value })}
-                  disabled={progLoading || !!progData.cursoId}
+                  onChange={(e) => {
+                    if (progData.cursoId) return;
+                    setProgData({ ...progData, cursoId: e.target.value });
+                  }}
+                  readOnly={!!progData.cursoId}
+                  sx={progData.cursoId ? { '& .MuiSelect-select': { opacity: 1, color: '#1e293b' } } : {}}
                 >
                   {todosCursos
                     .filter(c => filtros.carreraId === '' || Number(c.carreraId) === Number(filtros.carreraId))
                     .filter(c => filtros.cicloAcademico === '' || Number(c.cicloAcademico) === Number(filtros.cicloAcademico))
                     .filter(c => {
-                      // No mostrar cursos que ya están completos en la carga académica actual
+                      // En edición (cursoId ya asignado), mostrar todos
+                      if (progData.cursoId) return true;
+                      // Solo ocultar completos al crear nueva programación
                       const enCarga = cargaAcademica.find(ca => ca.cursoId === c.id);
                       if (enCarga) {
                         const esCompleto = Math.abs(enCarga.creditosAsignados - (enCarga.curso?.creditos || 0)) < 0.01;
-                        return !esCompleto; // Solo mostrar si NO está completo
+                        return !esCompleto;
                       }
-                      return true; // Si no está en carga, está vacío, así que se muestra
+                      return true;
                     })
                     .map(curso => (
                     <MenuItem key={curso.id} value={curso.id}>
@@ -1944,9 +1929,7 @@ export default function CargaAcademicaPage() {
                     .filter(d => selectedBulkIds.includes(d.id))
                     .map((row, idx) => {
                       const actualIndex = bulkData.findIndex(d => d.id === row.id);
-                      const calcCreds = (Number(row.horasTeoria) * Math.max(1, Number(row.numGruposTeoria))) + 
-                                       (Number(row.horasPractica) * Math.max(1, Number(row.numGruposPractica))) / 2 + 
-                                       Number(row.horasLaboratorio) / 2;
+                      const calcCreds = Number(row.horasTeoria) + (Number(row.horasPractica) / 2) + (Number(row.horasLaboratorio) / 2);
                       const isError = Math.abs(calcCreds - row.creditos) > 0.01;
 
                       return (

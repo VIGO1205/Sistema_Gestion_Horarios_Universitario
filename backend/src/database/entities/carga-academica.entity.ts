@@ -37,6 +37,9 @@ export class CargaAcademica {
   @Column({ type: 'text', nullable: true })
   observaciones: string;
 
+  @Column({ type: 'smallint', nullable: true, name: 'declaracion_opcion' })
+  declaracionOpcion: number | null;
+
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   totalHorasLectivas: number;
 

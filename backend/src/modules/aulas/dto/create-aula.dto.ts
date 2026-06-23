@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsNumber, Min, IsBoolean, IsOptional, IsNotEmpty } from 'class-validator';
+import { IsString, IsEnum, IsNumber, Min, IsBoolean, IsOptional, IsNotEmpty, IsInt } from 'class-validator';
 
 export class CreateAulaDto {
   @IsString()
@@ -15,4 +15,8 @@ export class CreateAulaDto {
   @IsOptional()
   @IsBoolean()
   disponible?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  lugarId?: number | null;
 }

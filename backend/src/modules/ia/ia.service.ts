@@ -16,7 +16,7 @@ const PDFParser = require('pdf2json');
 
 @Injectable()
 export class IAService {
-  private groq: Groq;
+  private groqClients: Groq[];
   private readonly logger = new Logger(IAService.name);
 
   private formatGrupo(numero: number | undefined | null): string {
@@ -34,8 +34,13 @@ export class IAService {
     private programacionesService: ProgramacionesService,
     private cargaNoLectivaService: CargaNoLectivaService,
   ) {
-    const apiKey = this.configService.get<string>('GROQ_API_KEY');
-    this.groq = new Groq({ apiKey: apiKey || 'dummy-key' });
+    const apiKeys = [
+      this.configService.get<string>('GROQ_API_KEY'),
+      this.configService.get<string>('GROQ_API_KEY_2'),
+    ].filter(Boolean) as string[];
+    this.groqClients = apiKeys.length > 0
+      ? apiKeys.map(key => new Groq({ apiKey: key }))
+      : [new Groq({ apiKey: 'dummy-key' })];
   }
 
   async chat(message: string, history: any[] = [], context: any = {}): Promise<any> {
@@ -176,7 +181,7 @@ export class IAService {
     ];
 
     try {
-      let response = await this.groq.chat.completions.create({
+      let response = await this.groqClients[0].chat.completions.create({
         model: 'llama-3.3-70b-versatile',
         messages,
         tools,
@@ -389,7 +394,7 @@ export class IAService {
         }
 
         // Obtener respuesta final después de las herramientas
-        response = await this.groq.chat.completions.create({
+        response = await this.groqClients[0].chat.completions.create({
           model: 'llama-3.3-70b-versatile',
           messages,
         });
@@ -425,6 +430,12 @@ export class IAService {
   }
 
   async parseCursosFromText(text: string): Promise<any[]> {
+    // Truncar texto para no exceder límite de tasa gratuita (12k TPM)
+    const maxTextLength = 12000;
+    const truncatedText = text.length > maxTextLength
+      ? text.substring(0, maxTextLength) + '\n[... texto truncado por longitud ...]'
+      : text;
+
     const prompt = `
       Eres un experto en extracción de datos académicos. Tu tarea es extraer la lista de cursos de una malla curricular.
       El texto proviene de un PDF y puede estar un poco desordenado.
@@ -434,6 +445,7 @@ export class IAService {
       - creditos (number)
       - cicloAcademico (string, solo el número, ej: "1", "2", etc.)
       - departamento (string, el departamento o área al que pertenece el curso, ej: "Ciencias Básicas", "Ingeniería de Sistemas", "General", etc. Si no lo encuentras, usa "General")
+      - tipoCurso (string, opcional) — el tipo de curso según la malla: "ES" (Estudio Específico), "EL" (Electivo), "OB" (Obligatorio), "OP" (Otro). Si la malla lo indica, extráelo; si no, no lo incluyas o déjalo como null.
 
       REGLAS IMPORTANTES PARA TABLAS:
       - El código del curso debe tener exactamente 4 dígitos numéricos (ej: "1939", "2347").
@@ -449,32 +461,55 @@ export class IAService {
       - Para "departamento": busca en el texto menciones a departamentos, áreas o facultades. Si no encuentras información, usa "General".
 
       IMPORTANTE:
+      - La malla completa tiene aproximadamente 90 cursos. Asegúrate de extraerlos TODOS sin omitir ninguno. Se espera una lista de entre 80 y 100 cursos.
+      - Si el JSON se corta por longitud, prioriza completar la lista antes que cualquier otra cosa.
       - Responde ÚNICAMENTE con un JSON válido.
       - El JSON debe ser un objeto con una propiedad "cursos" que sea un array de objetos.
       - Si no puedes encontrar cursos, devuelve {"cursos": []}.
       - No incluyas explicaciones ni texto adicional fuera del JSON.
 
       Texto de la malla curricular:
-      ${text}
+      ${truncatedText}
     `;
 
-    try {
-      const chatCompletion = await this.groq.chat.completions.create({
-        messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.3-70b-versatile',
-        temperature: 0.1,
-        response_format: { type: 'json_object' },
-      });
+    let lastError: unknown;
 
-      const content = chatCompletion.choices[0]?.message?.content;
-      if (!content) return [];
+    for (let i = 0; i < this.groqClients.length; i++) {
+      try {
+        const chatCompletion = await this.groqClients[i].chat.completions.create({
+          messages: [{ role: 'user', content: prompt }],
+          model: 'llama-3.3-70b-versatile',
+          temperature: 0.1,
+          max_tokens: 7000,
+          response_format: { type: 'json_object' },
+        });
 
-      const parsed = JSON.parse(content);
-      return Array.isArray(parsed.cursos) ? parsed.cursos : [];
-    } catch (error) {
-      console.error('Error con Groq API:', error);
-      throw new InternalServerErrorException('Error al procesar la malla con IA. Verifica tu GROQ_API_KEY.');
+        const content = chatCompletion.choices[0]?.message?.content;
+        if (!content) return [];
+
+        const parsed = JSON.parse(content);
+        return Array.isArray(parsed.cursos) ? parsed.cursos : [];
+      } catch (error) {
+        lastError = error;
+        const isRateLimit =
+          error?.code === 'rate_limit_exceeded' ||
+          error?.status === 429 ||
+          error?.message?.includes('rate_limit');
+
+        if (isRateLimit) {
+          this.logger.warn(`Groq key ${i + 1} rate limited, trying next key...`);
+          continue;
+        }
+
+        if (i < this.groqClients.length - 1) {
+          this.logger.warn(`Groq key ${i + 1} failed with non-rate-limit error, trying next key...`);
+          continue;
+        }
+      }
     }
+
+    console.error('Error con Groq API:', lastError);
+    throw new InternalServerErrorException('Error al procesar la malla con IA. Verifica tu GROQ_API_KEY.');
   }
 
 }

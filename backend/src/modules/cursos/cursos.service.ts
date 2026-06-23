@@ -52,45 +52,45 @@ export class CursosService {
       throw new BadRequestException('No hay cursos para guardar.');
     }
 
-    const invalidRows: number[] = [];
-    const normalizedCursos = cursos.map((curso, index) => {
-      const normalized = this.normalizeCursoData(curso);
+    // Normalizar y filtrar cursos que no tengan ni código ni nombre (completamente inválidos)
+    const normalizedCursos = cursos
+      .map((curso) => this.normalizeCursoData(curso))
+      .filter((data) => data.nombre);
 
-      const isInvalid =
-        !normalized.codigo ||
-        !normalized.nombre ||
-        !normalized.cicloAcademico ||
-        !normalized.departamento ||
-        !Number.isFinite(normalized.creditos) ||
-        normalized.creditos < 1;
-
-      if (isInvalid) {
-        invalidRows.push(index + 1);
-      }
-
-      return normalized;
-    });
-
-    if (invalidRows.length > 0) {
-      throw new BadRequestException(
-        `Hay filas inválidas en la previsualización (${invalidRows.join(', ')}). Revisa código, nombre, ciclo y créditos (mínimo 1).`,
-      );
+    if (normalizedCursos.length === 0) {
+      throw new BadRequestException('No se pudieron extraer cursos válidos del PDF.');
     }
 
     const savedCursos: Curso[] = [];
+    let tmpCounter = 1;
+
     for (const data of normalizedCursos) {
-      // Verificar si el curso ya existe por código
-      const existing = await this.cursosRepository.findOne({ where: { codigo: data.codigo } });
+      // Generar código único si la IA no pudo extraerlo
+      if (!data.codigo) {
+        data.codigo = `TMP${String(tmpCounter++).padStart(4, '0')}`;
+      }
+
+      // Normalizar créditos: si son inválidos, usar 0 (editable después)
+      if (!Number.isFinite(data.creditos) || data.creditos < 0) {
+        data.creditos = 0;
+      }
+
+      // Verificar si el curso ya existe (por código + curriculaId si aplica)
+      const whereClause: any = { codigo: data.codigo };
+      if (curriculaId) {
+        whereClause.curriculaId = curriculaId;
+      }
+      const existing = await this.cursosRepository.findOne({ where: whereClause });
       if (existing) {
-        // Actualizar si ya existe
+        // Actualizar si ya existe en esta malla
         Object.assign(existing, { ...data, carreraId, curriculaId });
         const saved = await this.cursosRepository.save(existing);
-        savedCursos.push(saved as any);
+        savedCursos.push(saved);
       } else {
-        // Crear si no existe
+        // Crear uno nuevo (aunque exista el mismo código en otra malla)
         const curso = this.cursosRepository.create({ ...data, carreraId, curriculaId } as Partial<Curso>);
         const saved = await this.cursosRepository.save(curso);
-        savedCursos.push(saved as any);
+        savedCursos.push(saved);
       }
     }
 
@@ -101,7 +101,9 @@ export class CursosService {
     };
   }
 
-  private normalizeCursoData(data: any) {
+  public normalizeCursoData(data: any) {
+    const tipoCurso = data?.tipoCurso;
+    const validTipoCurso = ['ES', 'EL', 'OB', 'OP'].includes(tipoCurso) ? tipoCurso : null;
     const creditos = Number(data?.creditos);
 
     return {
@@ -110,6 +112,7 @@ export class CursosService {
       cicloAcademico: String(data?.cicloAcademico ?? '').trim(),
       creditos: Number.isFinite(creditos) ? creditos : NaN,
       departamento: String(data?.departamento ?? 'General').trim(),
+      tipoCurso: validTipoCurso,
     };
   }
 

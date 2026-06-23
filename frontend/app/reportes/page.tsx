@@ -81,11 +81,10 @@ const REPORTES_GESTION = [
 
 // Orden de reportes oficiales
 const ORDEN_REPORTES_OFICIALES = [
-  '(FORMATO # 1) Carga Horaria Asignada (Sede Central)',
-  '(FORMATO # 2) Declaración Jurada (Sede Central)',
-  '(FORMATO # 1) Carga Horaria Asignada (Sedes Desconcentradas)',
-  '(FORMATO # 2) Declaración Jurada (Sedes Desconcentradas)',
-  '(FORMATO # 3) Horario Semanal del Docente',
+  'DECLARACION DE LA CARGA ACADEMICA DOCENTE (F01-CAD)',
+  'DECLARACION JURADA DE NO ESTAR INCURSO EN CAUSALES DE INCOMPATIBILIDAD O IMPEDIMENTO LABORAL (F02-CAD)',
+  'HORARIO SEMANAL DE LA CARGA ACADEMICA DOCENTE (F03-CAD)',
+  'DECLARACION DE CARGA HORARIA LECTIVA ASIGNADA EN FILIALES, POSTGRADO, SEGUNDAS ESPECIALIDADES Y CENTROS DE PRODUCCION Y EXTENSION UNIVERSITARIA (F04-CAD)',
 ];
 
 const DIAS_MAP: Record<number, string> = {
@@ -2326,7 +2325,6 @@ export default function ReportesPage() {
                       >
                         <MenuItem value="Todas las Sedes">Todas las Sedes</MenuItem>
                         <MenuItem value="Sede Central">Sede Central</MenuItem>
-                        <MenuItem value="Sedes Desconcentradas">Sedes Desconcentradas</MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>
@@ -2341,7 +2339,6 @@ export default function ReportesPage() {
                         <MenuItem value="Todos los Estados">Todos los Estados</MenuItem>
                         <MenuItem value="pendiente">Pendiente</MenuItem>
                         <MenuItem value="firmado">Firmado</MenuItem>
-                        <MenuItem value="standby">Standby</MenuItem>
                       </Select>
                     </FormControl>
                 </Grid>
@@ -2390,8 +2387,8 @@ export default function ReportesPage() {
                             icon={reporte.estado === 'firmado' ? <SuccessIcon /> : <WaitIcon />}
                             sx={{ 
                               fontWeight: 800,
-                              bgcolor: reporte.estado === 'firmado' ? '#dcfce7' : reporte.estado === 'standby' ? '#f1f5f9' : '#fff7ed',
-                              color: reporte.estado === 'firmado' ? '#166534' : reporte.estado === 'standby' ? '#64748b' : '#9a3412',
+                              bgcolor: reporte.estado === 'firmado' ? '#dcfce7' : '#fff7ed',
+                              color: reporte.estado === 'firmado' ? '#166534' : '#9a3412',
                               borderRadius: 2,
                               px: 1
                             }}
@@ -2405,7 +2402,7 @@ export default function ReportesPage() {
                                   size="small" 
                                   color="primary"
                                   onClick={() => handleFirmar(reporte.id)}
-                                  disabled={reporte.estado === 'firmado' || reporte.estado === 'standby'}
+                                  disabled={reporte.estado === 'firmado'}
                                   sx={{ bgcolor: 'rgba(11, 58, 117, 0.05)', '&:hover': { bgcolor: 'rgba(11, 58, 117, 0.1)' } }}
                                 >
                                   <SignIcon fontSize="small" />
@@ -2419,7 +2416,6 @@ export default function ReportesPage() {
                                   size="small" 
                                   color="secondary"
                                   onClick={() => handleDescargarReporteOficial(reporte.id, `${reporte.formato}.pdf`)}
-                                  disabled={reporte.estado === 'standby'}
                                   sx={{ bgcolor: 'rgba(156, 39, 176, 0.05)', '&:hover': { bgcolor: 'rgba(156, 39, 176, 0.1)' } }}
                                 >
                                   <PdfIcon fontSize="small" />
@@ -2432,7 +2428,6 @@ export default function ReportesPage() {
                                   size="small" 
                                   color="success"
                                   onClick={() => handleDescargarReporteOficialExcel(reporte.id, `${reporte.formato}.xlsx`)}
-                                  disabled={reporte.estado === 'standby'}
                                   sx={{ bgcolor: 'rgba(22, 163, 74, 0.05)', '&:hover': { bgcolor: 'rgba(22, 163, 74, 0.1)' } }}
                                 >
                                   <ExcelIcon fontSize="small" />

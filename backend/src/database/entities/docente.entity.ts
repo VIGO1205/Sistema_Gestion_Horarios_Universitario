@@ -25,14 +25,6 @@ export enum Categoria {
   JEFE_PRACTICA = 'jefe_practica',
 }
 
-export enum CargoAdministrativo {
-  NINGUNO = 'ninguno',
-  RECTOR_VICERRECTOR = 'rector_vicerrector',
-  DECANO_DIRECTOR_POSTGRADO = 'decano_director_postgrado',
-  DIRECTOR_ESCUELA_DEPARTAMENTO = 'director_escuela_departamento',
-  DIRECTOR_FILIAL = 'director_filial',
-}
-
 export enum Facultad {
   CIENCIAS_AGROPECUARIAS = 'ciencias_agropecuarias',
   CIENCIAS_BIOLOGICAS = 'ciencias_biologicas',
@@ -47,9 +39,6 @@ export enum Facultad {
   INGENIERIA = 'ingenieria',
   INGENIERIA_QUIMICA = 'ingenieria_quimica',
   MEDICINA = 'medicina',
-  VALLE_JEQUETEPEQUE = 'valle_jequetepeque',
-  HUAMACHUCO = 'huamachuco',
-  SANTIAGO_DE_CHUCO = 'santiago_de_chuco',
 }
 
 export enum DepartamentoAcademico {
@@ -103,6 +92,12 @@ export enum DepartamentoAcademico {
   SALUD_DEL_ADULTO_Y_SALUD_FAMILIAR_Y_COMUNITARIA = 'salud_del_adulto_y_salud_familiar_y_comunitaria',
 }
 
+export enum TipoInvestigacion {
+  NINGUNA = 'NINGUNA',
+  INVESTIGADOR = 'INVESTIGADOR',
+  RENACYT = 'RENACYT',
+}
+
 export enum EstadoSeleccion {
   EN_ESPERA = 'en_espera',
   EN_ATENCION = 'en_atencion',
@@ -110,7 +105,7 @@ export enum EstadoSeleccion {
 }
 
 @Entity('docentes')
-@Index('idx_docentes_jerarquia', ['tipoContrato', 'categoria', 'antiguedadAnios'])
+@Index('idx_docentes_jerarquia', ['condicion', 'categoria', 'antiguedadAnios'])
 @Index('idx_docentes_activos', ['activo'])
 export class Docente {
   @PrimaryGeneratedColumn()
@@ -122,10 +117,10 @@ export class Docente {
   @Column({ type: 'varchar', length: 8, unique: true, nullable: true, name: 'numeroDocumento' })
   dni: string;
 
-  @Column({ type: 'enum', enum: TipoContrato })
-  tipoContrato: TipoContrato;
+  @Column({ type: 'enum', enum: TipoContrato, nullable: true, default: TipoContrato.NOMBRADO })
+  condicion: TipoContrato;
 
-  @Column({ type: 'enum', enum: Categoria })
+  @Column({ type: 'enum', enum: Categoria, nullable: true, default: Categoria.ASOCIADO })
   categoria: Categoria;
 
   @Column({ type: 'integer', default: 0 })
@@ -155,7 +150,7 @@ export class Docente {
   @Column({ type: 'varchar', length: 150, nullable: true })
   emailPersonal: string;
 
-  @Column({ type: 'varchar', length: 100, nullable: true, default: 'TIEMPO COMPLETO 40 H' })
+  @Column({ type: 'varchar', length: 100, nullable: true, default: 'TIEMPO COMPLETO' })
   dedicacion: string;
 
   @Column({ type: 'varchar', length: 10, nullable: true, default: '0000', name: 'codigo_ibm' })
@@ -170,11 +165,20 @@ export class Docente {
   @Column({ type: 'enum', enum: DepartamentoAcademico, nullable: true })
   departamentoAcademico: DepartamentoAcademico;
 
-  @Column({ type: 'enum', enum: CargoAdministrativo, default: CargoAdministrativo.NINGUNO })
-  cargoAdministrativo: CargoAdministrativo;
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  cargoGobierno: string;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  cargoGestionInstitucional: string;
 
   @Column({ type: 'boolean', default: false })
   esBecario: boolean;
+
+  @Column({ type: 'enum', enum: TipoInvestigacion, default: TipoInvestigacion.NINGUNA })
+  investigacion: TipoInvestigacion;
+
+  @Column({ type: 'simple-json', default: ['Ninguno'] })
+  dependencias: string[];
 
   @Column({ name: 'ventana_id', type: 'integer', nullable: true })
   ventanaId: number | null;

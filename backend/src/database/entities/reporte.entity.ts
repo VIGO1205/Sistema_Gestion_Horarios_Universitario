@@ -4,16 +4,14 @@ import { CicloAcademico } from './ciclo-academico.entity';
 
 export enum EstadoReporte {
   PENDIENTE = 'pendiente',
-  FIRMADO = 'firmado',
-  STANDBY = 'standby'
+  FIRMADO = 'firmado'
 }
 
 export enum TipoFormato {
-  FORMATO_1_CARGA_CENTRAL = '(FORMATO # 1) Carga Horaria Asignada (Sede Central)',
-  FORMATO_2_DJ_CENTRAL = '(FORMATO # 2) Declaración Jurada (Sede Central)',
-  FORMATO_1_CARGA_DESCONCENTRADA = '(FORMATO # 1) Carga Horaria Asignada (Sedes Desconcentradas)',
-  FORMATO_2_DJ_DESCONCENTRADA = '(FORMATO # 2) Declaración Jurada (Sedes Desconcentradas)',
-  FORMATO_3_HORARIO = '(FORMATO # 3) Horario Semanal del Docente',
+  FORMATO_1_CARGA_CENTRAL = 'DECLARACION DE LA CARGA ACADEMICA DOCENTE (F01-CAD)',
+  FORMATO_2_DJ_CENTRAL = 'DECLARACION JURADA DE NO ESTAR INCURSO EN CAUSALES DE INCOMPATIBILIDAD O IMPEDIMENTO LABORAL (F02-CAD)',
+  FORMATO_3_HORARIO = 'HORARIO SEMANAL DE LA CARGA ACADEMICA DOCENTE (F03-CAD)',
+  FORMATO_4_CARGA_ADICIONAL = 'DECLARACION DE CARGA HORARIA LECTIVA ASIGNADA EN FILIALES, POSTGRADO, SEGUNDAS ESPECIALIDADES Y CENTROS DE PRODUCCION Y EXTENSION UNIVERSITARIA (F04-CAD)',
 }
 
 @Entity('reportes')
@@ -27,8 +25,8 @@ export class Reporte {
   @Column({ name: 'ciclo_id' })
   cicloId: number;
 
-  @Column({ type: 'enum', enum: TipoFormato })
-  formato: TipoFormato;
+  @Column({ type: 'varchar', length: 200 })
+  formato: string;
 
   @Column({ type: 'varchar', length: 100, default: 'Sede Central' })
   sede: string;
