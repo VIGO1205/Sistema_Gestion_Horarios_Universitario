@@ -41,7 +41,14 @@ export class AulasService {
 
   async update(id: number, updateAulaDto: UpdateAulaDto): Promise<Aula> {
     const aula = await this.findOne(id);
-    Object.assign(aula, updateAulaDto);
+    
+    // Actualizamos explícitamente los campos, incluido lugarId
+    aula.nombre = updateAulaDto.nombre ?? aula.nombre;
+    aula.tipo = updateAulaDto.tipo ?? aula.tipo;
+    aula.capacidad = updateAulaDto.capacidad ?? aula.capacidad;
+    aula.disponible = updateAulaDto.disponible ?? aula.disponible;
+    aula.lugarId = updateAulaDto.lugarId !== undefined ? updateAulaDto.lugarId : aula.lugarId;
+    
     return await this.aulasRepository.save(aula);
   }
 
