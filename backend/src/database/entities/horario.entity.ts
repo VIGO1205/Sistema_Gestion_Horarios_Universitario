@@ -13,15 +13,17 @@ export enum TipoClaseHorario {
 }
 
 export enum ActividadNoLectiva {
-  PREPARACION = 'PREPARACIÓN Y EVALUACIÓN',
-  TUTORIA = 'TUTORÍA Y ORIENTACIÓN',
-  INVESTIGACION = 'INVESTIGACIÓN',
-  CAPACITACION = 'CAPACITACIÓN',
-  GOBIERNO = 'GOBIERNO UNIVERSITARIO',
+  PREPARACION = 'Preparación y Evaluación (PE)',
+  TUTORIA = 'Tutoría y Consejería (TC)',
+  INVESTIGACION = 'Investigación (INV)',
+  CAPACITACION = 'Formación Académica y Capacitación (FAC)',
+  GOBIERNO = 'Actividades de Gobierno o de Autoridad (AGA)',
   ADMINISTRACION = 'ADMINISTRACIÓN ACADÉMICA',
-  ASESORIA = 'ASESORÍA A ESTUDIANTES',
-  RESPONSABILIDAD_SOCIAL = 'RESPONSABILIDAD SOCIAL',
-  COMITES = 'COMITÉS TÉCNICOS',
+  ASESORIA = 'Asesoría de Tesis y Exámenes Profesionales (ATEP)',
+  RESPONSABILIDAD_SOCIAL = 'Responsabilidad Social Universitaria (RSU)',
+  COMITES = 'Comités y Comisiones Especiales (CC)',
+  AAAI = 'Actividades de Gestión Institucional (AAAI)',
+  AAEP = 'Autoevaluación/Acreditación Esc. Profesional (AAEP)',
 }
 
 @Entity('horarios')
@@ -49,8 +51,8 @@ export class Horario {
   @Column({ type: 'enum', enum: TipoClaseHorario })
   tipoClase: TipoClaseHorario;
 
-  @Column({ type: 'enum', enum: ActividadNoLectiva, nullable: true })
-  actividadNoLectiva: ActividadNoLectiva;
+  @Column({ type: 'varchar', nullable: true })
+  actividadNoLectiva: string;
 
   @Column({ type: 'integer', default: 1 })
   diaSemana: number; // 1=Lunes, 7=Domingo

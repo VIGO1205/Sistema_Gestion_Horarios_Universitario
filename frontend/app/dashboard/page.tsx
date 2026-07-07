@@ -158,6 +158,9 @@ export default function DashboardEstadisticas() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filtroCarga, setFiltroCarga] = useState('todos');
+  const [cargaAdicional, setCargaAdicional] = useState<any>(null);
+  const [pageFilial, setPageFilial] = useState(0);
+  const rowsPerPageFilial = 5;
 
   // Sockets y Toasts
   const prevEstadoRef = useRef<string | null>(null);
@@ -411,6 +414,12 @@ export default function DashboardEstadisticas() {
             api.get('/carga-no-lectiva', { params: { docenteId: usuario.docenteId, cicloId: targetCicloId } })
           ]);
           setMisHorarios(horariosRes.data);
+          try {
+            const filialRes = await api.get('/asignacion-filial', { params: { docenteId: usuario.docenteId, cicloId: targetCicloId } });
+            setCargaAdicional(filialRes.data);
+          } catch {
+            setCargaAdicional(null);
+          }
           const cursosNormalizados = (cursosRes.data || []).map((asignacion: any) => ({
             id: asignacion.curso?.id ?? asignacion.id,
             nombre: asignacion.curso?.nombre ?? 'Curso',
@@ -585,13 +594,46 @@ export default function DashboardEstadisticas() {
     const totalHorasSemana = dataHorasPorDia.reduce((acc, d) => acc + d.horas, 0);
     const promedioHorasDia = totalHorasSemana / (dataHorasPorDia.filter(d => d.horas > 0).length || 1);
 
+    // Convertir carga adicional a eventos tipo horario
+    const DIA_REVERSE: Record<string, number> = {
+      'Lunes': 1, 'Martes': 2, 'Miércoles': 3, 'Jueves': 4,
+      'Viernes': 5, 'Sábado': 6, 'Domingo': 7,
+    };
+    const filialEvents: any[] = [];
+    if (cargaAdicional?.cursos) {
+      for (const curso of cargaAdicional.cursos) {
+        if (!curso.horarioSemanal) continue;
+        for (let idx = 0; idx < curso.horarioSemanal.length; idx++) {
+          const slot = curso.horarioSemanal[idx];
+          const diaNum = DIA_REVERSE[slot.dia];
+          if (!diaNum) continue;
+          filialEvents.push({
+            id: `filial_${curso.id}_${idx}`,
+            tipoClase: 'filial',
+            horaInicio: slot.horaInicio,
+            horaFin: slot.horaFin,
+            diaSemana: diaNum,
+            curso: { nombre: curso.nombre },
+            aula: { nombre: curso.dependencia || 'FILIAL' },
+          });
+        }
+      }
+    }
+
     // Filtrar horarios según el tab seleccionado
-    const horariosFiltrados = misHorarios.filter(h => {
+    const horariosBase = (filtroCarga === 'todos' || filtroCarga === 'filial')
+      ? [...misHorarios, ...filialEvents]
+      : misHorarios;
+    const horariosFiltradosRaw = horariosBase.filter(h => {
       if (filtroCarga === 'todos') return true;
-      if (filtroCarga === 'lectiva') return h.tipoClase !== 'no_lectiva';
+      if (filtroCarga === 'lectiva') return h.tipoClase !== 'no_lectiva' && h.tipoClase !== 'filial';
       if (filtroCarga === 'no_lectiva') return h.tipoClase === 'no_lectiva';
+      if (filtroCarga === 'filial') return h.tipoClase === 'filial';
       return true;
     });
+    const totalPages = Math.ceil(horariosFiltradosRaw.length / rowsPerPageFilial);
+    const currentPage = Math.min(pageFilial, Math.max(0, totalPages - 1));
+    const horariosFiltrados = horariosFiltradosRaw.slice(currentPage * rowsPerPageFilial, (currentPage + 1) * rowsPerPageFilial);
 
     // Agrupar cursos para la sección lateral
     const misCursosAgrupados = misCursos.reduce((acc: any[], current: any) => {
@@ -974,6 +1016,13 @@ export default function DashboardEstadisticas() {
                   <Tab label="Todos" value="todos" />
                   <Tab label="Carga Lectiva" value="lectiva" />
                   <Tab label="No Lectiva" value="no_lectiva" />
+                  {cargaAdicional?.cursos?.length > 0 && (
+                    <Tab 
+                      label={`Carga Adicional (${cargaAdicional.cursos.length})`} 
+                      value="filial" 
+                      onClick={() => setPageFilial(0)}
+                    />
+                  )}
                 </Tabs>
               </Box>
               <TableContainer>
@@ -996,27 +1045,33 @@ export default function DashboardEstadisticas() {
                           <TableRow key={idx} hover>
                             <TableCell sx={{ fontWeight: 600 }}>{DIAS_MAP[h.diaSemana]}</TableCell>
                             <TableCell>{h.horaInicio.substring(0,5)} - {h.horaFin.substring(0,5)}</TableCell>
-                            <TableCell sx={{ fontWeight: 700, color: h.tipoClase === 'no_lectiva' ? '#7c3aed' : '#003366' }}>
+                            <TableCell sx={{ fontWeight: 700, color: h.tipoClase === 'no_lectiva' ? '#7c3aed' : h.tipoClase === 'filial' ? '#d97706' : '#003366' }}>
                               {h.tipoClase === 'no_lectiva' 
                                 ? (h.actividadNoLectiva || 'ACTIVIDAD NO LECTIVA').toUpperCase()
-                                : (h.curso?.nombre || 'S.C.').toUpperCase()}
+                                : h.tipoClase === 'filial'
+                                  ? (h.curso?.nombre || 'CARGA ADICIONAL').toUpperCase()
+                                  : (h.curso?.nombre || 'S.C.').toUpperCase()}
                             </TableCell>
                             <TableCell>
                               <Box sx={{ 
                                 px: 1.5, py: 0.5, borderRadius: 2, display: 'inline-block',
                                 bgcolor: h.tipoClase === 'no_lectiva' 
                                   ? 'rgba(124, 58, 237, 0.1)' 
-                                  : h.tipoClase === 'teoria' 
-                                    ? 'rgba(99, 102, 241, 0.1)' 
-                                    : 'rgba(245, 158, 11, 0.1)',
+                                  : h.tipoClase === 'filial'
+                                    ? 'rgba(217, 119, 6, 0.1)'
+                                    : h.tipoClase === 'teoria' 
+                                      ? 'rgba(99, 102, 241, 0.1)' 
+                                      : 'rgba(245, 158, 11, 0.1)',
                                 color: h.tipoClase === 'no_lectiva' 
                                   ? '#7c3aed' 
-                                  : h.tipoClase === 'teoria' 
-                                    ? '#6366f1' 
-                                    : '#f59e0b',
+                                  : h.tipoClase === 'filial'
+                                    ? '#d97706'
+                                    : h.tipoClase === 'teoria' 
+                                      ? '#6366f1' 
+                                      : '#f59e0b',
                                 fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase'
                               }}>
-                                {h.tipoClase.replace('_', ' ')}
+                                {h.tipoClase === 'filial' ? 'ADICIONAL' : h.tipoClase.replace('_', ' ')}
                               </Box>
                             </TableCell>
                             <TableCell sx={{ fontWeight: 500 }}>{h.aula?.nombre || '-'}</TableCell>
@@ -1043,6 +1098,31 @@ export default function DashboardEstadisticas() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              {horariosFiltradosRaw.length > rowsPerPageFilial && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, mt: 2 }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={currentPage === 0}
+                    onClick={() => setPageFilial(p => p - 1)}
+                    sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2 }}
+                  >
+                    Anterior
+                  </Button>
+                  <Typography variant="body2" sx={{ color: '#64748b', fontWeight: 600 }}>
+                    {currentPage + 1} de {totalPages}
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={(currentPage + 1) * rowsPerPageFilial >= horariosFiltradosRaw.length}
+                    onClick={() => setPageFilial(p => p + 1)}
+                    sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2 }}
+                  >
+                    Siguiente
+                  </Button>
+                </Box>
+              )}
             </Paper>
           </Grid>
 

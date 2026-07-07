@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -67,7 +67,10 @@ interface FormularioAsignacionFilialProps {
   dedicacionTotal?: number;
   externalEstado?: string;
   onStatusChange?: (estado: string) => void;
-  onFinalSubmit?: () => Promise<void>;
+  onFinalSubmit?: () => Promise<boolean>;
+  readOnly?: boolean;
+  formDisabled?: boolean;
+  onRegisterSaveFilial?: (saveFn: () => Promise<boolean>) => void;
 }
 
 const defaultRow = (): HorarioRow => ({
@@ -114,6 +117,42 @@ const hasInvalidTime = (row: HorarioRow): boolean => {
   return toMinutes(row.horaFin) <= toMinutes(row.horaInicio);
 };
 
+const DIA_MAP: Record<string, number> = {
+  'Lunes': 1, 'Martes': 2, 'Miércoles': 3, 'Jueves': 4,
+  'Viernes': 5, 'Sábado': 6, 'Domingo': 7,
+};
+
+const hasCrossConflict = (
+  curso: CursoForm, idx: number,
+  todosCursos: CursoForm[], horariosExistentes: any[],
+): boolean => {
+  const row = curso.horario[idx];
+  if (!row.horaInicio || !row.horaFin) return false;
+  const diaNum = DIA_MAP[row.dia];
+  if (!diaNum) return false;
+  const sA = toMinutes(row.horaInicio);
+  const eA = toMinutes(row.horaFin);
+  // Contra horarios lectivos y no lectivos
+  const conflictConBackend = horariosExistentes.some(h => {
+    if (h.diaSemana !== diaNum) return false;
+    const hInicio = toMinutes(h.horaInicio.substring(0, 5));
+    const hFin = toMinutes(h.horaFin.substring(0, 5));
+    return sA < hFin && hInicio < eA;
+  });
+  if (conflictConBackend) return true;
+  // Contra otros cursos filiales
+  return todosCursos.some(otherCurso => {
+    if (otherCurso.tempId === curso.tempId) return false;
+    return otherCurso.horario.some(otherRow => {
+      if (otherRow.dia !== row.dia || otherRow.turno !== row.turno) return false;
+      if (!otherRow.horaInicio || !otherRow.horaFin) return false;
+      const sB = toMinutes(otherRow.horaInicio);
+      const eB = toMinutes(otherRow.horaFin);
+      return sA < eB && sB < eA;
+    });
+  });
+};
+
 export default function FormularioAsignacionFilial({
   docenteData,
   cicloId,
@@ -126,21 +165,36 @@ export default function FormularioAsignacionFilial({
   externalEstado,
   onStatusChange,
   onFinalSubmit,
+  readOnly = false,
+  formDisabled = false,
+  onRegisterSaveFilial,
 }: FormularioAsignacionFilialProps) {
-  const [cursos, setCursos] = useState<CursoForm[]>([
-    { tempId: nextTempId++, nombre: '', dependencia: '', horario: [defaultRow()] },
-  ]);
+  const [cursos, setCursos] = useState<CursoForm[]>([]);
   const [saving, setSaving] = useState(false);
   const [openSignature, setOpenSignature] = useState(false);
   const sigCanvas = useRef<SignatureCanvas>(null);
   const [cargandoFirma, setCargandoFirma] = useState(false);
   const [loadingFilial, setLoadingFilial] = useState(false);
+  const [horariosExistentes, setHorariosExistentes] = useState<any[]>([]);
 
   const docenteId = docenteData?.id || docenteData?.docenteId;
+  const draftKey = docenteId && cicloId ? `carga-filial-draft-${docenteId}-${cicloId}` : null;
+
+  const clearDraft = useCallback(() => {
+    if (draftKey && typeof window !== 'undefined') {
+      try { sessionStorage.removeItem(draftKey); } catch {}
+    }
+  }, [draftKey]);
+
+  const persistCursos = useCallback((data: CursoForm[]) => {
+    if (draftKey && typeof window !== 'undefined') {
+      try { sessionStorage.setItem(draftKey, JSON.stringify(data)); } catch {}
+    }
+  }, [draftKey]);
   const isValidado = externalEstado === 'validado';
   const isFinalizado = externalEstado === 'finalizado';
   const isPendiente = externalEstado === 'pendiente';
-  const isFullyLocked = isValidado || isFinalizado || isPendiente;
+  const isFullyLocked = readOnly || formDisabled || isValidado || isFinalizado || isPendiente;
 
   const getStatusConfig = (estado: string) => {
     switch (estado?.toLowerCase()) {
@@ -187,12 +241,63 @@ export default function FormularioAsignacionFilial({
     }
   }, [horasAdicionalesEnteras, onHorasAdicionalesChange]);
 
-  // Cargar datos existentes al montar el componente
+  // Persistir horas adicionales en sessionStorage para la ventana flotante
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('filial-horas-adicionales', String(horasAdicionalesEnteras));
+    }
+  }, [horasAdicionalesEnteras]);
+
+  // Cargar datos existentes al montar el componente (prioriza draft local)
   useEffect(() => {
     if (!docenteId || !cicloId) return;
+    const loadFromDraft = () => {
+      if (!draftKey) return null;
+      try {
+        const saved = sessionStorage.getItem(draftKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+      return null;
+    };
     const fetchExisting = async () => {
       setLoadingFilial(true);
       try {
+        // Siempre fetch horarios existentes (lectiva + no lectiva) para validar cruces
+        const horariosRes = await api.get('/horarios', {
+          params: { docenteId, cicloId },
+        });
+        // Combinar con horarios del grid no lectivo desde sessionStorage
+        let combined = horariosRes.data || [];
+        try {
+          const noLectivaGridKey = `carga-no-lectiva-grid-${docenteId}-${cicloId}`;
+          const saved = sessionStorage.getItem(noLectivaGridKey);
+          if (saved) {
+            const grid = JSON.parse(saved);
+            if (Array.isArray(grid)) {
+              const normalized = grid
+                .filter((h: any) => h.dia && h.horaInicio && h.horaFin)
+                .map((h: any) => ({
+                  diaSemana: DIA_MAP[h.dia] || 0,
+                  horaInicio: h.horaInicio,
+                  horaFin: h.horaFin,
+                }))
+                .filter((h: any) => h.diaSemana > 0);
+              combined = [...combined, ...normalized];
+            }
+          }
+        } catch {}
+        setHorariosExistentes(combined);
+
+        // Priorizar draft local (evita pérdida de datos al volver desde Atrás)
+        const draft = loadFromDraft();
+        if (draft) {
+          setCursos(draft);
+          setLoadingFilial(false);
+          return;
+        }
         const res = await api.get('/asignacion-filial', {
           params: { docenteId, cicloId },
         });
@@ -218,7 +323,24 @@ export default function FormularioAsignacionFilial({
       }
     };
     fetchExisting();
-  }, [docenteId, cicloId]);
+  }, [docenteId, cicloId, draftKey]);
+
+  // Auto-asignar dependencia cuando solo hay una opción disponible
+  useEffect(() => {
+    if (opcionesDependencia.length === 1) {
+      setCursos(prev => prev.map(c => ({
+        ...c,
+        dependencia: c.dependencia || opcionesDependencia[0],
+      })));
+    }
+  }, [opcionesDependencia, cursos.length]);
+
+  // Persistir cursos a sessionStorage en cada cambio
+  useEffect(() => {
+    if (draftKey && cursos.length > 0) {
+      persistCursos(cursos);
+    }
+  }, [cursos, draftKey, persistCursos]);
 
   const updateCurso = (tempId: number, field: keyof CursoForm, value: any) => {
     setCursos(prev => prev.map(c => c.tempId === tempId ? { ...c, [field]: value } : c));
@@ -421,6 +543,42 @@ export default function FormularioAsignacionFilial({
     if (cursosValidos.length === 0) return;
     setSaving(true);
     try {
+      const ok = await onFinalSubmit?.();
+      if (ok === false) {
+        MySwal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: 'No se pudo completar el envío. Verifica tus datos e intenta de nuevo.',
+        });
+        return;
+      }
+      clearDraft();
+      setCursos([]);
+      MySwal.fire({
+        icon: 'success',
+        title: 'Carga Académica Enviada',
+        text: 'Su declaración ha sido enviada correctamente al coordinador para su revisión.',
+        timer: 2500,
+        showConfirmButton: false,
+      });
+      onSubmit();
+    } catch (error: any) {
+      console.error('Error al enviar:', error);
+      MySwal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.response?.data?.message || 'Error al enviar la carga académica',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveFilialSilent = useCallback(async () => {
+    const cursosValidos = cursos.filter(c => c.nombre.trim());
+    if (cursosValidos.length === 0) return true;
+    setSaving(true);
+    try {
       await api.post('/asignacion-filial', {
         docenteId: docenteData?.id || docenteData?.docenteId,
         cicloId,
@@ -436,26 +594,26 @@ export default function FormularioAsignacionFilial({
           totalHorasSemanales: Math.round(calcTotalHorasCurso(c.horario)),
         })),
       });
-      await onFinalSubmit?.();
-      MySwal.fire({
-        icon: 'success',
-        title: 'Carga Académica Enviada',
-        text: 'Su declaración ha sido enviada correctamente al coordinador para su revisión.',
-        timer: 2500,
-        showConfirmButton: false,
-      });
-      onSubmit();
+      clearDraft();
+      setCursos([]);
+      // Actualizar horas adicionales en sessionStorage
+      const totalHoras = cursosValidos.reduce((sum, c) => sum + Math.round(calcTotalHorasCurso(c.horario)), 0);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('filial-horas-adicionales', String(totalHoras));
+      }
+      if (onHorasAdicionalesChange) onHorasAdicionalesChange(totalHoras);
+      return true;
     } catch (error: any) {
-      console.error('Error saving filial assignment:', error);
-      MySwal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.response?.data?.message || 'Error al enviar la carga académica',
-      });
+      console.error('Error guardando filial:', error);
+      return false;
     } finally {
       setSaving(false);
     }
-  };
+  }, [cursos, docenteData, cicloId, onHorasAdicionalesChange]);
+
+  useEffect(() => {
+    if (onRegisterSaveFilial) onRegisterSaveFilial(handleSaveFilialSilent);
+  }, [onRegisterSaveFilial, handleSaveFilialSilent]);
 
   const buttonStyle = {
     borderRadius: 2,
@@ -570,7 +728,7 @@ export default function FormularioAsignacionFilial({
                   />
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  {isFullyLocked ? (
+                  {isFullyLocked || opcionesDependencia.length <= 1 ? (
                     <TextField
                       fullWidth
                       size="small"
@@ -638,7 +796,8 @@ export default function FormularioAsignacionFilial({
                 {curso.horario.map((row, idx) => {
                   const timeError = hasInvalidTime(row);
                   const conflictError = hasTimeConflict(curso.horario, idx);
-                  const rowError = timeError || conflictError;
+                  const crossConflictError = hasCrossConflict(curso, idx, cursos, horariosExistentes);
+                  const rowError = timeError || conflictError || crossConflictError;
                   return (
                   <Box key={idx} sx={{
                     display: 'grid',
@@ -721,7 +880,9 @@ export default function FormularioAsignacionFilial({
                     </Tooltip>
                     {rowError && (
                       <Typography variant="caption" sx={{ gridColumn: '1 / -1', color: '#ef4444', fontWeight: 600 }}>
-                        {timeError ? 'La hora de inicio debe ser menor a la hora fin' : 'Conflicto de horario con otra fila (mismo día y turno)'}
+                        {timeError ? 'La hora de inicio debe ser menor a la hora fin'
+                          : crossConflictError ? 'Conflicto de horario con clases o actividades ya asignadas'
+                          : 'Conflicto de horario con otra fila (mismo día y turno)'}
                       </Typography>
                     )}
                   </Box>
@@ -838,7 +999,7 @@ export default function FormularioAsignacionFilial({
             <Box sx={{
               width: '100%',
               height: 16,
-              bgcolor: '#e2e8f0',
+              bgcolor: 'rgba(217, 119, 6, 0.1)',
               borderRadius: 8,
               overflow: 'hidden',
               boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)'
@@ -889,32 +1050,22 @@ export default function FormularioAsignacionFilial({
               <ValidatedIcon sx={{ color: '#16a34a' }} />
               <Typography sx={{ fontWeight: 700, color: '#16a34a' }}>DECLARACIÓN FINALIZADA</Typography>
             </Box>
-          ) : isValidado ? (
-            <Button
-              variant="contained"
-              startIcon={<ValidatedIcon />}
-              onClick={() => setOpenSignature(true)}
-              sx={{
-                ...buttonStyle,
-                bgcolor: '#059669',
-                color: '#fff',
-                boxShadow: '0 4px 12px rgba(5,150,105,0.2)',
-                '&:hover': { bgcolor: '#047857' },
-              }}
-            >
-              Firmar Declaración
-            </Button>
           ) : !isPendiente && (
             <Button
               variant="contained"
               endIcon={saving ? <CircularProgress size={20} color="inherit" /> : <ArrowForwardIcon />}
               onClick={handleSave}
               disabled={
+                isFullyLocked ||
                 saving ||
                 cursos.filter(c => c.nombre.trim()).length === 0 ||
                 totalHoras > 10 ||
                 totalHoras <= 0 ||
-                cursos.some(c => c.horario.some((_, i) => hasTimeConflict(c.horario, i) || hasInvalidTime(c.horario[i])))
+                cursos.some(c => c.horario.some((_, i) =>
+                  hasTimeConflict(c.horario, i) ||
+                  hasInvalidTime(c.horario[i]) ||
+                  hasCrossConflict(c, i, cursos, horariosExistentes)
+                ))
               }
               sx={{
                 ...buttonStyle,

@@ -1,6 +1,6 @@
 import * as dotenv from 'dotenv';
 import * as bcrypt from 'bcryptjs';
-import { dataSource } from './data-source';
+import { dataSource } from '../data-source';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -10,7 +10,6 @@ import { Usuario, RolUsuario } from '../entities/usuario.entity';
 import { CicloAcademico } from '../entities/ciclo-academico.entity';
 import { Carrera } from '../entities/carrera.entity';
 import { DocenteCarrera } from '../entities/docente-carrera.entity';
-import { Lugar } from '../entities/lugar.entity';
 
 async function runSeeds() {
   try {
@@ -23,43 +22,6 @@ async function runSeeds() {
     const cicloRepo = dataSource.getRepository(CicloAcademico);
     const carreraRepo = dataSource.getRepository(Carrera);
     const docenteCarreraRepository = dataSource.getRepository(DocenteCarrera);
-    const lugarRepo = dataSource.getRepository(Lugar);
-
-    console.log('Iniciando seed de Lugares...');
-    const lugaresData = [
-      ['F01', 'CC. Agropecuarias'],
-      ['F02', 'CC. Biológicas'],
-      ['F03', 'CC. Económicas'],
-      ['F04', 'CC. Físicas y Matemáticas'],
-      ['F05', 'CC. Sociales'],
-      ['F06', 'Derecho y Ciencias Políticas'],
-      ['F07', 'Educación y Comunicación'],
-      ['F08', 'Enfermería'],
-      ['F09', 'Estomatología'],
-      ['F10', 'Farmacia y Bioquímica'],
-      ['F11', 'Ingeniería'],
-      ['F12', 'Ingeniería Química'],
-      ['F13', 'Medicina'],
-      ['F14', 'Filial Valle Jequetepeque'],
-      ['F15', 'Filial Huamachuco'],
-      ['F16', 'Filial Santiago de Chuco'],
-      ['OA', 'Oficina Administrativa'],
-      ['SC', 'Salida de Campo'],
-    ];
-
-    const existingLugares = await lugarRepo.find();
-    const lugarByCodigo = new Map(existingLugares.map((lugar) => [lugar.codigo, lugar]));
-
-    for (const [codigo, nombre] of lugaresData) {
-      const existente = lugarByCodigo.get(codigo);
-      if (!existente) {
-        await lugarRepo.save({ codigo, nombre });
-        console.log(`Insertado lugar: ${codigo} - ${nombre}`);
-      } else {
-        console.log(`Ya existe lugar: ${codigo} - ${nombre}`);
-      }
-    }
-    console.log('Seed de Lugares completado.\n');
 
     console.log('Iniciando limpieza de base de datos...');
     

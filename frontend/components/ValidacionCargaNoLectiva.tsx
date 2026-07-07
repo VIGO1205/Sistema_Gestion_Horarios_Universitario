@@ -51,6 +51,7 @@ import {
   ArrowForward as ArrowForwardIcon,
 } from '@mui/icons-material';
 import api from '@/lib/api';
+import { getNotificacionesSocket } from '@/lib/socket';
 import { getLimitesReglamento } from '@/lib/reglamento-utils';
 import FormularioCargaNoLectiva from './FormularioCargaNoLectiva';
 import Swal from 'sweetalert2';
@@ -110,6 +111,35 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
       fetchCargas();
       fetchCicloData();
     }
+  }, [selectedCicloId]);
+
+  // Actualización en tiempo real vía WebSocket
+  useEffect(() => {
+    let socket: any = null;
+    let mounted = true;
+
+    const setupSocket = async () => {
+      try {
+        socket = await getNotificacionesSocket();
+        socket.on('carga:update', (data: any) => {
+          if (!mounted) return;
+          if (Number(data.cicloId) === Number(selectedCicloId)) {
+            fetchCargas();
+          }
+        });
+      } catch (err) {
+        console.error('Error en socket de ValidacionCargaNoLectiva:', err);
+      }
+    };
+
+    setupSocket();
+
+    return () => {
+      mounted = false;
+      if (socket) {
+        socket.off('carga:update');
+      }
+    };
   }, [selectedCicloId]);
 
   useEffect(() => {
@@ -274,11 +304,11 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
     }
   }, [filialData]);
 
-  const handleAdminStatusChange = async (newStatus: string) => {
+  const handleAdminStatusChange = async (newStatus: string, motivoRechazo?: string) => {
     if (!selectedCarga?.id) return;
     try {
-      await api.patch(`/carga-no-lectiva/${selectedCarga.id}/estado`, { estado: newStatus });
-      setSelectedCarga((prev: any) => ({ ...prev, estado: newStatus }));
+      await api.patch(`/carga-no-lectiva/${selectedCarga.id}/estado`, { estado: newStatus, motivoRechazo });
+      setSelectedCarga((prev: any) => ({ ...prev, estado: newStatus, motivoRechazo }));
       fetchCargas();
       MySwal.fire({ icon: 'success', title: 'Estado actualizado', timer: 1500, showConfirmButton: false });
     } catch (error: any) {
@@ -1035,7 +1065,7 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
                                 {Math.min(100, Math.round((hAdic / 10) * 100))}%
                               </Typography>
                             </Box>
-                            <Box sx={{ width: '100%', height: 16, bgcolor: '#e2e8f0', borderRadius: 8, overflow: 'hidden', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)' }}>
+                            <Box sx={{ width: '100%', height: 16, bgcolor: 'rgba(217, 119, 6, 0.1)', borderRadius: 8, overflow: 'hidden', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)' }}>
                               <Box sx={{ width: `${Math.min((hAdic / 10) * 100, 100)}%`, height: '100%', bgcolor: hAdic > 10 ? '#dc2626' : '#d97706', transition: 'width 0.5s ease-in-out', borderRadius: 8 }} />
                             </Box>
                           </Box>
@@ -1087,7 +1117,27 @@ export default function ValidacionCargaNoLectiva({ cicloId: initialCicloId }: Va
                           )}
                           {selectedCarga?.estado !== 'borrador' && (
                             <Button variant="outlined" color="error" startIcon={<DraftIcon />}
-                              onClick={() => handleAdminStatusChange('borrador')}
+                              onClick={async () => {
+                                if (selectedCarga?.estado === 'finalizado') {
+                                  handleAdminStatusChange('borrador');
+                                  return;
+                                }
+                                setOpenReview(false);
+                                const { value: motivo } = await MySwal.fire({
+                                  title: 'Observar / Devolver',
+                                  input: 'textarea',
+                                  inputLabel: 'Motivo de la observación',
+                                  inputPlaceholder: 'Describa el motivo de la devolución...',
+                                  showCancelButton: true,
+                                  confirmButtonText: 'Enviar',
+                                  cancelButtonText: 'Cancelar',
+                                  inputValidator: (v: string) => !v?.trim() && 'Debe ingresar un motivo',
+                                });
+                                setOpenReview(true);
+                                if (motivo) {
+                                  handleAdminStatusChange('borrador', motivo);
+                                }
+                              }}
                               sx={{ borderRadius: 2, px: 4, fontWeight: 800, textTransform: 'none' }}>
                               {selectedCarga?.estado === 'finalizado' ? 'Anular Firma / Devolver' : 'Observar / Devolver'}
                             </Button>

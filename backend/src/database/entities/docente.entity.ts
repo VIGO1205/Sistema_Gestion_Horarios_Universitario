@@ -99,6 +99,7 @@ export enum TipoInvestigacion {
 }
 
 export enum EstadoSeleccion {
+  SIN_VENTANA = 'sin_ventana',
   EN_ESPERA = 'en_espera',
   EN_ATENCION = 'en_atencion',
   FINALIZADO = 'finalizado',
@@ -117,10 +118,10 @@ export class Docente {
   @Column({ type: 'varchar', length: 8, unique: true, nullable: true, name: 'numeroDocumento' })
   dni: string;
 
-  @Column({ type: 'enum', enum: TipoContrato, nullable: true, default: TipoContrato.NOMBRADO })
+  @Column({ type: 'enum', enum: TipoContrato })
   condicion: TipoContrato;
 
-  @Column({ type: 'enum', enum: Categoria, nullable: true, default: Categoria.ASOCIADO })
+  @Column({ type: 'enum', enum: Categoria })
   categoria: Categoria;
 
   @Column({ type: 'integer', default: 0 })
@@ -132,7 +133,7 @@ export class Docente {
   @Column({ type: 'boolean', default: true })
   activo: boolean;
 
-  @Column({ type: 'enum', enum: EstadoSeleccion, default: EstadoSeleccion.EN_ESPERA })
+  @Column({ type: 'enum', enum: EstadoSeleccion, default: EstadoSeleccion.SIN_VENTANA })
   estadoSeleccion: EstadoSeleccion;
 
   @Column({ type: 'timestamp', nullable: true, transformer: peruTimestampTransformer })

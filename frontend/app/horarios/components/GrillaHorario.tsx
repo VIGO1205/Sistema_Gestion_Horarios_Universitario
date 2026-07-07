@@ -25,6 +25,8 @@ interface GrillaHorarioProps {
   getColorByDisponibilidad: (disponibilidad: string) => string;
   getColorByDocente: (docenteId: number | string) => string;
   getColorBorderByDocente: (docenteId: number | string) => string;
+  getColorByCurso: (horario: any) => string;
+  getColorBorderByCurso: (horario: any) => string;
   isStartTime: (eventHoraInicio: string, gridHora: string) => boolean;
   dragSelection: any;
   selectionInfo: any;
@@ -48,6 +50,7 @@ const shortLabel = (label: string, isNoLectiva = false) => {
     if (l === 'practica') return 'PRÁC.';
     if (l === 'laboratorio') return 'LAB.';
     if (l === 'no_lectiva') return 'N. LECT.';
+    if (l === 'filial') return 'ADIC.';
     return label.toUpperCase();
   }
 
@@ -79,6 +82,8 @@ const GrillaHorario: React.FC<GrillaHorarioProps> = ({
   getColorByDisponibilidad,
   getColorByDocente,
   getColorBorderByDocente,
+  getColorByCurso,
+  getColorBorderByCurso,
   isStartTime,
   dragSelection,
   selectionInfo,
@@ -281,7 +286,11 @@ const GrillaHorario: React.FC<GrillaHorarioProps> = ({
                                 width: '100%',
                                 position: 'relative'
                               }}>
-                                {eventsStartingHere.map((evt, evtIdx) => (
+                                {eventsStartingHere.map((evt, evtIdx) => {
+                                  const duracion = parseInt(evt.horaFin.split(':')[0]) - parseInt(evt.horaInicio.split(':')[0]);
+                                  const esUnaHora = duracion <= 1;
+                                  const timerColor = getColorBorderByCurso(evt);
+                                  return (
                                   <Box 
                                     key={evt.id || evtIdx}
                                     onMouseDown={(e) => {
@@ -293,8 +302,8 @@ const GrillaHorario: React.FC<GrillaHorarioProps> = ({
                                     sx={{
                                       flex: 1,
                                       height: `${(parseInt(evt.horaFin.split(':')[0]) - parseInt(evt.horaInicio.split(':')[0])) * HORA_ALTURA_FILA}px`,
-                                      bgcolor: evt.tipoClase === 'no_lectiva' ? 'rgba(124, 58, 237, 0.1)' : getColorByDocente(evt.docenteId),
-                                      borderLeft: evtIdx === 0 ? `5px solid ${evt.tipoClase === 'no_lectiva' ? '#7c3aed' : getColorBorderByDocente(evt.docenteId)}` : 'none',
+                                      bgcolor: getColorByCurso(evt),
+                                      borderLeft: evtIdx === 0 ? `5px solid ${getColorBorderByCurso(evt)}` : 'none',
                                       borderRight: evtIdx < eventsStartingHere.length - 1 ? '1px solid rgba(0,0,0,0.1)' : 'none',
                                       boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.05)',
                                       p: 1,
@@ -311,7 +320,7 @@ const GrillaHorario: React.FC<GrillaHorarioProps> = ({
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                       <Typography variant="caption" sx={{
                                         fontWeight: 800,
-                                        color: evt.tipoClase === 'no_lectiva' ? '#7c3aed' : getColorBorderByDocente(evt.docenteId),
+                                        color: getColorBorderByCurso(evt),
                                         textTransform: 'uppercase',
                                         fontSize: '0.6rem',
                                         lineHeight: 1.1
@@ -364,29 +373,14 @@ const GrillaHorario: React.FC<GrillaHorarioProps> = ({
                                         : (evt.curso?.nombre || 'S.C.').toUpperCase()}
                                     </Typography>
 
-                                    {evt.tipoClase !== 'no_lectiva' && evt.grupo && (
+                                    {/* Timer: solo si >1h */}
+                                    {!esUnaHora && (
                                       <Typography 
                                         variant="caption" 
                                         sx={{ 
                                           fontSize: '0.7rem', 
-                                          color: '#003366', 
-                                          fontWeight: 800,
-                                          mt: 0.2,
-                                          display: 'block'
-                                        }}
-                                      >
-                                        GRUPO {numberToLetter(evt.grupo.numeroGrupo)}
-                                      </Typography>
-                                    )}
-
-                                    {evt.tipoClase === 'no_lectiva' && (
-                                      <Typography 
-                                        variant="caption" 
-                                        sx={{ 
-                                          fontSize: '0.7rem', 
-                                          color: '#7c3aed', 
+                                          color: timerColor,
                                           fontWeight: 700,
-                                          mt: 0.5,
                                           display: 'flex',
                                           alignItems: 'center',
                                           gap: 0.5
@@ -398,21 +392,28 @@ const GrillaHorario: React.FC<GrillaHorarioProps> = ({
                                     )}
 
                                     <Box sx={{ mt: 'auto', display: 'flex', flexDirection: 'column', gap: 0.2 }}>
-                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                        <PersonIcon sx={{ fontSize: '0.7rem', color: '#666' }} />
-                                        <Typography variant="caption" sx={{ fontSize: '0.65rem', color: '#666', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80px' }}>
-                                          {evt.docente?.nombreCompleto || 'Docente'}
-                                        </Typography>
-                                      </Box>
+                                      {/* Aula: docente siempre, admin solo si >1h */}
+                                      {(esDocente || !esUnaHora) && (
                                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                         <RoomIcon sx={{ fontSize: '0.7rem', color: '#666' }} />
                                         <Typography variant="caption" sx={{ fontSize: '0.65rem', color: '#666', fontWeight: 600 }}>
                                           {evt.aula?.nombre || 'S.A.'}
                                         </Typography>
                                       </Box>
+                                      )}
+                                      {/* Docente: admin siempre */}
+                                      {!esDocente && (
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <PersonIcon sx={{ fontSize: '0.7rem', color: '#666' }} />
+                                        <Typography variant="caption" sx={{ fontSize: '0.65rem', color: '#666', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80px' }}>
+                                          {evt.docente?.nombreCompleto || 'Docente'}
+                                        </Typography>
+                                      </Box>
+                                      )}
                                     </Box>
                                   </Box>
-                                ))}
+                                  );
+                                })}
 
                                 {/* Botón "+" para agregar otro horario en este mismo slot (Solo Admin/Coord) */}
                                   {(!esDocente || (esDocente && docentePuedeGestionar && docenteHasHoursAvailable)) && (
@@ -495,7 +496,7 @@ const GrillaHorario: React.FC<GrillaHorarioProps> = ({
                       );
                     })
                   )}
-                  <TableCell sx={{ fontWeight: 600, color: '#5f6368', textAlign: 'center', p: 0, whiteSpace: 'nowrap', bgcolor: 'white', verticalAlign: 'middle', height: isLastLabel ? 30 : { xs: 68, sm: 80 }, position: 'relative', border: 'none', zIndex: 3 }}>
+                  <TableCell sx={{ fontWeight: 600, color: '#5f6368', textAlign: 'center', p: 0, whiteSpace: 'nowrap', bgcolor: 'white', verticalAlign: 'middle', height: isLastLabel ? HORA_SPACER_HEIGHT : HORA_ALTURA_FILA, position: 'relative', border: 'none', zIndex: 3 }}>
                     <Box sx={{ position: 'absolute', left: 0, right: 0, top: 0, transform: 'translateY(-50%)', zIndex: 4, display: 'flex', justifyContent: 'center' }}>
                       <Typography sx={{ fontWeight: 700, color: '#5f6368', fontSize: { xs: '0.78rem', sm: '0.9rem' }, background: 'transparent', p: 0, m: 0 }}>{hora.substring(0, 5)}</Typography>
                     </Box>

@@ -1,7 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-// import * as puppeteer from 'puppeteer';
 import * as Handlebars from 'handlebars';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -44,7 +43,7 @@ export class ReportesService {
     private asignacionFilialService: AsignacionFilialService,
   ) {}
 
-  async crearReportesAutomaticos(docenteId: number, cicloId: number): Promise<void> {
+  async crearReportesAutomaticos(docenteId: number, cicloId: number): Promise<boolean> {
     const formatos = [
       { formato: TipoFormato.FORMATO_1_CARGA_CENTRAL, sede: 'Sede Central' },
       { formato: TipoFormato.FORMATO_2_DJ_CENTRAL, sede: 'Sede Central' },
@@ -64,6 +63,7 @@ export class ReportesService {
       formatos.push({ formato: TipoFormato.FORMATO_4_CARGA_ADICIONAL, sede: 'Filiales y Centros' });
     }
 
+    let created = false;
     for (const f of formatos) {
       const existing = await this.reporteRepo.findOne({
         where: { docenteId, cicloId, formato: f.formato }
@@ -77,8 +77,10 @@ export class ReportesService {
           estado: EstadoReporte.PENDIENTE,
         });
         await this.reporteRepo.save(reporte);
+        created = true;
       }
     }
+    return created;
   }
 
   async findAll(docenteId?: number, cicloId?: number): Promise<Reporte[]> {
@@ -181,7 +183,7 @@ export class ReportesService {
     const firma = (reporte.estado === EstadoReporte.FIRMADO) ? (cargaAcademica?.docente?.firmaBase64 || null) : null;
 
     const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 15;
+    const margin = 10;
     const contentWidth = pageWidth - 2 * margin;
 
     const formatDatePDF = (date: any) => {
@@ -189,6 +191,16 @@ export class ReportesService {
       const dateStr = String(date);
       const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
       return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+    };
+    
+    const formatDateLong = (date: any) => {
+      if (!date) return '';
+      const dateObj = new Date(date);
+      const months = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+      const day = dateObj.getDate();
+      const month = months[dateObj.getMonth()];
+      const year = dateObj.getFullYear();
+      return `${day} de ${month} de ${year}`;
     };
 
     let currentY = 25;
@@ -200,78 +212,111 @@ export class ReportesService {
     currentY += 8;
     doc.setFontSize(12);
     const title1 = 'DECLARACIÓN DE CARGA HORARIA LECTIVA ASIGNADA EN FILIALES,';
-    const title2 = 'POSTGRADO, SEGUNDAS ESPECIALIDADES Y CENTROS DE PRODUCCIÓN Y EXTENSIÓN UNIVERSITARIA';
+    const title2 = 'POSTGRADO, SEGUNDAS ESPECIALIDADES Y CENTROS DE';
+    const title3 = 'PRODUCCIÓN Y EXTENSIÓN UNIVERSITARIA';
     doc.text(title1, pageWidth / 2, currentY, { align: 'center' });
     currentY += 6;
     doc.text(title2, pageWidth / 2, currentY, { align: 'center' });
+    currentY += 6;
+    doc.text(title3, pageWidth / 2, currentY, { align: 'center' });
     currentY += 15;
 
     // --- Facultad and Departamento académico
     doc.setFontSize(9);
     doc.setFont('times', 'bold');
     doc.text(`FACULTAD: ${facultad}`, margin, currentY);
-    doc.text(`DPTO. ACADÉMICO: ${departamento}`, margin + 90, currentY);
-    currentY += 10;
-
+    doc.text(`DPTO. ACADÉMICO: ${departamento}`, margin + 120, currentY);
+    currentY += 12;
+    
     // --- Datos del docente: table
     doc.setFontSize(9);
-    const teacherCols = [55, 35, 35, 45];
+    const teacherCols = [65, 40, 40, 45];
     let xPos = margin;
     const teacherHeaders = ['NOMBRES Y APELLIDOS', 'CONDICIÓN', 'CATEGORÍA', 'MODALIDAD'];
     teacherHeaders.forEach((h, i) => {
-      doc.rect(xPos, currentY, teacherCols[i], 7);
+      doc.rect(xPos, currentY, teacherCols[i], 10);
       doc.setFont('times', 'bold');
-      doc.text(h, xPos + teacherCols[i] / 2, currentY + 4.5, { align: 'center' });
+      doc.text(h, xPos + teacherCols[i] / 2, currentY + 6, { align: 'center' });
       xPos += teacherCols[i];
     });
 
-    currentY +=7;
+    currentY +=10;
     xPos = margin;
 
-    // Condicion: Regular or Contratado with (X)
     const condicion = docente?.condicion || '';
-    const condicionText = `${condicion === 'nombrado' ? 'REGULAR' : 'CONTRATADO'} (X)`;
+    const condicionText = [
+      `REGULAR  (${condicion === 'nombrado' ? 'X' : ' '})`,
+      `CONTRATADO  (${condicion === 'contratado' ? 'X' : ' '})`,
+      `EXTRAORDINARIO  (${condicion === 'extraordinario' ? 'X' : ' '})`,
+    ].join('\n');
 
-    // Categoria: Principal, Asociado, Auxiliar, etc. with (X)
-    const categoria = docente?.categoria || '';
-    let categoriaText = '';
-    const categorias = ['PRINCIPAL', 'ASOCIADO', 'AUXILIAR', 'TIPO_A1', 'TIPO_A2', 'TIPO_A3', 'TIPO_B1', 'TIPO_B2', 'TIPO_B3', 'JEFE_PRACTICA'];
-    categorias.forEach(cat => {
-      if (cat === categoria) {
-        categoriaText += `${cat.replace(/_/g, ' ')} (X) `;
-      } else {
-        categoriaText += `${cat.replace(/_/g, ' ')} ( ) `;
-      }
-    });
+    const catUpper = (docente?.categoria || '').toUpperCase();
+    const catFixed = ['PRINCIPAL', 'ASOCIADO', 'AUXILIAR'];
+    const isConocida = catFixed.includes(catUpper);
+    const isJefe = !isConocida && catUpper === 'JEFE_PRACTICA';
+    const isTipo = !isConocida && !isJefe;
+    let categoriaText = [
+      `PRINCIPAL  (${catUpper === 'PRINCIPAL' ? 'X' : ' '})`,
+      `ASOCIADO  (${catUpper === 'ASOCIADO' ? 'X' : ' '})`,
+      `AUXILIAR  (${catUpper === 'AUXILIAR' ? 'X' : ' '})`,
+      `JEFE DE PRÁCTICA  (${isJefe ? 'X' : ' '})`,
+    ].join('\n');
+    if (isTipo) {
+      const display = catUpper.replace(/_/g, ' ');
+      categoriaText += `\n${display}  (X)`;
+    }
 
-    // Modalidad: Tiempo completo, parcial, etc.
+    // Modalidad: DE., TC., TP. with (X) + horas
     const modalidad = docente?.dedicacion || '';
-    let modalidadText = 'DE (X) TC ( ) TP ( ) ';
-    if (modalidad.includes('COMPLETO')) modalidadText = 'DE ( ) TC (X) TP ( ) ';
-    if (modalidad.includes('PARCIAL')) modalidadText = 'DE ( ) TC ( ) TP (X) ';
+    const isDE = modalidad.includes('EXCLUSIVA') || modalidad.includes('EXCLUIDA');
+    const isTC = modalidad.includes('COMPLETO');
+    const isTP = modalidad.includes('PARCIAL');
+    const horasMatch = modalidad.match(/(\d+)/);
+    const horasStr = horasMatch ? `${horasMatch[1]} HS` : '40 HS';
+    const modalidadText = [
+      `DE.  (${isDE ? 'X' : ' '})`,
+      `TC.  (${isTC ? 'X' : ' '})`,
+      `TP.  (${isTP ? 'X' : ' '})`,
+      horasStr,
+    ].join('\n');
 
-    const teacherValues = [
-      (docente?.nombreCompleto || '').toUpperCase(),
-      condicionText,
-      categoriaText,
-      modalidadText
-    ];
-
-    teacherValues.forEach((v, i) => {
-      doc.rect(xPos, currentY, teacherCols[i], i === 0 ? 15 : 30);
-      doc.setFont('times', 'normal');
-      const splitText = doc.splitTextToSize(v, teacherCols[i] - 4);
-      doc.text(splitText, xPos + 2, currentY + 4);
-      xPos += teacherCols[i];
-    });
-
-    // Codigo docente in first cell bottom
-    xPos = margin;
     doc.setFont('times', 'normal');
-    doc.setFontSize(9);
-    doc.text(`CÓDIGO: ${docente?.codigoIBM || ''}`, xPos + 2, currentY + 20);
+    doc.setFontSize(10);
+    
+    // Nombres y apellidos
+    doc.rect(xPos, currentY, teacherCols[0], 30);
+    const nombreText = (docente?.nombreCompleto || '').toUpperCase();
+    const nombreLines = doc.splitTextToSize(nombreText, teacherCols[0]-4);
+    doc.text(nombreLines, xPos + 2, currentY + 5);
+    // Código en la misma celda
+    doc.text(`CÓDIGO:${docente?.codigoIBM || ''}.`, xPos + 2, currentY + 23);
+    xPos += teacherCols[0];
+    
+    // Condición
+    doc.setFontSize(8);
+    doc.rect(xPos, currentY, teacherCols[1], 30);
+    const condicionLines = doc.splitTextToSize(condicionText, teacherCols[1]-4);
+    doc.text(condicionLines, xPos + 2, currentY + 5);
+    doc.setFontSize(10);
+    xPos += teacherCols[1];
+    
+    // Categoría
+    doc.setFontSize(8);
+    doc.rect(xPos, currentY, teacherCols[2], 30);
+    const categoriaLines = doc.splitTextToSize(categoriaText, teacherCols[2]-4);
+    doc.text(categoriaLines, xPos + 2, currentY + 5);
+    doc.setFontSize(10);
+    xPos += teacherCols[2];
+    
+    // Modalidad
+    doc.setFontSize(8);
+    doc.rect(xPos, currentY, teacherCols[3], 30);
+    const modalidadLines = doc.splitTextToSize(modalidadText, teacherCols[3]-4);
+    doc.text(modalidadLines, xPos + 2, currentY + 5);
+    doc.setFontSize(10);
+    xPos += teacherCols[3];
 
-    currentY += 35;
+    currentY += 40;
 
     // --- Año académico, semestre, inicio y fin
     const cicloNombre = reporte.ciclo.nombre || '';
@@ -282,14 +327,21 @@ export class ReportesService {
 
     doc.setFont('times', 'bold');
     doc.setFontSize(9);
-    doc.rect(margin, currentY, contentWidth, 7);
-    doc.text(`AÑO ACADEMICO: ${anio}   SEMESTRE: ${semestre}     INICIO: ${fechaInicio}   -   TÉRMINO: ${fechaFin}`, pageWidth / 2, currentY + 4.5, { align: 'center' });
-
-    currentY += 15;
+    const table2Width = 190;
+    doc.rect(margin, currentY, table2Width, 8);
+    
+    const colWidth = table2Width / 4;
+    
+    doc.text(`AÑO ACADÉMICO: ${anio}`, margin + colWidth * 0.5, currentY + 5, { align: 'center' });
+    doc.text(`SEMESTRE: ${semestre}`, margin + colWidth * 1.5, currentY + 5, { align: 'center' });
+    doc.text(`INICIO: ${fechaInicio}`, margin + colWidth * 2.5, currentY + 5, { align: 'center' });
+    doc.text(`FINAL: ${fechaFin}`, margin + colWidth * 3.5, currentY + 5, { align: 'center' });
+    
+    currentY += 12;
 
     // --- Table: Curso, Dependencia, Fechas, Horario, Total Horas
-    const tableHeaders = ['CURSO', 'DEPENDENCIA', 'FECHA DE INICIO/\nTÉRMINO', 'HORARIO SEMANAL', 'TOTAL HORAS'];
-    const tableColWidths = [40, 35, 35, 45, 20];
+    const tableHeaders = ['CURSO', 'DEPENDENCIA', 'FECHA DE INICIO /\nTÉRMINO', 'HORARIO SEMANAL', 'TOTAL HORAS'];
+    const tableColWidths = [45, 40, 35, 45, 25];
 
     xPos = margin;
     doc.setFontSize(8);
@@ -297,12 +349,13 @@ export class ReportesService {
     tableHeaders.forEach((h, i) => {
       doc.rect(xPos, currentY, tableColWidths[i], 12);
       const splitHeader = doc.splitTextToSize(h, tableColWidths[i] - 4);
-      doc.text(splitHeader, xPos + tableColWidths[i]/2, currentY + 4, { align: 'center' });
+      doc.text(splitHeader, xPos + tableColWidths[i]/2, currentY + 3.5, { align: 'center' });
       xPos += tableColWidths[i];
     });
 
     currentY += 12;
     doc.setFont('times', 'normal');
+    doc.setFontSize(8);
 
     let totalGeneralHoras = 0;
     if (asignacionFilial && asignacionFilial.cursos) {
@@ -320,7 +373,7 @@ export class ReportesService {
         // Fechas
         const fechaInicioCurso = formatDatePDF(asignacionFilial.fechaInicio);
         const fechaFinCurso = formatDatePDF(asignacionFilial.fechaFin);
-        const fechasText = `F.I: ${fechaInicioCurso}\nF.T: ${fechaFinCurso}`;
+        const fechasText = `F.I.: ${fechaInicioCurso}\nF.T.: ${fechaFinCurso}`;
 
         // Horario semanal
         let horarioText = '';
@@ -333,7 +386,7 @@ export class ReportesService {
             'Viernes': 'Viernes',
             'Sábado': 'Sábado',
           };
-          horarioText += `${mapDias[horario.dia] || horario.dia} ${horario.horaInicio.substring(0,5)}-${horario.horaFin.substring(0,5)}\n`;
+          horarioText += `${mapDias[horario.dia] || horario.dia} ${horario.horaInicio}-${horario.horaFin}\n`;
         });
         const horarioLines = doc.splitTextToSize(horarioText, tableColWidths[3]-4);
 
@@ -342,9 +395,9 @@ export class ReportesService {
 
         const rowHeight = Math.max(
           8,
-          cursoLines.length*3.5 +4,
-          depLines.length*3.5 +4,
-          horarioLines.length*3.5 +4
+          cursoLines.length*3 +4,
+          depLines.length*3 +4,
+          horarioLines.length*3 +4
         );
 
         doc.rect(xPos, currentY, tableColWidths[0], rowHeight);
@@ -375,49 +428,47 @@ export class ReportesService {
     xPos = margin;
     doc.setFont('times', 'bold');
     doc.rect(xPos, currentY, contentWidth - tableColWidths[4], 7);
-    doc.rect(xPos + contentWidth - tableColWidths[4], currentY, tableColWidths[4],7);
-    doc.text(String(totalGeneralHoras), xPos + contentWidth - tableColWidths[4]/2, currentY +4.5, { align: 'center' });
+    doc.rect(xPos + contentWidth - tableColWidths[4], currentY, tableColWidths[4], 7);
+    doc.text(`${totalGeneralHoras} HORAS`, xPos + contentWidth - tableColWidths[4]/2, currentY + 4.5, { align: 'center', underline: true });
     currentY +=12;
 
     // --- Fecha actual
     doc.setFont('times', 'normal');
     doc.setFontSize(9);
-    const fechaActual = new Date().toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' });
+    const fechaActual = formatDateLong(new Date());
     doc.text(`Trujillo, ${fechaActual}`, pageWidth - margin, currentY, { align: 'right' });
 
     currentY +=20;
 
     // --- Firma del profesor
-    const firmaWidth =50;
-    doc.line(margin + 10, currentY, margin+10 + firmaWidth, currentY);
+    const firmaWidth =60;
+    doc.line(margin + 10, currentY, margin + 10 + firmaWidth, currentY);
     doc.setFont('times', 'bold');
-    doc.text('Firma del Profesor', margin+10 + firmaWidth/2, currentY+5, {align:'center'});
+    doc.setFontSize(8);
+    doc.text('Firma del Profesor', margin + 10 + firmaWidth/2, currentY+5, {align:'center'});
     if (firma) {
       try { doc.addImage(firma, 'PNG', margin +15, currentY-18, 40,15); } catch (e) {}
     }
 
     // --- V.B. Decano
     doc.line(pageWidth - margin -10 - firmaWidth, currentY, pageWidth - margin -10, currentY);
-    doc.text('V° B°', pageWidth - margin -10 - firmaWidth/2, currentY +5, { align: 'center' });
+    doc.text('Vº Bº', pageWidth - margin -10 - firmaWidth/2, currentY +5, { align: 'center' });
     currentY += 5;
     doc.setFontSize(11);
     doc.text('DECANO', pageWidth - margin -10 - firmaWidth/2, currentY +8, { align: 'center' });
 
-    // --- Signature row 2: Director de Dpto and Director de Unidad
+    // --- Signature row 2: Director de Dpto and Director de Unidad (mismas X que fila 1)
     currentY += 40;
-    const spacing = (contentWidth - 2*firmaWidth)/2;
-    let xFirma = margin;
 
     // Director de Dpto
-    doc.line(xFirma, currentY, xFirma + firmaWidth, currentY);
+    doc.line(margin + 10, currentY, margin + 10 + firmaWidth, currentY);
     doc.setFontSize(9);
     doc.setFont('times', 'bold');
-    doc.text('Director del Departamento Académico', xFirma + firmaWidth/2, currentY +5, { align: 'center' });
+    doc.text('Director del Departamento Académico', margin + 10 + firmaWidth/2, currentY +5, { align: 'center' });
 
     // Director de Unidad
-    xFirma += firmaWidth + spacing;
-    doc.line(xFirma, currentY, xFirma + firmaWidth, currentY);
-    doc.text('Director de la Unidad Académica', xFirma + firmaWidth/2, currentY +5, { align: 'center' });
+    doc.line(pageWidth - margin - 10 - firmaWidth, currentY, pageWidth - margin - 10, currentY);
+    doc.text('Director de la Unidad Académica', pageWidth - margin - 10 - firmaWidth/2, currentY +5, { align: 'center' });
 
     const pageCount = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
@@ -463,81 +514,16 @@ export class ReportesService {
     const departamento = docenteCarrera?.carrera?.nombre || 'INGENIERÍA DE SISTEMAS';
 
     const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 15;
+    const margin = 12;
     const contentWidth = pageWidth - 2 * margin;
+    const celesteColor = [173, 216, 230];
+    const anchoCodigo = contentWidth * 0.08;
+    const anchoDenominacion = contentWidth * 0.22;
+    const anchoTipoCurso = contentWidth * 0.10;
+    const anchoPrograma = contentWidth * 0.16;
+    const anchoChico = (contentWidth - anchoCodigo - anchoDenominacion - anchoTipoCurso - anchoPrograma) / 6;
+    const posXTotalHoras = margin + anchoCodigo + anchoDenominacion + anchoTipoCurso + anchoPrograma + anchoChico * 5;
     
-    // --- TÍTULOS ---
-    let currentY = 20;
-    doc.setTextColor(0, 0, 0);
-    doc.setFont('times', 'bold');
-    doc.setFontSize(14);
-    doc.text('DECLARACION DE LA CARGA ACADEMICA DOCENTE (F01-CAD)', pageWidth / 2, currentY, { align: 'center' });
-
-    // --- SECCIÓN I: DATOS DEL PROFESOR ---
-    currentY += 15;
-    doc.setFontSize(10);
-    doc.setFont('times', 'bold');
-    doc.text('I. DATOS SOBRE LA SITUACION DEL PROFESOR:', margin, currentY);
-    currentY += 4;
-    
-    doc.setFontSize(9);
-    doc.setFont('times', 'normal');
-    
-    // Fila Facultad
-    doc.text('FACULTAD:', margin, currentY + 4);
-    doc.setFillColor(242, 242, 242);
-    doc.rect(margin + 35, currentY, contentWidth - 35, 6, 'F');
-    doc.text((facultad || 'Ingeniería'), margin + 35 + (contentWidth - 35)/2, currentY + 4, { align: 'center' });
-    currentY += 7;
-
-    // Fila Departamento
-    doc.text('DPTO. ACADEMICO:', margin, currentY + 4);
-    doc.setFillColor(242, 242, 242); 
-    doc.rect(margin + 35, currentY, contentWidth - 35, 6, 'F');
-    doc.text((departamento || 'Dpto. de Ingeniería de Sistemas'), margin + 35 + (contentWidth - 35)/2, currentY + 4, { align: 'center' });
-    
-    currentY += 10;
-
-    // Tabla de datos del docente
-    const teacherDataY = currentY;
-    const teacherCols = [75, 30, 35, 40];
-    let xOffset = margin;
-    
-    const teacherHeaders = ['NOMBRE COMPLETO', 'CONDICION', 'CATEGORIA', 'MODALIDAD'];
-    doc.setFont('times', 'normal');
-    doc.setFontSize(8);
-    doc.setDrawColor(0);
-    
-    teacherHeaders.forEach((h, i) => {
-      doc.rect(xOffset, teacherDataY, teacherCols[i], 6);
-      doc.text(h, xOffset + teacherCols[i]/2, teacherDataY + 4, { align: 'center' });
-      xOffset += teacherCols[i];
-    });
-
-    xOffset = margin;
-    const teacherValues = [
-      (docente?.nombreCompleto || '').toUpperCase(),
-      (docente?.condicion || '').toUpperCase(),
-      (docente?.categoria || '').toUpperCase(),
-      (docente?.dedicacion || '').toUpperCase()
-    ];
-    
-    teacherValues.forEach((v, i) => {
-      doc.rect(xOffset, teacherDataY + 6, teacherCols[i], 8);
-      const textWidth = doc.getTextWidth(v);
-      doc.text(v, xOffset + (teacherCols[i] - textWidth) / 2, teacherDataY + 11);
-      xOffset += teacherCols[i];
-    });
-
-    currentY += 14;
-
-    doc.rect(margin, currentY, contentWidth, 7);
-    doc.setFont('times', 'normal');
-    doc.setFontSize(8.5);
-    const cicloNombre = reporte.ciclo.nombre || '';
-    doc.text('AÑO ACADEMICO:  ' + (cicloNombre.split('-')[0] || ''), margin + 2, currentY + 5);
-    doc.text('CICLO(SEM):  ' + (cicloNombre.split('-')[1] || ''), margin + 45, currentY + 5);
-
     const formatDatePDF = (date: any) => {
       if (!date) return '-';
       const dateStr = String(date);
@@ -545,141 +531,437 @@ export class ReportesService {
       return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
     };
 
-    const fechaInicioStr = formatDatePDF(reporte.ciclo.fechaInicio);
-    const fechaFinStr = formatDatePDF(reporte.ciclo.fechaFin);
+    const cicloNombre = reporte.ciclo.nombre || '';
+    const anioAcademico = cicloNombre.split('-')[0] || '';
+    const semestre = cicloNombre.split('-')[1] || '';
+    const fechaInicio = formatDatePDF(reporte.ciclo.fechaInicio);
+    const fechaFin = formatDatePDF(reporte.ciclo.fechaFin);
     
+    let currentY = 22;
+    
+    doc.setTextColor(0, 0, 0);
     doc.setFont('times', 'bold');
-    doc.text(`INICIO: ${fechaInicioStr}  -  FINAL: ${fechaFinStr}`, pageWidth - margin - 2, currentY + 5, { align: 'right' });
+    doc.setFontSize(13);
+    doc.text('DECLARACIÓN DE LA CARGA ACADÉMICA DOCENTE (F01-CAD)', pageWidth / 2, currentY, { align: 'center' });
+
+    currentY += 10;
+    doc.setDrawColor(0);
+    doc.setLineWidth(0.2);
+
+    // --- FILA 1: FACULTAD Y DPTO ---
+    const col1F1 = contentWidth * 0.5;
+    const col2F1 = contentWidth * 0.5;
+    doc.rect(margin, currentY, col1F1, 7);
+    doc.rect(margin + col1F1, currentY, col2F1, 7);
+    
     doc.setFont('times', 'normal');
-
-    currentY += 12;
-
-    // --- 1. TRABAJO LECTIVO ---
-    doc.setFontSize(9);
-    doc.setFillColor(242, 242, 242);
-    doc.rect(margin, currentY, contentWidth, 6, 'FD');
-    doc.text('1. TRABAJO LECTIVO.- Datos completos y con claridad', margin + 2, currentY + 4.5);
-    currentY += 6;
-
-    const headers = ['CODIGO', 'NOMBRE DEL CURSO', 'CUR.', 'ESCUELA PROF.', 'CIC.', 'SEC.', 'N° AL.', 'H.T.', 'H.P.', 'H.L.', 'Total'];
-    const colWidths = [15, 55, 10, 25, 8, 8, 10, 14, 14, 14, 7];
+    doc.setFontSize(8);
+    doc.text('FACULTAD / FILIAL: ', margin + 2, currentY + 4.5);
+    doc.setFont('times', 'bold');
+    doc.text(facultad, margin + 2 + doc.getTextWidth('FACULTAD / FILIAL: '), currentY + 4.5);
     
-    let xPos = margin;
-    doc.setFontSize(7.5);
-    headers.forEach((header, i) => {
-      doc.rect(xPos, currentY, colWidths[i], 8);
-      doc.text(header, xPos + colWidths[i]/2, currentY + 5, { align: 'center' });
-      xPos += colWidths[i];
+    doc.setFont('times', 'normal');
+    doc.text('DPTO. ACADÉMICO: ', margin + col1F1 + 2, currentY + 4.5);
+    doc.setFont('times', 'bold');
+    doc.text(departamento, margin + col1F1 + 2 + doc.getTextWidth('DPTO. ACADÉMICO: '), currentY + 4.5);
+    
+    currentY += 7;
+
+    // --- FILA 2: DNI, NOMBRE COMPLETO, CONDICIÓN, CATEGORÍA, MODALIDAD ---
+    const colsDatos = [contentWidth*0.14, contentWidth*0.36, contentWidth*0.17, contentWidth*0.17, contentWidth*0.16];
+    let x = margin;
+    doc.setFont('times', 'normal');
+    doc.setFontSize(8);
+    ['DNI', 'NOMBRE COMPLETO', 'CONDICIÓN', 'CATEGORÍA', 'MODALIDAD'].forEach((h, i) => {
+      doc.rect(x, currentY, colsDatos[i], 7);
+      doc.text(h, x + colsDatos[i]/2, currentY + 4.5, { align: 'center' });
+      x += colsDatos[i];
     });
+    currentY +=7;
     
-    currentY += 8;
+    x = margin;
+    doc.setFont('times', 'bold');
     
-    if (cargaLectivaAgrupada.length > 0) {
-      cargaLectivaAgrupada.forEach(curso => {
-        xPos = margin;
-        const rowData = [
-          curso.codigo || '-',
-          curso.nombre || '-',
-          'OB',
-          'Ing. Sistemas',
-          String(curso.ciclo || '-'),
-          'A',
-          '50',
-          `${Math.round(curso.horasT || 0)} x ${Math.round(curso.gruposT || 0)}`,
-          `${Math.round(curso.horasP || 0)} x ${Math.round(curso.gruposP || 0)}`,
-          `${Math.round(curso.horasL || 0)} x ${Math.round(curso.gruposL || 0)}`,
-          String(Math.round(curso.totalHoras || 0))
-        ];
-        
-        const lines = doc.splitTextToSize(String(curso.nombre), colWidths[1] - 4);
-        const rowHeight = Math.max(7, lines.length * 3.5 + 2);
-
-        rowData.forEach((data, i) => {
-          doc.rect(xPos, currentY, colWidths[i], rowHeight);
-          const splitText = doc.splitTextToSize(String(data), colWidths[i] - 2);
-          const textHeight = splitText.length * 3;
-          const yPos = currentY + (rowHeight - textHeight) / 2 + 2.5;
-          doc.text(splitText, xPos + 2, yPos);
-          xPos += colWidths[i];
-        });
-        currentY += rowHeight;
-      });
-    }
-
-    currentY += 5;
-
-    const noLectivaData = [
-      { id: '2.', label: 'PREPARACION Y EVALUACION (Max 50% de Trabajo Lectivo)', h: Number(cargaNoLectiva?.horasPreparacion) || 0, d: cargaNoLectiva?.detallePreparacion || '' },
-      { id: '3.', label: 'CONSEJERIA: Señalar número de alumnos y el ciclo académico con los que se desarrolla. (Como mínimo una 01 hora semanal).', h: Number(cargaNoLectiva?.horasTutoria) || 0, d: cargaNoLectiva?.detalleTutoria || '' },
-      { id: '4.', label: 'INVESTIGACION: Consignar el N° de inscripción, código, nombre y duración del proyecto. (Como mínimo 04 y 05 horas semanales, según modalidad de trabajo de docentes ordinarios).', h: Number(cargaNoLectiva?.horasInvestigacion) || 0, d: cargaNoLectiva?.detalleInvestigacion || '' },
-      { id: '5.', label: 'CAPACITACION: Señale lo referente a este rubro en el marco de los planes de cada Facultad (como máximo 05 semanales).', h: Number(cargaNoLectiva?.horasCapacitacion) || 0, d: cargaNoLectiva?.detalleCapacitacion || '' },
-      { id: '6.', label: 'ACTIVIDADES DE GOBIERNO: Si desempeña cargo indique.', h: Number(cargaNoLectiva?.horasGobierno) || 0, d: cargaNoLectiva?.detalleGobierno || '' },
-      { id: '7.', label: 'ACTIVIDADES DE ADMINISTRACION: Si desempeña cargo indique.', h: Number(cargaNoLectiva?.horasAdministracion) || 0, d: cargaNoLectiva?.detalleAdministracion || '' },
-      { id: '8.', label: 'ASESORIA DE TESIS, EXAMENES PROFESIONALES Y EXPERIENCIA PROFESIONAL: Indicar el número de Resolución Decanal, precisando el nombre y duración de la actividad programada.', h: Number(cargaNoLectiva?.horasAsesoria) || 0, d: cargaNoLectiva?.detalleAsesoria || '' },
-      { id: '9.', label: 'RESPONSABILIDAD SOCIAL UNIVERSITARIA: Señalar actividad, proyecto programa a ejecutarse n beneficio de la comunidad local o regional. (Como máximo 02 horas semanales)', h: Number(cargaNoLectiva?.horasResponsabilidadSocial) || 0, d: cargaNoLectiva?.detalleResponsabilidadSocial || '' },
-      { id: '10.', label: 'COMITES TECNICOS Y COMISIONES: Consignar el número de Resolución autoritativa indicando el lapso de vigencia.', h: Number(cargaNoLectiva?.horasComites) || 0, d: cargaNoLectiva?.detalleComites || '' },
+    // Mapeo de dedicación a abreviatura
+    const getAbreviaturaDedicacion = (dedicacion: string) => {
+      const key = dedicacion?.toUpperCase().trim() || '';
+      const map: Record<string, string> = {
+        'DEDICACION EXCLUSIVA': 'DE',
+        'TIEMPO COMPLETO': 'TC',
+        'TIEMPO PARCIAL 20 H': 'TP-20',
+        'TIEMPO PARCIAL 10 H': 'TP-10',
+        'TIEMPO PARCIAL 08 H': 'TP-08',
+        'TIEMPO PARCIAL 04 H': 'TP-04',
+        'TIEMPO PARCIAL 16 H': 'TP-16',
+        'DOCENTE INVESTIGADOR': 'DI'
+      };
+      return map[key] || dedicacion?.toUpperCase() || '';
+    };
+    
+    const valuesDatos = [
+      docente?.dni || '', 
+      (docente?.nombreCompleto || '').toUpperCase(), 
+      (docente?.condicion || '').toUpperCase(), 
+      (docente?.categoria || '').toUpperCase(), 
+      getAbreviaturaDedicacion(docente?.dedicacion || '')
     ];
+    valuesDatos.forEach((v, i) => {
+      doc.rect(x, currentY, colsDatos[i], 7);
+      const split = doc.splitTextToSize(v, colsDatos[i]-2);
+      doc.text(split, x + colsDatos[i]/2, currentY + 4.5, { align: 'center' });
+      x += colsDatos[i];
+    });
+    currentY +=7;
 
-    noLectivaData.forEach(row => {
-      const col1 = 75;
-      const col2 = 97;
-      const col3 = 8;
-      
-      const labelLines = doc.splitTextToSize(`${row.id} ${row.label}`, col1 - 4);
-      const detailLines = doc.splitTextToSize(row.d || '', col2 - 4);
-      const rowHeight = Math.max(9, Math.max(labelLines.length, detailLines.length) * 3.5 + 2);
+    // --- FILA 3: AÑO, SEMESTRE, FECHAS ---
+    doc.rect(margin, currentY, contentWidth, 7);
+    doc.setFont('times', 'normal');
+    doc.setFontSize(8);
+    
+    // Centrar todos los textos juntos con separadores " - "
+    doc.setFont('times', 'normal');
+    doc.text('AÑO ACADÉMICO: ', margin + (contentWidth - doc.getTextWidth(`AÑO ACADÉMICO: ${anioAcademico} - SEMESTRE: ${semestre} - Fecha de Inicio: ${fechaInicio} - Fecha de Término: ${fechaFin}`))/2, currentY + 4.5);
+    
+    // Dibujar cada parte con su respectivo peso de fuente y separador
+    let xTexto = margin + (contentWidth - doc.getTextWidth(`AÑO ACADÉMICO: ${anioAcademico} - SEMESTRE: ${semestre} - Fecha de Inicio: ${fechaInicio} - Fecha de Término: ${fechaFin}`))/2;
+    
+    doc.text('AÑO ACADÉMICO: ', xTexto, currentY + 4.5);
+    xTexto += doc.getTextWidth('AÑO ACADÉMICO: ');
+    doc.setFont('times', 'bold');
+    doc.text(anioAcademico, xTexto, currentY + 4.5);
+    xTexto += doc.getTextWidth(anioAcademico);
+    doc.setFont('times', 'normal');
+    doc.text(' - ', xTexto, currentY + 4.5);
+    xTexto += doc.getTextWidth(' - ');
+    
+    doc.text('SEMESTRE: ', xTexto, currentY + 4.5);
+    xTexto += doc.getTextWidth('SEMESTRE: ');
+    doc.setFont('times', 'bold');
+    doc.text(semestre, xTexto, currentY + 4.5);
+    xTexto += doc.getTextWidth(semestre);
+    doc.setFont('times', 'normal');
+    doc.text(' - ', xTexto, currentY + 4.5);
+    xTexto += doc.getTextWidth(' - ');
+    
+    doc.text('Fecha de Inicio: ', xTexto, currentY + 4.5);
+    xTexto += doc.getTextWidth('Fecha de Inicio: ');
+    doc.setFont('times', 'bold');
+    doc.text(fechaInicio, xTexto, currentY + 4.5);
+    xTexto += doc.getTextWidth(fechaInicio);
+    doc.setFont('times', 'normal');
+    doc.text(' - ', xTexto, currentY + 4.5);
+    xTexto += doc.getTextWidth(' - ');
+    
+    doc.text('Fecha de Término: ', xTexto, currentY + 4.5);
+    xTexto += doc.getTextWidth('Fecha de Término: ');
+    doc.setFont('times', 'bold');
+    doc.text(fechaFin, xTexto, currentY + 4.5);
 
-      doc.setFillColor(242, 242, 242);
-      doc.rect(margin, currentY, col1, rowHeight, 'FD');
-      doc.rect(margin + col1, currentY, col2, rowHeight);
-      doc.rect(margin + col1 + col2, currentY, col3, rowHeight);
+    currentY +=7;
+
+    // --- I. CARGA HORARIA LECTIVA ---
+    const totalHorasLectivas = cargaLectivaAgrupada.reduce((sum, c) => sum + (Number(c.totalHoras) || 0), 0);
+    doc.setFillColor(celesteColor[0], celesteColor[1], celesteColor[2]);
+    
+    // Cabecera con separación para el total (alineado a columna Total Horas)
+    doc.rect(margin, currentY, posXTotalHoras - margin, 10, 'FD');
+    doc.rect(posXTotalHoras, currentY, anchoChico, 10, 'FD');
+    doc.setFont('times', 'bold');
+    doc.setFontSize(9);
+    doc.text('I. CARGA HORARIA LECTIVA (CHL)', margin + 4, currentY + 6.5);
+    doc.text(String(totalHorasLectivas), posXTotalHoras + anchoChico/2, currentY + 6.5, { align: 'center' });
+    currentY +=10;
+
+    // --- TABLA CARGA LECTIVA: ENCABEZADO COMPLETO ---
+    const cols = [
+      anchoCodigo, anchoDenominacion, anchoTipoCurso, anchoPrograma,
+      anchoChico, anchoChico, anchoChico, anchoChico, anchoChico, anchoChico
+    ];
+    
+    x = margin;
+    const headerHeight = 14; // 7x2
+    doc.setFillColor(255, 255, 255);
+    
+    // --- PRIMERA FILA DE ENCABEZADO ---
+    doc.setFont('times', 'bold');
+    doc.setFontSize(8);
+    
+    // 1. CURSO O ASIGNATURA CURRICULAR (fusiona cols 0 + 1)
+    doc.rect(x, currentY, cols[0] + cols[1], headerHeight/2);
+    doc.text('CURSO O ASIGNATURA CURRICULAR', x + (cols[0] + cols[1])/2, currentY + headerHeight/4, { align: 'center' });
+    x += cols[0] + cols[1];
+    
+    // 2. Tipo Curso (fuente más pequeña, menos espaciado entre líneas)
+    doc.rect(x, currentY, cols[2], headerHeight);
+    doc.setFontSize(7);
+    doc.text('Tipo Curso', x + cols[2]/2, currentY + (headerHeight/2) - 2, { align: 'center' });
+    doc.text('Según Plan de', x + cols[2]/2, currentY + (headerHeight/2) + 1, { align: 'center' });
+    doc.text('Estudios actual', x + cols[2]/2, currentY + (headerHeight/2) + 4, { align: 'center' });
+    doc.setFontSize(8);
+    x += cols[2];
+    
+    // 3. Programa o
+    doc.rect(x, currentY, cols[3], headerHeight);
+    doc.text('Programa o', x + cols[3]/2, currentY + (headerHeight/2) - 2, { align: 'center' });
+    doc.text('Escuela Académico', x + cols[3]/2, currentY + (headerHeight/2) + 1, { align: 'center' });
+    doc.text('Profesional', x + cols[3]/2, currentY + (headerHeight/2) + 4, { align: 'center' });
+    x += cols[3];
+    
+    // 4. Año
+    doc.rect(x, currentY, cols[4], headerHeight);
+    doc.text('Año', x + cols[4]/2, currentY + (headerHeight/2) - 2, { align: 'center' });
+    doc.text('o', x + cols[4]/2, currentY + (headerHeight/2) + 1, { align: 'center' });
+    doc.text('Ciclo', x + cols[4]/2, currentY + (headerHeight/2) + 4, { align: 'center' });
+    x += cols[4];
+    
+    // 5. Sección
+    doc.rect(x, currentY, cols[5], headerHeight);
+    doc.text('Sección', x + cols[5]/2, currentY + headerHeight/2, { align: 'center' });
+    x += cols[5];
+    
+    // 6. N°
+    doc.rect(x, currentY, cols[6], headerHeight);
+    doc.text('N°', x + cols[6]/2, currentY + (headerHeight/2) - 2, { align: 'center' });
+    doc.text('Alumnos', x + cols[6]/2, currentY + (headerHeight/2) + 2, { align: 'center' });
+    x += cols[6];
+    
+    // 7. Horas (fusiona cols 7 + 8)
+    doc.rect(x, currentY, cols[7] + cols[8], headerHeight/2);
+    doc.text('Horas', x + (cols[7] + cols[8])/2, currentY + headerHeight/4, { align: 'center' });
+    
+    // 8. Total Horas
+    doc.rect(x + cols[7] + cols[8], currentY, cols[9], headerHeight);
+    doc.text('Total', x + cols[7] + cols[8] + cols[9]/2, currentY + (headerHeight/2) - 2, { align: 'center' });
+    doc.text('Horas', x + cols[7] + cols[8] + cols[9]/2, currentY + (headerHeight/2) + 2, { align: 'center' });
+    
+    currentY += headerHeight/2; // baja a la segunda fila de encabezado
+    
+    // --- SEGUNDA FILA DE ENCABEZADO ---
+    x = margin;
+    
+    // 1. CODIGO
+    doc.rect(x, currentY, cols[0], headerHeight/2);
+    doc.text('CODIGO', x + cols[0]/2, currentY + headerHeight/4, { align: 'center' });
+    x += cols[0];
+    
+    // 2. DENOMINACIÓN
+    doc.rect(x, currentY, cols[1], headerHeight/2);
+    doc.text('DENOMINACIÓN', x + cols[1]/2, currentY + headerHeight/4, { align: 'center' });
+    x += cols[1];
+    
+    // Saltamos cols 2-6 (ya están completas)
+    x += cols[2] + cols[3] + cols[4] + cols[5] + cols[6];
+    
+    // 7. Teoría
+    doc.rect(x, currentY, cols[7], headerHeight/2);
+    doc.text('Teoría', x + cols[7]/2, currentY + headerHeight/4, { align: 'center' });
+    x += cols[7];
+    
+    // 8. Práctica
+    doc.rect(x, currentY, cols[8], headerHeight/2);
+    doc.text('Práctica', x + cols[8]/2, currentY + headerHeight/4, { align: 'center' });
+    
+    currentY += headerHeight/2; // Encabezado terminado
+
+    // --- DATOS DE LA CARGA LECTIVA ---
+    cargaLectivaAgrupada.forEach(curso => {
+      x = margin;
+      doc.setFont('times', 'normal');
+      doc.setFontSize(8);
+
+      // Horas: Teoría = horasT * gruposT; Práctica = (horasP*gruposP)+(horasL*gruposL)
+      let horasTeoria = Math.round(curso.horasT || 0) * Math.round(curso.gruposT || 0);
+      let horasPractica = (Math.round(curso.horasP || 0) * Math.round(curso.gruposP || 0)) + (Math.round(curso.horasL || 0) * Math.round(curso.gruposL || 0));
       
-      doc.setFontSize(7);
-      doc.text(labelLines, margin + 2, currentY + 4);
-      doc.text(detailLines, margin + col1 + 2, currentY + 4);
-      doc.text(String(Math.round(row.h)), margin + col1 + col2 + col3/2, currentY + rowHeight/2 + 1, { align: 'center' });
-      
+      const rowData = [
+        curso.codigo || '-',
+        curso.nombre || '-',
+        'EP',
+        departamento,
+        String(curso.ciclo || '-'),
+        'U',
+        '50',
+        String(horasTeoria),
+        String(horasPractica),
+        String(Math.round(curso.totalHoras || 0))
+      ];
+
+      const linesNombre = doc.splitTextToSize(String(curso.nombre), cols[1]-2);
+      const linesEscuela = doc.splitTextToSize(String(departamento), cols[3]-2);
+      const rowHeight = Math.max(10, Math.max(linesNombre.length, linesEscuela.length)*3.5 + 3);
+
+      rowData.forEach((v, i) => {
+        doc.rect(x, currentY, cols[i], rowHeight);
+        const split = doc.splitTextToSize(String(v), cols[i]-2);
+        let y = currentY + rowHeight/2;
+        split.forEach((line, idx) => {
+          const lineY = y - ((split.length-1)*3.5/2) + idx*3.5;
+          doc.text(line, x + cols[i]/2, lineY, { align: 'center' });
+        });
+        x += cols[i];
+      });
       currentY += rowHeight;
     });
 
-    const totalHorasLectivas = cargaLectivaAgrupada.reduce((sum, c) => sum + (Number(c.totalHoras) || 0), 0);
+    // --- II. CARGA HORARIA NO LECTIVA ---
+    const noLectivaData = [
+      { id: '1. ', label: 'PREPARACIÓN Y EVALUACIÓN', h: Number(cargaNoLectiva?.horasPreparacion) || 0, d: cargaNoLectiva?.detallePreparacion || '', esComplementaria: true },
+      { id: '2. ', label: 'TUTORÍA Y CONSEJERÍA', h: Number(cargaNoLectiva?.horasTutoria) || 0, d: cargaNoLectiva?.detalleTutoria || '', esComplementaria: true },
+      { id: '3. ', label: 'INVESTIGACIÓN:', h: Number(cargaNoLectiva?.horasInvestigacion) || 0, d: cargaNoLectiva?.detalleInvestigacion || '', esComplementaria: true },
+      { id: '4. ', label: 'RESPONSABILIDAD SOCIAL UNIVERSITARIA', h: Number(cargaNoLectiva?.horasResponsabilidadSocial) || 0, d: cargaNoLectiva?.detalleResponsabilidadSocial || '', esComplementaria: true },
+      { id: '5. ', label: 'ASESORÍA DE TESIS Y EXÁMENES PROFESIONALES', h: Number(cargaNoLectiva?.horasAsesoria) || 0, d: cargaNoLectiva?.detalleAsesoria || '', esComplementaria: true },
+      { id: '6. ', label: 'FORMACIÓN ACADÉMICA Y CAPACITACIÓN', h: Number(cargaNoLectiva?.horasCapacitacion) || 0, d: cargaNoLectiva?.detalleCapacitacion || '', esComplementaria: true },
+      { id: '7. ', label: 'AUTOEVALUACIÓN Y/O ACREDITACIÓN DE LA ESCUELA PROFESIONAL', h: Number(cargaNoLectiva?.horasAaep) || 0, d: cargaNoLectiva?.detalleAaep || '', esComplementaria: true },
+      { id: '8. ', label: 'COMITÉS O COMISIONES ESPECIALES', h: Number(cargaNoLectiva?.horasComites) || 0, d: cargaNoLectiva?.detalleComites || '', esComplementaria: false },
+      { id: '9. ', label: 'ACTIVIDADES DE GOBIERNO O DE AUTORIDAD', h: Number(cargaNoLectiva?.horasGobierno) || 0, d: cargaNoLectiva?.detalleGobierno || '', esComplementaria: false },
+      { id: '10. ', label: 'ACTIVIDADES DE GESTIÓN INSTITUCIONAL', h: Number(cargaNoLectiva?.horasAaai) || 0, d: cargaNoLectiva?.detalleAaai || '', esComplementaria: false }
+    ];
     const totalHorasNoLectivas = noLectivaData.reduce((sum, row) => sum + (Number(row.h) || 0), 0);
-    const totalHoras = Math.round(totalHorasLectivas + totalHorasNoLectivas);
-    
+
+    doc.setFillColor(celesteColor[0], celesteColor[1], celesteColor[2]);
+    doc.rect(margin, currentY, posXTotalHoras - margin, 9, 'FD');
+    doc.rect(posXTotalHoras, currentY, anchoChico, 9, 'FD');
     doc.setFont('times', 'bold');
-    doc.text('TOTAL', margin + 172 - 2, currentY + 5, { align: 'right' });
-    doc.rect(margin + 172, currentY, 8, 7);
-    doc.text(String(totalHoras), margin + 176, currentY + 5, { align: 'center' });
-    
-    currentY += 12;
-
-    doc.setFont('times', 'normal');
     doc.setFontSize(9);
-    const fechaActual = new Date().toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' });
-    doc.text(`Trujillo, ${fechaActual}`, pageWidth - margin, currentY, { align: 'right' });
+    doc.text('II. CARGA HORARIA NO LECTIVA (CHNL)', margin +4, currentY +5.8);
+    doc.text(String(totalHorasNoLectivas), posXTotalHoras + anchoChico/2, currentY +6.5, { align: 'center' });
+    currentY +=9;
 
-    currentY += 15;
-    const firmaLineLength = 55;
+    // Subsección CHNLC
+    doc.setFillColor(240, 240, 240);
+    doc.rect(margin, currentY, contentWidth, 5.5, 'FD');
+    doc.setFont('times', 'bold');
+    doc.setFontSize(7.5);
+    doc.text('CARGA HORARIA NO LECTIVA COMPLEMENTARIA (CHNLC)', margin +3, currentY +3.7);
+    currentY +=5.5;
+
+    noLectivaData.filter(row => row.esComplementaria).forEach(row => {
+      const col1Width = 80;
+      const col3Width = anchoChico;
+      
+      const labelLines = doc.splitTextToSize(row.id + row.label, col1Width - 4);
+      const detailLines = doc.splitTextToSize(row.d || '', contentWidth - col1Width - col3Width -4);
+      const rowHeight = Math.max(6.5, Math.max(labelLines.length, detailLines.length)*3 + 1.5);
+
+      doc.rect(margin, currentY, contentWidth, rowHeight);
+      doc.line(margin + col1Width, currentY, margin + col1Width, currentY + rowHeight);
+      doc.line(posXTotalHoras, currentY, posXTotalHoras, currentY + rowHeight);
+
+      doc.setFont('times', 'normal');
+      doc.setFontSize(7);
+      let y = currentY + 3.5;
+      labelLines.forEach(line => {
+        doc.text(line, margin + 3, y);
+        y +=3;
+      });
+      
+      y = currentY + 3.5;
+      detailLines.forEach(line => {
+        doc.text(line, margin + col1Width + 3, y);
+        y +=3;
+      });
+
+      if (row.h > 0) {
+        doc.setFont('times', 'bold');
+        doc.text(String(row.h), posXTotalHoras + anchoChico/2, currentY + rowHeight/2 + 0.7, {align: 'center'});
+      }
+      currentY += rowHeight;
+    });
+
+    // Subsección CHNLA
+    doc.setFillColor(240, 240, 240);
+    doc.rect(margin, currentY, contentWidth, 5.5, 'FD');
+    doc.setFont('times', 'bold');
+    doc.setFontSize(7.5);
+    doc.text('CARGA HORARIA NO LECTIVA ADMINISTRATIVA (CHNLA)', margin +3, currentY +3.7);
+    currentY +=5.5;
+
+    noLectivaData.filter(row => !row.esComplementaria).forEach(row => {
+      const col1Width = 80;
+      const col3Width = anchoChico;
+      
+      const labelLines = doc.splitTextToSize(row.id + row.label, col1Width - 4);
+      const detailLines = doc.splitTextToSize(row.d || '', contentWidth - col1Width - col3Width -4);
+      const rowHeight = Math.max(6.5, Math.max(labelLines.length, detailLines.length)*3 + 1.5);
+
+      doc.rect(margin, currentY, contentWidth, rowHeight);
+      doc.line(margin + col1Width, currentY, margin + col1Width, currentY + rowHeight);
+      doc.line(posXTotalHoras, currentY, posXTotalHoras, currentY + rowHeight);
+
+      doc.setFont('times', 'normal');
+      doc.setFontSize(7);
+      let y = currentY + 3.5;
+      labelLines.forEach(line => {
+        doc.text(line, margin + 3, y);
+        y +=3;
+      });
+      
+      y = currentY + 3.5;
+      detailLines.forEach(line => {
+        doc.text(line, margin + col1Width + 3, y);
+        y +=3;
+      });
+
+      if (row.h > 0) {
+        doc.setFont('times', 'bold');
+        doc.text(String(row.h), posXTotalHoras + anchoChico/2, currentY + rowHeight/2 + 0.7, {align: 'center'});
+      }
+      currentY += rowHeight;
+    });
+
+    // TOTAL
+    const totalHoras = totalHorasLectivas + totalHorasNoLectivas;
+    doc.setFillColor(celesteColor[0], celesteColor[1], celesteColor[2]);
+    doc.rect(margin, currentY, posXTotalHoras - margin, 11, 'FD');
+    doc.rect(posXTotalHoras, currentY, anchoChico, 11, 'FD');
+    doc.setFont('times', 'bold');
+    doc.setFontSize(10);
+    doc.text('TOTAL HORAS CARGA ACADÉMICA', margin +5, currentY +7.2);
+    doc.text(String(totalHoras), posXTotalHoras + anchoChico/2, currentY +7.2, { align: 'center' });
+    currentY +=35;
+
+    // --- FIRMAS ---
+    doc.setFont('times', 'bold');
+    doc.setFontSize(7.5);
     
-    doc.line(margin + 10, currentY, margin + 10 + firmaLineLength, currentY);
-    doc.text('Firma del Profesor', margin + 10 + firmaLineLength / 2, currentY + 4, { align: 'center' });
+    // Firma Docente
+    const textoFirmaDocente1 = 'FIRMA DEL DOCENTE';
+    const anchoFirmaDocente1 = doc.getTextWidth(textoFirmaDocente1);
+    
+    // Firma Director
+    const textoFirmaDirector1 = 'FIRMA Y SELLO DEL DIRECTOR DE DPTO. ACADÉMICO';
+    const anchoFirmaDirector1 = doc.getTextWidth(textoFirmaDirector1);
+    
+    // Firma Decano
+    const textoFirmaDecano1 = 'V.B. DECANO';
+    const anchoFirmaDecano1 = doc.getTextWidth(textoFirmaDecano1);
+    
+    const espacio = (contentWidth - anchoFirmaDocente1 - anchoFirmaDirector1 - anchoFirmaDecano1) / 4;
+    let xFirma = margin + espacio;
+
+    // Docente
+    doc.line(xFirma, currentY, xFirma + anchoFirmaDocente1, currentY);
+    doc.text(textoFirmaDocente1, xFirma + anchoFirmaDocente1 / 2, currentY +5.5, {align: 'center'});
     if (firma) {
-      try { doc.addImage(firma, 'PNG', margin + 15, currentY - 18, 45, 15); } catch (e) {}
+      try { doc.addImage(firma, 'PNG', xFirma + (anchoFirmaDocente1 -36)/2, currentY -17, 36, 14); } catch(e) {}
     }
 
-    currentY += 25; 
-    doc.line(margin + 10, currentY, margin + 10 + firmaLineLength, currentY);
-    doc.text('Firma del Director de Dpto.', margin + 10 + firmaLineLength / 2, currentY + 4, { align: 'center' });
+    // Director
+    xFirma += anchoFirmaDocente1 + espacio;
+    doc.line(xFirma, currentY, xFirma + anchoFirmaDirector1, currentY);
+    doc.text(textoFirmaDirector1, xFirma + anchoFirmaDirector1/2, currentY +5.5, {align: 'center'});
 
-    doc.line(pageWidth - margin - 10 - firmaLineLength, currentY, pageWidth - margin - 10, currentY);
-    doc.text('V° B° DECANO FAC.', pageWidth - margin - 10 - firmaLineLength / 2, currentY + 4, { align: 'center' });
+    // Decano
+    xFirma += anchoFirmaDirector1 + espacio;
+    doc.line(xFirma, currentY, xFirma + anchoFirmaDecano1, currentY);
+    doc.text(textoFirmaDecano1, xFirma + anchoFirmaDecano1/2, currentY +5.5, {align: 'center'});
 
     const pageCount = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
+    for(let i=1; i<=pageCount; i++){
       doc.setPage(i);
       doc.setFontSize(7);
-      doc.setTextColor(150, 150, 150);
-      doc.text(`Página ${i} de ${pageCount} - Generado por Sistema de Horarios UNT`, pageWidth / 2, 290, { align: 'center' });
+      doc.setTextColor(150, 150,150);
+      doc.text(`Página ${i} de ${pageCount} - Generado por Sistema de Horarios UNT`, pageWidth /2, 290, {align: 'center'});
     }
   }
 
@@ -925,23 +1207,37 @@ export class ReportesService {
     // --- CABECERA TABLA ---
     // Fila 1: Facultad y Departamento
     doc.rect(margin, currentY, contentWidth * 0.6, 8);
-    doc.text(`Facultad / Filial: ${facultad}`, margin + 2, currentY + 5);
+    doc.setFont('times', 'normal');
+    doc.text('Facultad / Filial: ', margin + 2, currentY + 5);
+    doc.setFont('times', 'bold');
+    doc.text(facultad, margin + 2 + doc.getTextWidth('Facultad / Filial: '), currentY + 5);
+    
     doc.rect(margin + contentWidth * 0.6, currentY, contentWidth * 0.4, 8);
-    doc.text(`Dpto. Académico: ${departamento}`, margin + contentWidth * 0.6 + 2, currentY + 5);
+    doc.setFont('times', 'normal');
+    doc.text('Dpto. Académico: ', margin + contentWidth * 0.6 + 2, currentY + 5);
+    doc.setFont('times', 'bold');
+    doc.text(departamento, margin + contentWidth * 0.6 + 2 + doc.getTextWidth('Dpto. Académico: '), currentY + 5);
     
     currentY += 8;
     // Fila 2: DNI, Docente y Categoría
     doc.rect(margin, currentY, 15, 8);
+    doc.setFont('times', 'normal');
     doc.text('DNI', margin + 7.5, currentY + 5, { align: 'center' });
+    
     doc.rect(margin + 15, currentY, 25, 8);
+    doc.setFont('times', 'bold');
     doc.text(docente?.dni || '', margin + 15 + 12.5, currentY + 5, { align: 'center' });
     
     doc.rect(margin + 40, currentY, contentWidth - 40 - 50, 8);
-    doc.text(`Docente: ${docente?.nombreCompleto || ''}`, margin + 42, currentY + 5);
+    doc.setFont('times', 'normal');
+    doc.text('Docente: ', margin + 42, currentY + 5);
+    doc.setFont('times', 'bold');
+    doc.text(docente?.nombreCompleto || '', margin + 42 + doc.getTextWidth('Docente: '), currentY + 5);
     
     doc.rect(pageWidth - margin - 50, currentY, 50, 8);
     doc.setFontSize(8);
     const catDed = `${docente?.categoria || ''}\n${docente?.dedicacion || ''}`;
+    doc.setFont('times', 'bold');
     doc.text(catDed.toUpperCase(), pageWidth - margin - 25, currentY + 3.5, { align: 'center' });
     doc.setFontSize(9);
 
@@ -963,25 +1259,58 @@ export class ReportesService {
     const fechaInicio = formatDate(ciclo?.fechaInicio);
     const fechaFin = formatDate(ciclo?.fechaFin);
     
-    const headerRow3 = `AÑO ACADEMICO: ${anio}   SEMESTRE: ${semestre}     INICIO: ${fechaInicio}   -   TÉRMINO: ${fechaFin}`;
-    doc.text(headerRow3, pageWidth / 2, currentY + 5, { align: 'center' });
+    // Centrar todos los textos juntos con separadores " - "
+    let textX = margin + (contentWidth - doc.getTextWidth(`AÑO ACADEMICO: ${anio}   SEMESTRE: ${semestre}     INICIO: ${fechaInicio}   -   TÉRMINO: ${fechaFin}`)) / 2;
+    
+    doc.setFont('times', 'normal');
+    doc.text('AÑO ACADEMICO: ', textX, currentY + 5);
+    textX += doc.getTextWidth('AÑO ACADEMICO: ');
+    
+    doc.setFont('times', 'bold');
+    doc.text(anio, textX, currentY + 5);
+    textX += doc.getTextWidth(anio);
+    
+    doc.setFont('times', 'normal');
+    doc.text('   SEMESTRE: ', textX, currentY + 5);
+    textX += doc.getTextWidth('   SEMESTRE: ');
+    
+    doc.setFont('times', 'bold');
+    doc.text(semestre, textX, currentY + 5);
+    textX += doc.getTextWidth(semestre);
+    
+    doc.setFont('times', 'normal');
+    doc.text('     INICIO: ', textX, currentY + 5);
+    textX += doc.getTextWidth('     INICIO: ');
+    
+    doc.setFont('times', 'bold');
+    doc.text(fechaInicio, textX, currentY + 5);
+    textX += doc.getTextWidth(fechaInicio);
+    
+    doc.setFont('times', 'normal');
+    doc.text('   -   TÉRMINO: ', textX, currentY + 5);
+    textX += doc.getTextWidth('   -   TÉRMINO: ');
+    
+    doc.setFont('times', 'bold');
+    doc.text(fechaFin, textX, currentY + 5);
 
     currentY += 8;
 
     // --- TABLA CARGA LECTIVA ---
-    const colWidths = [45, 95, 15, 25, 10]; 
+    const colWidths = [32, 89, 23, 23, 23]; 
     const headers = ['HORARIO', 'CARGA HORARIA LECTIVA (CHL)', 'LUGAR', 'AULA', 'TOTAL'];
     
+    const celesteColor = [173, 216, 230];
     let xPos = margin;
     doc.setFont('times', 'bold');
+    doc.setFontSize(9);
     headers.forEach((h, i) => {
-      doc.setFillColor(220, 235, 250); // Forzar celeste claro en cada celda del header
-      doc.rect(xPos, currentY, colWidths[i], 8, 'FD');
-      doc.text(h, xPos + colWidths[i] / 2, currentY + 5, { align: 'center' });
+      doc.setFillColor(celesteColor[0], celesteColor[1], celesteColor[2]); 
+      doc.rect(xPos, currentY, colWidths[i], 9, 'FD');
+      doc.text(h, xPos + colWidths[i] / 2, currentY + 5.8, { align: 'center' });
       xPos += colWidths[i];
     });
     
-    currentY += 8;
+    currentY += 9;
     doc.setFont('times', 'normal');
     doc.setFontSize(8);
 
@@ -1076,18 +1405,18 @@ export class ReportesService {
     }
 
     // --- TABLA CARGA NO LECTIVA ---
-    currentY += 4; 
     xPos = margin;
     doc.setFont('times', 'bold');
+    doc.setFontSize(9);
     const headersNoLectiva = ['HORARIO', 'CARGA HORARIA NO LECTIVA (CHNL)', 'LUGAR', 'AULA', 'TOTAL'];
     headersNoLectiva.forEach((h, i) => {
-      doc.setFillColor(220, 235, 250); // Forzar celeste claro en cada celda del header
-      doc.rect(xPos, currentY, colWidths[i], 8, 'FD');
-      doc.text(h, xPos + colWidths[i] / 2, currentY + 5, { align: 'center' });
+      doc.setFillColor(celesteColor[0], celesteColor[1], celesteColor[2]);
+      doc.rect(xPos, currentY, colWidths[i], 9, 'FD');
+      doc.text(h, xPos + colWidths[i] / 2, currentY + 5.8, { align: 'center' });
       xPos += colWidths[i];
     });
     
-    currentY += 8;
+    currentY += 9;
     doc.setFont('times', 'normal');
 
     const noLectivos = horarios.filter(h => h.tipoClase === TipoClaseHorario.NO_LECTIVA);
@@ -1113,10 +1442,10 @@ export class ReportesService {
       [ActividadNoLectiva.RESPONSABILIDAD_SOCIAL]: 'RESPONSABILIDAD SOCIAL UNIVERSITARIA',
       [ActividadNoLectiva.ASESORIA]: 'ASESORÍA DE TESIS Y EXAMENES PROFESIONALES',
       [ActividadNoLectiva.CAPACITACION]: 'FORMACION ACADÉMICA Y CAPACITACIÓN',
-      'AUTOEVALUACION': 'AUTOEVALUACIÓN Y/O ACREDITACIÓN DE LA ESCUELA PROFESIONAL',
+      [ActividadNoLectiva.AAEP]: 'AUTOEVALUACIÓN Y/O ACREDITACIÓN DE LA ESCUELA PROFESIONAL',
       [ActividadNoLectiva.COMITES]: 'COMITES O COMISIONES ESPECIALES',
       [ActividadNoLectiva.GOBIERNO]: 'ACTIVIDADES DE GOBIERNO O AUTORIDAD',
-      [ActividadNoLectiva.ADMINISTRACION]: 'ACTIVIDADES DE GESTIÓN INSTITUCIONAL',
+      [ActividadNoLectiva.AAAI]: 'ACTIVIDADES DE GESTIÓN INSTITUCIONAL',
     };
 
     const filasNoLectiva = [
@@ -1126,10 +1455,10 @@ export class ReportesService {
       ActividadNoLectiva.RESPONSABILIDAD_SOCIAL,
       ActividadNoLectiva.ASESORIA,
       ActividadNoLectiva.CAPACITACION,
-      'AUTOEVALUACION',
+      ActividadNoLectiva.AAEP,
       ActividadNoLectiva.COMITES,
       ActividadNoLectiva.GOBIERNO,
-      ActividadNoLectiva.ADMINISTRACION,
+      ActividadNoLectiva.AAAI,
     ];
     
     filasNoLectiva.forEach(actKey => {
@@ -1177,16 +1506,15 @@ export class ReportesService {
     });
 
     // --- TOTAL HORAS ---
-    doc.setFillColor(220, 235, 250);
+    doc.setFillColor(celesteColor[0], celesteColor[1], celesteColor[2]);
     doc.setFont('times', 'bold');
-    doc.rect(margin, currentY, contentWidth - colWidths[4], 8, 'FD');
-    doc.text('TOTAL HORAS CARGA ACADÉMICA', margin + (contentWidth - colWidths[4]) / 2, currentY + 5, { align: 'center' });
+    doc.setFontSize(10);
+    doc.rect(margin, currentY, contentWidth - colWidths[4], 11, 'FD');
+    doc.rect(pageWidth - margin - colWidths[4], currentY, colWidths[4], 11, 'FD');
+    doc.text('TOTAL HORAS CARGA ACADÉMICA', margin +5, currentY +7.2);
+    doc.text(String(Math.round(totalHorasLectivas + totalHorasNoLectivas)), pageWidth - margin - colWidths[4] + colWidths[4]/2, currentY +7.2, { align: 'center' });
     
-    doc.setFillColor(220, 235, 250); // Forzar celeste claro en la celda del total
-    doc.rect(pageWidth - margin - colWidths[4], currentY, colWidths[4], 8, 'FD');
-    doc.text(String(Math.round(totalHorasLectivas + totalHorasNoLectivas)), pageWidth - margin - colWidths[4] / 2, currentY + 5, { align: 'center' });
-    
-    currentY += 10;
+    currentY += 15;
     doc.setFontSize(7);
     doc.setFont('times', 'normal');
     doc.text('T: TEORIA - P: PRACTICA', margin, currentY);
@@ -1199,31 +1527,37 @@ export class ReportesService {
     doc.text(splitLugar, margin, currentY);
 
     // --- FIRMAS ---
-    currentY += 35; // Bajado de 25 a 35 para más espacio
-    const firmaWidth = 50;
-    const spacing = (contentWidth - 3 * firmaWidth) / 2;
-    
-    // Firma Docente
-    let xFirma = margin;
-    doc.line(xFirma, currentY, xFirma + firmaWidth, currentY);
+    currentY += 35;
     doc.setFontSize(8);
     doc.setFont('times', 'bold');
-    doc.text('FIRMA DEL DOCENTE', xFirma + firmaWidth / 2, currentY + 4, { align: 'center' });
+    
+    // Firma Docente
+    const textoFirmaDocente = 'FIRMA DEL DOCENTE';
+    const anchoFirmaDocente = doc.getTextWidth(textoFirmaDocente);
+    
+    // Firma Director
+    const textoFirmaDirector = 'FIRMA Y SELLO DEL DIRECTOR DE DPTO. ACADÉMICO';
+    const anchoFirmaDirector = doc.getTextWidth(textoFirmaDirector);
+
+    const textoFirmaDecano = 'V°B° DECANO';
+    const anchoFirmaDecano = doc.getTextWidth(textoFirmaDecano);
+    
+    const spacing = (contentWidth - anchoFirmaDocente - anchoFirmaDirector - anchoFirmaDecano) / 4;
+    let xFirma = margin + spacing;
+    doc.line(xFirma, currentY, xFirma + anchoFirmaDocente, currentY);
+    doc.text(textoFirmaDocente, xFirma + anchoFirmaDocente / 2, currentY + 4, { align: 'center' });
     if (firma) {
-      try { doc.addImage(firma, 'PNG', xFirma + 5, currentY - 20, 40, 15); } catch (e) {}
+      try { doc.addImage(firma, 'PNG', xFirma + (anchoFirmaDocente - 40) / 2, currentY - 20, 40, 15); } catch (e) {}
     }
 
-    // Firma Director
-    xFirma += firmaWidth + spacing;
-    doc.line(xFirma, currentY, xFirma + firmaWidth, currentY);
-    doc.text('FIRMA DEL DIRECTOR DE DPTO. ACADEMICO', xFirma + firmaWidth / 2, currentY + 4, { align: 'center' });
+    xFirma += anchoFirmaDocente + spacing;
+    doc.line(xFirma, currentY, xFirma + anchoFirmaDirector, currentY);
+    doc.text(textoFirmaDirector, xFirma + anchoFirmaDirector / 2, currentY + 4, { align: 'center' });
 
-    // Firma Decano
-    xFirma += firmaWidth + spacing;
-    doc.line(xFirma, currentY, xFirma + firmaWidth, currentY);
-    doc.text('V°B° DECANO', xFirma + firmaWidth / 2, currentY + 4, { align: 'center' });
+    xFirma += anchoFirmaDirector + spacing;
+    doc.line(xFirma, currentY, xFirma + anchoFirmaDecano, currentY);
+    doc.text(textoFirmaDecano, xFirma + anchoFirmaDecano / 2, currentY + 4, { align: 'center' });
 
-    // Fecha de Registro (en blanco por solicitud)
     doc.setFont('times', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(100);

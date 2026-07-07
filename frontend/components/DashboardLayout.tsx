@@ -150,18 +150,47 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           const handler = (data: any) => {
             if (!mounted) return;
             if (Number(data.docenteId) === Number(usuario.docenteId)) {
-              fetchNotificaciones(); // Refrescar lista y contador
-              // Opcional: Mostrar un toast o alerta
-              MySwal.fire({
-                title: data.titulo || 'Nueva notificación',
-                text: data.mensaje,
-                icon: 'info',
-                toast: true,
-                position: 'top-end',
-                showConfirmButton: false,
-                timer: 5000,
-                timerProgressBar: true,
-              });
+              fetchNotificaciones();
+              if (data.estado === 'validado') {
+                if (data.reportesGenerados) {
+                  MySwal.fire({
+                    title: '¡Carga Académica Validada!',
+                    text: 'Su carga académica ha sido validada correctamente. Puede descargar sus reportes.',
+                    icon: 'success',
+                    confirmButtonText: 'IR A REPORTES',
+                    confirmButtonColor: '#003366',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cerrar',
+                    reverseButtons: true,
+                  }).then((result) => {
+                    if (result.isConfirmed && mounted) {
+                      router.push('/reportes');
+                    }
+                  });
+                } else {
+                  MySwal.fire({
+                    title: 'Carga Académica Validada',
+                    text: data.mensaje,
+                    icon: 'success',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 5000,
+                    timerProgressBar: true,
+                  });
+                }
+              } else {
+                MySwal.fire({
+                  title: data.titulo || 'Nueva notificación',
+                  text: data.mensaje,
+                  icon: 'info',
+                  toast: true,
+                  position: 'top-end',
+                  showConfirmButton: false,
+                  timer: 5000,
+                  timerProgressBar: true,
+                });
+              }
             }
           };
 

@@ -1,17 +1,21 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
 import { CargaNoLectiva } from '../../entities/carga-no-lectiva.entity';
 import { CargaAcademica, EstadoCargaAcademica } from '../../entities/carga-academica.entity';
 import { Docente } from '../../entities/docente.entity';
+import { TipoClaseHorario, ActividadNoLectiva } from '../../database/entities/horario.entity';
 import { CreateCargaNoLectivaDto } from './dto/create-carga-no-lectiva.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion } from '../../database/entities/notificacion.entity';
 import { NotificacionesGateway } from '../notificaciones/notificaciones.gateway';
 import { DocentesService } from '../docentes/docentes.service';
+import { ReportesService } from '../reportes/reportes.service';
 
 @Injectable()
 export class CargaNoLectivaService {
+  private readonly logger = new Logger(CargaNoLectivaService.name);
+
   constructor(
     @InjectRepository(CargaNoLectiva)
     private readonly cargaNoLectivaRepo: Repository<CargaNoLectiva>,
@@ -22,6 +26,7 @@ export class CargaNoLectivaService {
     private readonly notificacionesService: NotificacionesService,
     private readonly notificacionesGateway: NotificacionesGateway,
     private readonly docentesService: DocentesService,
+    private readonly reportesService: ReportesService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -40,7 +45,7 @@ export class CargaNoLectivaService {
       return {
         docenteId,
         cicloId,
-        estado: EstadoCargaAcademica.BORRADOR,
+        estado: EstadoCargaAcademica.SIN_CARGA,
         firma: docente?.firmaBase64 || null,
         incluirFirmaReportes: false,
         docente,
@@ -58,6 +63,7 @@ export class CargaNoLectivaService {
       firma: ca.firmaDocente || ca.docente?.firmaBase64,
       incluirFirmaReportes: ca.incluirFirmaReportes,
       observaciones: ca.observaciones,
+      motivoRechazo: ca.motivoRechazo,
       docente: ca.docente,
       ciclo: ca.ciclo,
     };
@@ -117,7 +123,7 @@ export class CargaNoLectivaService {
       ca = this.cargaAcademicaRepo.create({
         docenteId,
         cicloId,
-        estado: (estado as EstadoCargaAcademica) || EstadoCargaAcademica.BORRADOR,
+        estado: (estado as EstadoCargaAcademica) || EstadoCargaAcademica.SIN_CARGA,
         firmaDocente: firma,
         incluirFirmaReportes: incluirFirmaReportes || false,
       });
@@ -135,6 +141,11 @@ export class CargaNoLectivaService {
       if (firma) ca.firmaDocente = firma;
       if (incluirFirmaReportes !== undefined) ca.incluirFirmaReportes = incluirFirmaReportes;
       if (dto.observaciones !== undefined) ca.observaciones = dto.observaciones;
+      
+      // Si el docente reenvía (sale de borrador), limpiar el motivo de rechazo
+      if (ca.estado !== EstadoCargaAcademica.BORRADOR) {
+        ca.motivoRechazo = null;
+      }
     }
 
     // Guardar firma en el perfil del docente para que sea "solo 1 vez"
@@ -188,10 +199,39 @@ export class CargaNoLectivaService {
 
     await this.cargaNoLectivaRepo.save(cnl);
 
+    // 3. Guardar horarios no lectiva si se enviaron
+    if (dto.horarios && dto.horarios.length > 0) {
+      const diaMap: Record<string, number> = {
+        'Lunes': 1, 'Martes': 2, 'Miércoles': 3, 'Miercoles': 3,
+        'Jueves': 4, 'Viernes': 5, 'Sábado': 6, 'Sabado': 6, 'Domingo': 7,
+      };
+      // Eliminar horarios no-lectiva existentes del docente/ciclo
+      await this.dataSource.query(
+        `DELETE FROM horarios WHERE "docenteId" = $1 AND "cicloId" = $2 AND "tipoClase" = 'no_lectiva'`,
+        [docenteId, cicloId],
+      );
+      // Insertar nuevos horarios
+      for (const h of dto.horarios) {
+        const diaNum = diaMap[h.dia] || 1;
+        await this.dataSource.query(
+          `INSERT INTO horarios ("docenteId", "cicloId", "tipoClase", "actividadNoLectiva", "diaSemana", "horaInicio", "horaFin", "esAutomatico", "aulaId")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            docenteId, cicloId,
+            TipoClaseHorario.NO_LECTIVA,
+            h.actividadNoLectiva,
+            diaNum, h.horaInicio, h.horaFin,
+            false,
+            h.aulaId ?? null,
+          ],
+        );
+      }
+    }
+
     return this.findByDocenteAndCiclo(docenteId, cicloId);
   }
 
-  async updateEstado(id: number, estado: EstadoCargaAcademica) {
+  async updateEstado(id: number, estado: EstadoCargaAcademica, motivoRechazo?: string) {
     const ca = await this.cargaAcademicaRepo.findOne({ 
       where: { id }, 
       relations: ['ciclo', 'cargaNoLectiva'] 
@@ -201,6 +241,12 @@ export class CargaNoLectivaService {
     const estadoAnterior = ca.estado;
     ca.estado = estado;
     
+    if (estado === EstadoCargaAcademica.BORRADOR) {
+      ca.motivoRechazo = motivoRechazo || null;
+    } else {
+      ca.motivoRechazo = null;
+    }
+
     if (estado === EstadoCargaAcademica.FINALIZADO && !ca.fechaFinalizacion) {
       ca.fechaFinalizacion = new Date();
     }
@@ -211,11 +257,23 @@ export class CargaNoLectivaService {
     if (estadoAnterior !== estado) {
       let titulo = 'Actualización de Carga Académica';
       let mensaje = '';
+      let reportesGenerados = false;
       const cicloNombre = ca.ciclo?.nombre || '';
 
       if (estado === EstadoCargaAcademica.VALIDADO) {
         titulo = 'Carga Académica Validada';
         mensaje = `Su carga académica para el ciclo ${cicloNombre} ha sido validada correctamente por el coordinador.`;
+
+        // Generar reportes automáticos al validar (solo si no existen)
+        try {
+          const created = await this.reportesService.crearReportesAutomaticos(ca.docenteId, ca.cicloId);
+          if (created) {
+            this.logger.log(`Reportes generados para docente ${ca.docenteId} ciclo ${ca.cicloId}`);
+          }
+          reportesGenerados = created;
+        } catch (err) {
+          this.logger.error(`Error generando reportes: ${err.message}`);
+        }
       } else if (estado === EstadoCargaAcademica.BORRADOR) {
         titulo = 'Carga Académica Observada';
         mensaje = `Su carga académica para el ciclo ${cicloNombre} ha sido devuelta a borrador para correcciones. Por favor, revise sus horas.`;
@@ -233,11 +291,41 @@ export class CargaNoLectivaService {
         this.notificacionesGateway.notifyStatusChange(ca.docenteId, {
           estado: saved.estado,
           cicloId: saved.cicloId,
-          mensaje
+          mensaje,
+          reportesGenerados,
+        });
+
+        // Notificar a la vista de administración
+        this.notificacionesGateway.broadcastCargaUpdate(ca.cicloId, {
+          docenteId: ca.docenteId,
+          estado: saved.estado,
         });
       }
     }
 
     return saved;
+  }
+
+  async generarReportesParaValidados() {
+    const cargas = await this.cargaAcademicaRepo.find({
+      where: { estado: EstadoCargaAcademica.VALIDADO },
+    });
+
+    if (cargas.length === 0) {
+      return { message: 'No hay cargas validadas pendientes de reportes' };
+    }
+
+    const results: { docenteId: number; cicloId: number; success: boolean; error?: string }[] = [];
+    for (const ca of cargas) {
+      try {
+        await this.reportesService.crearReportesAutomaticos(ca.docenteId, ca.cicloId);
+        results.push({ docenteId: ca.docenteId, cicloId: ca.cicloId, success: true });
+        this.logger.log(`Reportes generados para docente ${ca.docenteId} ciclo ${ca.cicloId}`);
+      } catch (err) {
+        results.push({ docenteId: ca.docenteId, cicloId: ca.cicloId, success: false, error: err.message });
+        this.logger.error(`Error generando reportes para docente ${ca.docenteId}: ${err.message}`);
+      }
+    }
+    return { results };
   }
 }

@@ -13,6 +13,8 @@ import { Curso } from '../../entities/curso.entity';
 import { AsignacionDocenteCurso } from '../../entities/asignacion-docente-curso.entity';
 import { GrupoDocenteAsignacion } from '../../database/entities/grupo-docente-asignacion.entity';
 import { CargaNoLectiva } from '../../entities/carga-no-lectiva.entity';
+import { AsignacionFilial } from '../../database/entities/asignacion-filial.entity';
+import { CursoFilial } from '../../database/entities/curso-filial.entity';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { CargaNoLectiva } from '../../entities/carga-no-lectiva.entity';
       AsignacionDocenteCurso,
       GrupoDocenteAsignacion,
       CargaNoLectiva,
+      AsignacionFilial,
+      CursoFilial,
     ]),
     CiclosModule,
     VentanasModule,

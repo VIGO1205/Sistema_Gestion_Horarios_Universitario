@@ -1,5 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '@/lib/api';
+
+const DIA_MAP: Record<string, number> = {
+  'Lunes': 1, 'Martes': 2, 'Miércoles': 3, 'Jueves': 4,
+  'Viernes': 5, 'Sábado': 6, 'Domingo': 7,
+};
 
 interface UseHorariosDataProps {
   filtros: any;
@@ -15,6 +20,7 @@ export const useHorariosData = ({ filtros, usuario, esDocente }: UseHorariosData
   const [mapaOcupacion, setMapaOcupacion] = useState<any>({});
   const [misAsignaciones, setMisAsignaciones] = useState<any[]>([]);
   const [cargaNoLectivaDocente, setCargaNoLectivaDocente] = useState<any>(null);
+  const [cargaAdicional, setCargaAdicional] = useState<any>(null);
   
   const [ciclos, setCiclos] = useState<any[]>([]);
   const [docentes, setDocentes] = useState<any[]>([]);
@@ -47,12 +53,16 @@ export const useHorariosData = ({ filtros, usuario, esDocente }: UseHorariosData
   }, []);
 
   const fetchData = useCallback(async (isInitial = true) => {
-    if (!filtros.ciclo) return;
+    console.log('📡 fetchData ejecutándose con ciclo:', filtros.ciclo, '| isInitial:', isInitial);
     
     if (isInitial) setLoading(true); 
     else setFetching(true);
 
     try {
+      if (!filtros.ciclo) {
+        console.log('⚠️ fetchData: ciclo vacío, saltando fetch');
+        return;
+      }
       const docenteParams: any = {};
       if (filtros.carrera?.id) docenteParams.carreraId = filtros.carrera.id;
       
@@ -66,13 +76,18 @@ export const useHorariosData = ({ filtros, usuario, esDocente }: UseHorariosData
       setAulas(aulasRes.data || []);
       setMapaOcupacion(ocupacionRes.data || {});
 
+      let cargaAdicionalData = null;
+
       if (esDocente && usuario?.docenteId) {
-        const [asigRes, noLectivaRes] = await Promise.all([
+        const [asigRes, noLectivaRes, filialRes] = await Promise.all([
           api.get(`/docentes/${usuario.docenteId}/cursos`, { params: { cicloId: filtros.ciclo } }),
-          api.get('/carga-no-lectiva', { params: { docenteId: usuario.docenteId, cicloId: filtros.ciclo } })
+          api.get('/carga-no-lectiva', { params: { docenteId: usuario.docenteId, cicloId: filtros.ciclo } }),
+          api.get('/asignacion-filial', { params: { docenteId: usuario.docenteId, cicloId: filtros.ciclo } }).catch(() => ({ data: null }))
         ]);
         setMisAsignaciones(asigRes.data || []);
         setCargaNoLectivaDocente(noLectivaRes.data || null);
+        cargaAdicionalData = filialRes.data || null;
+        setCargaAdicional(cargaAdicionalData);
       }
 
       const params: any = { cicloId: filtros.ciclo };
@@ -95,15 +110,50 @@ export const useHorariosData = ({ filtros, usuario, esDocente }: UseHorariosData
       
       let data = response.data || [];
       
-      // Filtrar por tipo de carga y ciclo de estudio
-      data = data.filter((h: any) => 
-        filtros.tipoCarga === 'LECTIVA' ? h.tipoClase !== 'no_lectiva' : h.tipoClase === 'no_lectiva'
-      );
+      // Transformar carga adicional (filial) a eventos tipo horario
+      const filialEvents: any[] = [];
+      if (esDocente && cargaAdicionalData?.cursos) {
+        for (const curso of cargaAdicionalData.cursos) {
+          if (!curso.horarioSemanal) continue;
+          for (let idx = 0; idx < curso.horarioSemanal.length; idx++) {
+            const slot = curso.horarioSemanal[idx];
+            const diaNum = DIA_MAP[slot.dia];
+            if (!diaNum) continue;
+            filialEvents.push({
+              id: `filial_${curso.id}_${idx}`,
+              tipoClase: 'filial',
+              horaInicio: slot.horaInicio,
+              horaFin: slot.horaFin,
+              diaSemana: diaNum,
+              curso: { nombre: curso.nombre },
+              docente: cargaAdicionalData.docente || { nombreCompleto: '' },
+              aula: { nombre: curso.dependencia || 'FILIAL' },
+              actividadNoLectiva: curso.dependencia || 'CARGA ADICIONAL',
+              docenteId: cargaAdicionalData.docenteId,
+              esFilial: true,
+            });
+          }
+        }
+      }
       
-      if (filtros.cicloEstudio) {
+      // Filtrar por tipo de carga y ciclo de estudio
+      if (filtros.tipoCarga === 'LECTIVA') {
+        data = data.filter((h: any) => h.tipoClase !== 'no_lectiva' && h.tipoClase !== 'filial');
+      } else if (filtros.tipoCarga === 'NO_LECTIVA') {
+        data = data.filter((h: any) => h.tipoClase === 'no_lectiva');
+      }
+      // 'TODAS' → incluye lectiva, no lectiva y filial
+      
+      if (filtros.cicloEstudio && filtros.cicloEstudio !== 'todos') {
         data = data.filter((h: any) => 
-          h.tipoClase === 'no_lectiva' || String(h.curso?.cicloAcademico || '').trim() === String(filtros.cicloEstudio)
+          h.tipoClase === 'no_lectiva' || h.tipoClase === 'filial' ||
+          String(h.curso?.cicloAcademico || '').trim() === String(filtros.cicloEstudio)
         );
+      }
+      
+      // Fusionar eventos filiales solo en vista TODAS
+      if (!filtros.tipoCarga || filtros.tipoCarga === 'TODAS') {
+        data = [...data, ...filialEvents];
       }
       
       setHorarios(data);
@@ -116,21 +166,27 @@ export const useHorariosData = ({ filtros, usuario, esDocente }: UseHorariosData
     }
   }, [filtros.ciclo, filtros.cicloEstudio, filtros.carrera, filtros.docente, filtros.aula, filtros.tipoCarga, esDocente, usuario?.docenteId]);
 
+  const cicloInicializado = useRef(false);
+
   useEffect(() => {
-    if (filtros.ciclo) fetchData(false);
-  }, [fetchData]);
+    if (!filtros.ciclo) return;
+    if (!cicloInicializado.current) {
+      cicloInicializado.current = true;
+      fetchData(true);
+    } else {
+      fetchData(false);
+    }
+  }, [filtros.ciclo, fetchData]);
 
   return {
     loading,
     fetching,
     horarios,
-    setHorarios,
     todosLosHorarios,
-    setTodosLosHorarios,
     mapaOcupacion,
-    setMapaOcupacion,
     misAsignaciones,
     cargaNoLectivaDocente,
+    cargaAdicional,
     ciclos,
     docentes,
     aulas,

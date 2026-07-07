@@ -80,7 +80,7 @@ export class DocentesController {
 
   @Get(':id/validar-carga')
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR, RolUsuario.DOCENTE)
-  validarCarga(@Param('id') id: string) {
-    return this.docentesService.validarCargaCompleta(+id);
+  validarCarga(@Param('id') id: string, @Query('cicloId') cicloId?: string) {
+    return this.docentesService.validarCargaCompleta(+id, cicloId ? +cicloId : undefined);
   }
 }

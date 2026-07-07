@@ -80,7 +80,7 @@ export class VentanasService implements OnModuleInit {
 
     // Buscar todos los docentes sin ventana para validar si hay algo que hacer
     const totalSinVentana = await this.docenteRepo.count({
-      where: { activo: true, ventanaId: IsNull(), estadoSeleccion: EstadoSeleccion.EN_ESPERA },
+      where: { activo: true, ventanaId: IsNull(), estadoSeleccion: EstadoSeleccion.SIN_VENTANA },
     });
 
     if (totalSinVentana === 0) {
@@ -105,18 +105,23 @@ export class VentanasService implements OnModuleInit {
       const docentesGrupo = await this.docenteRepo
         .createQueryBuilder('docente')
         .innerJoin(
-          'carga_academica',
-          'carga',
-          'carga.docente_id = docente.id AND carga.ciclo_id = :cicloId AND carga.estado = :estadoValidado',
-          { cicloId, estadoValidado: EstadoCargaAcademica.VALIDADO }
+          'asignacion_docente_curso',
+          'adc',
+          'adc."docenteId" = docente.id AND adc.ciclo_id = :cicloId'
+        )
+        .innerJoin(
+          'horarios',
+          'h',
+          'h."docenteId" = docente.id AND h."cicloId" = :cicloId AND h."tipoClase" IN (:...tiposLectiva)'
         )
         .where({
           condicion: nivel.tipo,
           categoria: nivel.categoria,
           activo: true,
           ventanaId: IsNull(),
-          estadoSeleccion: EstadoSeleccion.EN_ESPERA,
+          estadoSeleccion: EstadoSeleccion.SIN_VENTANA,
         })
+        .setParameters({ cicloId, tiposLectiva: ['teoria', 'practica', 'laboratorio'] })
         .orderBy('docente.antiguedadAnios', 'DESC')
         .getMany();
 
@@ -174,23 +179,22 @@ export class VentanasService implements OnModuleInit {
 
         // 4. Asignar la misma ventana a todos los docentes del bloque
         const ids = docentesBloque.map(d => d.id);
-        await this.docenteRepo.update(ids, { ventanaId: guardada.id });
+        await this.docenteRepo.update(ids, { ventanaId: guardada.id, estadoSeleccion: EstadoSeleccion.EN_ESPERA });
 
         // El siguiente bloque empieza donde termina este
         currentStartTime = new Date(finBloque);
       }
     }
 
-    // CORRECCIÓN: Validar si se crearon ventanas, si no, dar mensaje claro
     if (ventanasCreadas.length === 0) {
       throw new BadRequestException(
-        'No se encontraron docentes con carga académica VALIDADA del ciclo seleccionado. ' +
-        'Por favor, valide que los docentes tengan su carga académica en estado VALIDADO para este ciclo antes de crear ventanas de atención.'
+        'No se encontraron docentes con carga lectiva asignada y horarios registrados del ciclo seleccionado. ' +
+        'Por favor, asegúrese de que los docentes tengan carga lectiva (asignación docente-curso) y sus horarios registrados antes de crear ventanas de atención.'
       );
     }
 
     return {
-      message: `${ventanasCreadas.length} ventanas generadas para docentes con carga académica VALIDADA.`,
+      message: `${ventanasCreadas.length} ventanas generadas para docentes con carga lectiva y horarios completos.`,
       ventanas: ventanasCreadas,
     };
   }
@@ -238,12 +242,19 @@ export class VentanasService implements OnModuleInit {
     return await this.ventanaRepo.save(ventana);
   }
 
-  async findAll(): Promise<VentanaAtencion[]> {
-    return await this.ventanaRepo.find({
+  async findAll(): Promise<any[]> {
+    const ventanas = await this.ventanaRepo.find({
       where: { activo: true },
       relations: ['ciclo'],
       order: { fechaHoraInicio: 'ASC' },
     });
+    const result = await Promise.all(ventanas.map(async (v) => {
+      const docentesCount = await this.docenteRepo.count({
+        where: { ventanaId: v.id }
+      });
+      return { ...v, docentesCount };
+    }));
+    return result;
   }
 
   async findActive(): Promise<VentanaAtencion | null> {
@@ -595,7 +606,9 @@ export class VentanasService implements OnModuleInit {
       ],
     });
 
-    if (ventanasDisponibles === 0 && docente.estadoSeleccion !== EstadoSeleccion.EN_ATENCION) {
+    if (ventanasDisponibles === 0
+      && docente.estadoSeleccion !== EstadoSeleccion.EN_ATENCION
+      && docente.estadoSeleccion !== EstadoSeleccion.FINALIZADO) {
       return { estado: 'sin_ventana' };
     }
     
@@ -757,7 +770,7 @@ export class VentanasService implements OnModuleInit {
 
   async countDocentesPorCategoria(categoria: string, cicloId?: number): Promise<{ count: number }> {
     if (!cicloId) {
-      const where: any = { activo: true, estadoSeleccion: EstadoSeleccion.EN_ESPERA };
+      const where: any = { activo: true, estadoSeleccion: EstadoSeleccion.SIN_VENTANA };
       if (categoria && categoria !== 'todos') {
         where.categoria = categoria;
       }
@@ -765,23 +778,53 @@ export class VentanasService implements OnModuleInit {
       return { count };
     }
 
-    // CORRECCIÓN: Solo contar docentes con carga académica VALIDADA del ciclo
+    // Contar docentes con carga lectiva asignada y horarios registrados del ciclo
     const qb = this.docenteRepo
       .createQueryBuilder('docente')
       .innerJoin(
-        'carga_academica',
-        'carga',
-        'carga.docente_id = docente.id AND carga.ciclo_id = :cicloId AND carga.estado = :estadoValidado',
-        { cicloId, estadoValidado: EstadoCargaAcademica.VALIDADO }
+        'asignacion_docente_curso',
+        'adc',
+        'adc."docenteId" = docente.id AND adc.ciclo_id = :cicloId'
+      )
+      .innerJoin(
+        'horarios',
+        'h',
+        'h."docenteId" = docente.id AND h."cicloId" = :cicloId AND h."tipoClase" IN (:...tiposLectiva)'
       )
       .where({
         activo: true,
-        estadoSeleccion: EstadoSeleccion.EN_ESPERA,
-      });
+        estadoSeleccion: EstadoSeleccion.SIN_VENTANA,
+      })
+      .setParameters({ cicloId, tiposLectiva: ['teoria', 'practica', 'laboratorio'] });
 
     if (categoria && categoria !== 'todos') {
-      qb.andWhere('docente.categoria = :categoria', { categoria });
+      qb.andWhere('docente.categoria = :categoria');
+      qb.setParameter('categoria', categoria);
     }
+
+    const count = await qb.getCount();
+    return { count };
+  }
+
+  async countDocentesSinCargaCompleta(cicloId: number): Promise<{ count: number }> {
+    const qb = this.docenteRepo
+      .createQueryBuilder('docente')
+      .leftJoin(
+        'asignacion_docente_curso',
+        'adc',
+        'adc."docenteId" = docente.id AND adc.ciclo_id = :cicloId'
+      )
+      .leftJoin(
+        'horarios',
+        'h',
+        'h."docenteId" = docente.id AND h."cicloId" = :cicloId AND h."tipoClase" IN (:...tiposLectiva)'
+      )
+      .where({
+        activo: true,
+        estadoSeleccion: EstadoSeleccion.SIN_VENTANA,
+      })
+      .andWhere('(adc."docenteId" IS NULL OR h."docenteId" IS NULL)')
+      .setParameters({ cicloId, tiposLectiva: ['teoria', 'practica', 'laboratorio'] });
 
     const count = await qb.getCount();
     return { count };
@@ -986,11 +1029,6 @@ export class VentanasService implements OnModuleInit {
 
       // Si la ventana está pausada, el tiempo del docente NO corre
       if (ventanaDocente?.estado === EstadoVentana.PAUSADA) {
-        // Compensamos el fin de atención del docente también en tiempo real
-        if (docente.finAtencion) {
-          docente.finAtencion = new Date(docente.finAtencion.getTime() + 60000);
-          await this.docenteRepo.save(docente);
-        }
         continue;
       }
 
@@ -999,24 +1037,20 @@ export class VentanasService implements OnModuleInit {
         docente.estadoSeleccion = EstadoSeleccion.FINALIZADO;
         await this.docenteRepo.save(docente);
 
-        // Finalizar Carga Académica y Generar reportes automáticos al expirar el tiempo
+        // Enviar Carga Académica a PENDIENTE al expirar el tiempo (sin generar reportes)
         if (ventanaDocente?.cicloId) {
           try {
-            // 1. Marcar Carga Académica como FINALIZADO
+            // 1. Marcar Carga Académica como PENDIENTE (envía lo registrado para validación)
             await this.cargaAcademicaRepo.update(
               { docenteId: docente.id, cicloId: ventanaDocente.cicloId },
               { 
-                estado: EstadoCargaAcademica.FINALIZADO,
+                estado: EstadoCargaAcademica.PENDIENTE,
                 fechaFinalizacion: new Date()
               }
             );
-            this.logger.log(`Carga Académica auto-finalizada por expiración para docente ${docente.id}`);
-
-            // 2. Crear reportes
-            await this.reportesService.crearReportesAutomaticos(docente.id, ventanaDocente.cicloId);
-            this.logger.log(`Reportes automáticos creados por expiración para docente ${docente.id}`);
+            this.logger.log(`Carga Académica enviada a PENDIENTE por expiración para docente ${docente.id}`);
           } catch (err) {
-            this.logger.error(`Error auto-finalizando proceso para docente ${docente.id}: ${err.message}`);
+            this.logger.error(`Error auto-enviando carga para docente ${docente.id}: ${err.message}`);
           }
         }
 
@@ -1083,7 +1117,7 @@ export class VentanasService implements OnModuleInit {
         }
 
         // Si ya debe iniciar (llegó la hora), llamarlo
-        if (diffMins <= 0) {
+        if (diffMs <= 0) {
           // Si ya pasaron más de 120 min de la hora de inicio de HOY y sigue programada,
           // es posible que el sistema haya estado caído. La marcamos como vencida por seguridad.
           if (diffMins < -120) {
@@ -1169,6 +1203,10 @@ export class VentanasService implements OnModuleInit {
     });
     
     if (!docente) throw new NotFoundException('Docente no encontrado');
+    if (docente.estadoSeleccion === EstadoSeleccion.FINALIZADO) {
+      this.logger.log(`Docente ${docente.nombreCompleto} ya había finalizado su turno.`);
+      return;
+    }
     if (docente.estadoSeleccion !== EstadoSeleccion.EN_ATENCION) {
       throw new BadRequestException('El docente no está en atención actualmente');
     }
@@ -1178,24 +1216,19 @@ export class VentanasService implements OnModuleInit {
     docente.finAtencion = new Date();
     await this.docenteRepo.save(docente);
 
-    // Finalizar Carga Académica y Crear reportes automáticos
+    // Marcar Carga Académica como PENDIENTE (sin generar reportes)
     if (docente.ventana?.cicloId) {
       try {
-        // 1. Marcar Carga Académica como FINALIZADO
         await this.cargaAcademicaRepo.update(
           { docenteId: docente.id, cicloId: docente.ventana.cicloId },
           { 
-            estado: EstadoCargaAcademica.FINALIZADO,
+            estado: EstadoCargaAcademica.PENDIENTE,
             fechaFinalizacion: new Date()
           }
         );
-        this.logger.log(`Carga Académica finalizada para docente ${docente.id}`);
-
-        // 2. Crear reportes
-        await this.reportesService.crearReportesAutomaticos(docente.id, docente.ventana.cicloId);
-        this.logger.log(`Reportes automáticos creados para docente ${docente.id}`);
+        this.logger.log(`Carga Académica enviada a PENDIENTE para docente ${docente.id}`);
       } catch (err) {
-        this.logger.error(`Error finalizando proceso para docente ${docente.id}: ${err.message}`);
+        this.logger.error(`Error actualizando carga para docente ${docente.id}: ${err.message}`);
       }
     }
 
@@ -1204,6 +1237,14 @@ export class VentanasService implements OnModuleInit {
       this.ventanasGateway.server.emit('ventanas:mi-estado', {
         estado: 'finalizado', 
         docenteId: docente.id 
+      });
+    }
+
+    // Notificar a la vista de administración
+    if (docente.ventana?.cicloId) {
+      this.notificacionesGateway?.broadcastCargaUpdate(docente.ventana.cicloId, {
+        docenteId: docente.id,
+        estado: 'pendiente',
       });
     }
 

@@ -24,7 +24,6 @@ interface FiltrosHorarioProps {
   showAdvancedFilters: boolean;
   setShowAdvancedFilters: (show: boolean) => void;
   onLimpiar: () => void;
-  tiposCarga: string[];
   tiposAula: any[];
 }
 
@@ -39,7 +38,6 @@ const FiltrosHorario: React.FC<FiltrosHorarioProps> = ({
   showAdvancedFilters,
   setShowAdvancedFilters,
   onLimpiar,
-  tiposCarga,
   tiposAula
 }) => {
   return (
@@ -73,6 +71,7 @@ const FiltrosHorario: React.FC<FiltrosHorarioProps> = ({
                onChange={(e) => setFiltros({ ...filtros, cicloEstudio: e.target.value })}
                startAdornment={<InputAdornment position="start"><FilterIcon fontSize="small" color="primary" /></InputAdornment>}
              >
+              {esDocente && <MenuItem value="todos">Todos los Ciclos</MenuItem>}
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(c => (
                 <MenuItem key={c} value={String(c)}>
                   {c}° CICLO
@@ -195,23 +194,7 @@ const FiltrosHorario: React.FC<FiltrosHorarioProps> = ({
         {showAdvancedFilters && (
           <Grid item xs={12} md={10}>
             <Grid container spacing={2}>
-              <Grid item xs={12} md={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Tipo de Carga</InputLabel>
-                  <Select
-                    value={filtros.tipoCarga}
-                    label="Tipo de Carga"
-                    onChange={(e) => {
-                      setFiltros({ ...filtros, tipoCarga: e.target.value });
-                    }}
-                  >
-                    {tiposCarga.map(tipo => (
-                      <MenuItem key={tipo} value={tipo}>{tipo === 'LECTIVA' ? 'Carga Lectiva' : 'Carga No Lectiva'}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Tipo de Aula</InputLabel>
                   <Select
@@ -226,7 +209,7 @@ const FiltrosHorario: React.FC<FiltrosHorarioProps> = ({
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Aula / Ambiente</InputLabel>
                   <Select

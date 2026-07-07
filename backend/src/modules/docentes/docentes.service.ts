@@ -314,9 +314,10 @@ export class DocentesService {
     return result;
   }
 
-  async validarCargaCompleta(id: number): Promise<{ completa: boolean; faltantes: any; progreso: any }> {
-    const asignaciones = await this.asignacionRepo.find({ where: { docenteId: id } });
-    const horarios = await this.horarioRepo.find({ where: { docenteId: id } });
+  async validarCargaCompleta(id: number, cicloId?: number): Promise<{ completa: boolean; faltantes: any; dedicacionTotal: number; horasAdicionales: number; progreso: any }> {
+    const where = { docenteId: id, ...(cicloId ? { cicloId } : {}) };
+    const asignaciones = await this.asignacionRepo.find({ where });
+    const horarios = await this.horarioRepo.find({ where });
 
     let completa = true;
     const faltantes: any[] = [];
@@ -358,11 +359,16 @@ export class DocentesService {
 
     // Obtener la carga académica del docente para ver los requisitos de carga no lectiva
     const cargaAcademica = await this.cargaAcademicaRepo.findOne({ 
-      where: { docenteId: id },
+      where: { docenteId: id, ...(cicloId ? { cicloId } : {}) },
       relations: ['cargaNoLectiva']
     });
 
     const totalRequeridasNoLectivas = cargaAcademica?.totalHorasNoLectivas || 0;
+
+    // Si no tiene carga académica o está sin declarar, no puede estar completo
+    if (!cargaAcademica || cargaAcademica.estado === 'sin_carga') {
+      completa = false;
+    }
 
     if (totalRequeridasNoLectivas > 0) {
       if (horasNoLectivasAsignadas < totalRequeridasNoLectivas) {
@@ -375,9 +381,49 @@ export class DocentesService {
       }
     }
 
+    // Si no hay ningún requerimiento, no puede estar completa
+    if (totalRequeridasLectivas === 0 && totalRequeridasNoLectivas === 0) {
+      completa = false;
+    }
+
+    // Dedicación total del docente
+    const docente = await this.docentesRepository.findOne({ where: { id } });
+    const dedicacionTotal = docente?.dedicacion
+      ? parseInt(docente.dedicacion.match(/\d+/)?.[0] || '40')
+      : 40;
+
+    // Horas adicionales (filial)
+    const filialRows = await this.docentesRepository.manager.query(
+      `SELECT COALESCE(SUM(cf.total_horas_semanales), 0) as total
+       FROM cursos_filiales cf
+       INNER JOIN asignaciones_filiales af ON af.id = cf.asignacion_filial_id
+       WHERE af.docente_id = $1`,
+      [id],
+    );
+    const horasAdicionales = Number(filialRows[0]?.total || 0);
+
+    // Verificar si el docente tiene asignación filial (aunque tenga 0 horas)
+    let hasFilial = false;
+    if (docente) {
+      const FILIALES = ['Filial Valle Jequetepeque', 'Filial Huamachuco', 'Filial Santiago de Chuco'];
+      const deps = Array.isArray(docente.dependencias) ? docente.dependencias : [];
+      hasFilial = deps.some((d: string) => FILIALES.includes(d));
+    }
+    // También verificar si ya tiene registro en la tabla (tiene cursos filiales asignados)
+    const filialCount = await this.docentesRepository.manager.query(
+      `SELECT COUNT(*) as count FROM asignaciones_filiales WHERE docente_id = $1`,
+      [id],
+    );
+    hasFilial = hasFilial || Number(filialCount[0]?.count || 0) > 0;
+
+    const horasNoLectivasDeclaradas = cargaAcademica?.totalHorasNoLectivas || 0;
+    const totalCombinadoAsignadas = totalAsignadasLectivas + Math.max(horasNoLectivasAsignadas, horasNoLectivasDeclaradas);
+
     return { 
       completa, 
       faltantes,
+      dedicacionTotal,
+      horasAdicionales,
       progreso: {
         lectiva: {
           asignadas: totalAsignadasLectivas,
@@ -388,7 +434,17 @@ export class DocentesService {
           asignadas: horasNoLectivasAsignadas,
           requeridas: totalRequeridasNoLectivas,
           porcentaje: totalRequeridasNoLectivas > 0 ? Math.min(100, Math.round((horasNoLectivasAsignadas / totalRequeridasNoLectivas) * 100)) : 100
-        }
+        },
+        combinado: {
+          asignadas: totalCombinadoAsignadas,
+          requeridas: dedicacionTotal,
+          porcentaje: Math.min(100, Math.round((totalCombinadoAsignadas / dedicacionTotal) * 100))
+        },
+        adicionales: hasFilial ? {
+          asignadas: horasAdicionales,
+          requeridas: 10,
+          porcentaje: Math.min(100, Math.round((horasAdicionales / 10) * 100))
+        } : null,
       }
     };
   }

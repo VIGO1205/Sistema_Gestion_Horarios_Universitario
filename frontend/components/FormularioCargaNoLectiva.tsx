@@ -36,15 +36,55 @@ import {
   Close as CloseIcon,
   WarningAmber as WarningIcon,
   Lock as LockIcon,
+  CalendarMonth as CalendarMonthIcon,
 } from '@mui/icons-material';
 import api from '@/lib/api';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 import SignatureCanvas from 'react-signature-canvas';
 
+import CalendarioCargaNoLectiva from './CalendarioCargaNoLectiva';
 import { getLimitesReglamento, CARGOS_SIN_FORMATO } from '@/lib/reglamento-utils';
+import { DIAS } from '@/app/horarios/constantes';
+
+const ACTIVIDAD_MAP: Record<string, string> = {
+  horasPreparacion: 'PREPARACIÓN Y EVALUACIÓN',
+  horasTutoria: 'TUTORÍA Y ORIENTACIÓN',
+  horasInvestigacion: 'INVESTIGACIÓN',
+  horasCapacitacion: 'CAPACITACIÓN',
+  horasGobierno: 'GOBIERNO UNIVERSITARIO',
+  horasAdministracion: 'ADMINISTRACIÓN ACADÉMICA',
+  horasAsesoria: 'ASESORÍA A ESTUDIANTES',
+  horasResponsabilidadSocial: 'RESPONSABILIDAD SOCIAL',
+  horasComites: 'COMITÉS TÉCNICOS',
+  horasAaai: 'ADMINISTRACIÓN ACADÉMICA',
+  horasAaep: 'ADMINISTRACIÓN ACADÉMICA',
+};
+
+interface NoLectivaHorario {
+  tempId: string;
+  dia: string;
+  horaInicio: string;
+  horaFin: string;
+  actividadNoLectiva: string;
+  aulaId?: number;
+  aulaNombre?: string;
+}
 
 const MySwal = withReactContent(Swal);
+
+const DETAIL_PLACEHOLDER: Record<string, string> = {
+  horasPreparacion: 'Ej: Elaboración de sílabos, diseño de materiales didácticos, preparación de guías de laboratorio...',
+  horasTutoria: 'Ej: Atención y consejería a estudiantes, seguimiento académico...',
+  horasInvestigacion: 'Ej: Proyectos de investigación, artículos científicos, ponencias...',
+  horasAaep: 'Ej: Actividades de autoevaluación, acreditación de la escuela profesional...',
+  horasCapacitacion: 'Ej: Cursos de especialización, talleres, seminarios, diplomados...',
+  horasResponsabilidadSocial: 'Ej: Proyección social, extensión universitaria, voluntariado...',
+  horasAsesoria: 'Ej: Asesoría de tesis, jurados de examen profesional, revisión de trabajos...',
+  horasComites: 'Ej: Participación en comités técnicos, comisiones especiales...',
+  horasGobierno: 'Ej: Consejo universitario, asamblea universitaria, cargos directivos...',
+  horasAaai: 'Ej: Actividades de gestión institucional, coordinación académica...',
+};
 
 const ChlcRow = React.memo(({ row, value, hoursValue, disabled, onDetailChange }: {
   row: any; value: string; hoursValue: number; disabled: boolean; onDetailChange: (field: string, value: any) => void;
@@ -59,23 +99,23 @@ const ChlcRow = React.memo(({ row, value, hoursValue, disabled, onDetailChange }
       <Grid item xs={12} md={5}>
         <TextField
           fullWidth multiline minRows={3} variant="outlined"
-          disabled={disabled} placeholder="Detalle de la actividad..."
+          disabled={disabled} placeholder={DETAIL_PLACEHOLDER[row.h] || 'Detalle de la actividad...'}
           value={value} onChange={(e) => onDetailChange(row.d, e.target.value)}
           sx={{ '& .MuiOutlinedInput-root': { bgcolor: disabled ? '#f8fafc' : '#ffffff', fontSize: '0.85rem', '& fieldset': { borderColor: '#e2e8f0' }, '&:hover fieldset': { borderColor: '#003366' } } }}
         />
       </Grid>
       <Grid item xs={12} md={2}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
           <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: '#475569' }}>Horas:</Typography>
           <TextField type="number" size="small" disabled={disabled}
-            value={hoursValue === undefined ? 0 : Math.round(hoursValue)}
+            value={hoursValue === undefined || hoursValue === 0 ? '' : Math.round(hoursValue)}
             onChange={(e) => {
               let val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
               if (isNaN(val)) val = 0;
               if (row.max !== undefined) val = Math.min(val, row.max);
               onDetailChange(row.h, val);
             }}
-            inputProps={{ min: 0, max: row.max, step: 1, style: { textAlign: 'center', fontWeight: 800, color: '#003366' } }}
+            inputProps={{ min: 0, max: row.max, step: 1, placeholder: '0', style: { textAlign: 'center', fontWeight: 800, color: '#003366' } }}
             sx={{ width: 70, '& .MuiOutlinedInput-root': { bgcolor: disabled ? '#f8fafc' : '#fff', '& fieldset': { borderColor: '#cbd5e1' } } }}
           />
         </Box>
@@ -104,24 +144,24 @@ const ChnlaRow = React.memo(({ row, value, hoursValue, disabled, onDetailChange,
           />
         ) : (
           <TextField fullWidth multiline minRows={3} variant="outlined" disabled={disabled}
-            placeholder="Detalle de la actividad..." value={value}
+            placeholder={DETAIL_PLACEHOLDER[row.h] || 'Detalle de la actividad...'} value={value}
             onChange={(e) => onDetailChange(row.d, e.target.value)}
             sx={{ '& .MuiOutlinedInput-root': { bgcolor: disabled ? '#f8fafc' : '#ffffff', fontSize: '0.85rem', '& fieldset': { borderColor: '#e2e8f0' }, '&:hover fieldset': { borderColor: '#003366' } } }}
           />
         )}
       </Grid>
       <Grid item xs={12} md={2}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
           <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: '#475569' }}>Horas:</Typography>
           <TextField type="number" size="small" disabled={disabled}
-            value={hoursValue === undefined ? 0 : Math.round(hoursValue)}
+            value={hoursValue === undefined || hoursValue === 0 ? '' : Math.round(hoursValue)}
             onChange={(e) => {
               let val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
               if (isNaN(val)) val = 0;
               if (row.max !== undefined) val = Math.min(val, row.max);
               onDetailChange(row.h, val);
             }}
-            inputProps={{ min: 0, max: row.max, step: 1, style: { textAlign: 'center', fontWeight: 800, color: '#003366' } }}
+            inputProps={{ min: 0, max: row.max, step: 1, placeholder: '0', style: { textAlign: 'center', fontWeight: 800, color: '#003366' } }}
             sx={{ width: 70, '& .MuiOutlinedInput-root': { bgcolor: disabled ? '#f8fafc' : '#fff', '& fieldset': { borderColor: '#cbd5e1' } } }}
           />
         </Box>
@@ -147,6 +187,10 @@ interface FormularioCargaNoLectivaProps {
   onHorasNoLectivasChange?: (horas: number) => void;
   esFilial?: boolean;
   hideAdminActions?: boolean;
+  formDisabled?: boolean;
+  onMotivoRechazoChange?: (motivo: string | null) => void;
+  onRegisterSave?: (saveFn: (estado?: string) => Promise<boolean>) => void;
+  onValidationChange?: (isValid: boolean) => void;
 }
 
 export default function FormularioCargaNoLectiva({
@@ -165,6 +209,10 @@ export default function FormularioCargaNoLectiva({
   onHorasNoLectivasChange,
   esFilial = false,
   hideAdminActions = false,
+  formDisabled = false,
+  onMotivoRechazoChange,
+  onRegisterSave,
+  onValidationChange,
 }: FormularioCargaNoLectivaProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -200,6 +248,8 @@ export default function FormularioCargaNoLectiva({
   const [showDeclaracionModal, setShowDeclaracionModal] = useState(false);
   const [selectedOpcionDeclaracion, setSelectedOpcionDeclaracion] = useState<number | null>(null);
   const [submittingDeclaracion, setSubmittingDeclaracion] = useState(false);
+  const [calendarioOpen, setCalendarioOpen] = useState(false);
+  const [noLectivaHorarios, setNoLectivaHorarios] = useState<NoLectivaHorario[]>([]);
 
   const DECLARACION_OPTIONS = [
     { id: 1, label: 'Dedicación Exclusiva (Ordinario)', text: 'Soy docente, ordinario a Dedicación Exclusiva y NO EJERZO cualquier otra actividad o cargo remunerado en otra universidad, entidad pública o privada, fuera de la Universidad Nacional de Trujillo (De conformidad con el Artículo 225° del Estatuto Institucional vigente).', match: (tc: string, cat: string, ded: string) => tc === 'nombrado' && ded === 'DEDICACION EXCLUSIVA' },
@@ -221,8 +271,7 @@ export default function FormularioCargaNoLectiva({
 
   useEffect(() => {
     if (docenteId && cicloId) {
-      // Resetear datos al estado inicial antes de cargar los nuevos del ciclo
-      setData({
+      const defaultData = {
         estado: 'borrador',
         firma: '',
         incluirFirmaReportes: false,
@@ -246,16 +295,99 @@ export default function FormularioCargaNoLectiva({
         detalleComites: '',
         horasAaai: 0,
         detalleAaai: '',
-      });
+      };
+
+      // Intentar recuperar borrador de sessionStorage
+      const key = `carga-no-lectiva-draft-${docenteId}-${cicloId}`;
+      const saved = typeof window !== 'undefined' ? sessionStorage.getItem(key) : null;
+      if (saved) {
+        try {
+          setData(JSON.parse(saved));
+        } catch {
+          setData(defaultData);
+        }
+      } else {
+        setData(defaultData);
+      }
+
+      setNoLectivaHorarios([]);
       fetchCargaNoLectiva();
+      fetchNoLectivaHorarios();
     }
   }, [docenteId, cicloId]);
 
   useEffect(() => {
     if (externalEstado && data.estado && externalEstado !== data.estado) {
       setData((prev: any) => ({ ...prev, estado: externalEstado }));
+      if (externalEstado === 'borrador') {
+        const key = `carga-no-lectiva-draft-${docenteId}-${cicloId}`;
+        if (typeof window !== 'undefined') sessionStorage.removeItem(key);
+        fetchCargaNoLectiva();
+      }
     }
   }, [externalEstado]);
+
+  const fetchNoLectivaHorarios = async () => {
+    try {
+      const res = await api.get('/horarios', {
+        params: { docenteId, cicloId },
+      });
+      const noLectiva = (res.data || []).filter((h: any) => h.tipoClase === 'no_lectiva');
+      const fromBackend = noLectiva.map((h: any, i: number) => ({
+        tempId: `existing_${i}`,
+        dia: DIAS.find(d => d.id === h.diaSemana)?.nombre || 'Lunes',
+        horaInicio: h.horaInicio.substring(0, 5),
+        horaFin: h.horaFin.substring(0, 5),
+        actividadNoLectiva: h.actividadNoLectiva,
+        aulaId: h.aulaId,
+        aulaNombre: h.aula?.nombre || '',
+      }));
+
+      // Siempre usar datos del backend (BD) como fuente de verdad
+      if (fromBackend.length > 0) {
+        setNoLectivaHorarios(fromBackend);
+      } else {
+        // Fallback a sessionStorage solo si la BD está vacía
+        const gridKey = `carga-no-lectiva-grid-${docenteId}-${cicloId}`;
+        try {
+          const saved = sessionStorage.getItem(gridKey);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setNoLectivaHorarios(parsed);
+              return;
+            }
+          }
+        } catch {}
+        setNoLectivaHorarios([]);
+      }
+    } catch {
+      setNoLectivaHorarios([]);
+    }
+  };
+
+  const handleCalendarioSave = (horarios: NoLectivaHorario[]) => {
+    setNoLectivaHorarios(horarios);
+    // Si se vació el grid, limpiar sessionStorage para que al recargar se priorice backend
+    if (horarios.length === 0 && docenteId && cicloId) {
+      try {
+        sessionStorage.removeItem(`carga-no-lectiva-grid-${docenteId}-${cicloId}`);
+      } catch {}
+    }
+  };
+
+  const clearDraft = () => {
+    if (docenteId && cicloId) {
+      try {
+        const key = `carga-no-lectiva-draft-${docenteId}-${cicloId}`;
+        sessionStorage.removeItem(key);
+        const gridKey = `carga-no-lectiva-grid-${docenteId}-${cicloId}`;
+        sessionStorage.removeItem(gridKey);
+      } catch {
+        // Ignorar errores de storage
+      }
+    }
+  };
 
   const fetchDeclaracion = async () => {
     try {
@@ -268,6 +400,15 @@ export default function FormularioCargaNoLectiva({
     }
   };
 
+  const hasUserEnteredData = (obj: any) => {
+    const horaFields = [
+      'horasPreparacion', 'horasTutoria', 'horasInvestigacion', 'horasCapacitacion',
+      'horasGobierno', 'horasAdministracion', 'horasAsesoria',
+      'horasResponsabilidadSocial', 'horasComites', 'horasAaai',
+    ];
+    return horaFields.some(f => Number(obj[f]) > 0);
+  };
+
   const fetchCargaNoLectiva = async () => {
     setLoading(true);
     try {
@@ -275,12 +416,49 @@ export default function FormularioCargaNoLectiva({
         params: { docenteId, cicloId },
       });
       if (res.data) {
-        setData({
-          ...res.data,
-          detalleGobierno: res.data.detalleGobierno || docenteData?.cargoGobierno || '',
-          detalleAaai: res.data.detalleAaai || docenteData?.cargoGestionInstitucional || '',
-        });
-        if (!readOnly && onStatusChange) onStatusChange(res.data.estado);
+        const key = `carga-no-lectiva-draft-${docenteId}-${cicloId}`;
+
+        if (res.data.id) {
+          // Ya existe en BD -> usar datos del servidor, ignorar draft
+          setData((prev: any) => ({
+            ...prev,
+            ...res.data,
+            detalleGobierno: res.data.detalleGobierno || docenteData?.cargoGobierno || '',
+            detalleAaai: res.data.detalleAaai || docenteData?.cargoGestionInstitucional || '',
+          }));
+          // Limpiar draft obsoleto
+          if (typeof window !== 'undefined') sessionStorage.removeItem(key);
+        } else {
+          // No existe en BD -> verificar si hay draft local
+          const draft = typeof window !== 'undefined' ? sessionStorage.getItem(key) : null;
+          let hasDraft = false;
+          if (draft) {
+            try {
+              const parsed = JSON.parse(draft);
+              hasDraft = hasUserEnteredData(parsed);
+            } catch {
+              // JSON inválido, ignorar
+            }
+          }
+
+          if (hasDraft) {
+            // No sobrescribir campos del formulario, solo estado y callbacks
+            setData((prev: any) => ({
+              ...prev,
+              estado: res.data.estado || prev.estado,
+            }));
+          } else {
+            // Sin draft local, usar datos del API
+            setData((prev: any) => ({
+              ...prev,
+              ...res.data,
+              detalleGobierno: res.data.detalleGobierno || docenteData?.cargoGobierno || '',
+              detalleAaai: res.data.detalleAaai || docenteData?.cargoGestionInstitucional || '',
+            }));
+          }
+        }
+        if (!readOnly && onStatusChange && res.data.id) onStatusChange(res.data.estado);
+        if (onMotivoRechazoChange) onMotivoRechazoChange(res.data.motivoRechazo ?? null);
       }
       fetchDeclaracion();
     } catch (error) {
@@ -291,11 +469,20 @@ export default function FormularioCargaNoLectiva({
   };
 
   const handleInputChange = useCallback((field: string, value: any) => {
-    setData((prev: any) => ({
-      ...prev,
-      [field]: value,
-    }));
-  }, []);
+    setData((prev: any) => {
+      const newData = { ...prev, [field]: value };
+      // Persistir draft a sessionStorage inmediatamente
+      if (typeof window !== 'undefined' && docenteId && cicloId) {
+        try {
+          const key = `carga-no-lectiva-draft-${docenteId}-${cicloId}`;
+          sessionStorage.setItem(key, JSON.stringify(newData));
+        } catch {
+          // Ignorar errores de storage
+        }
+      }
+      return newData;
+    });
+  }, [docenteId, cicloId]);
 
   const handleToggleFirmaReportes = async (checked: boolean) => {
     // Actualizar localmente primero para feedback instantáneo
@@ -323,6 +510,7 @@ export default function FormularioCargaNoLectiva({
 
   // CHNLPE max: 50% de CHL real (valor especial -1) o fijo de tabla
   const chnlpeMaxReal = limites.chnlpe.max === -1 ? Math.round(Number(horasLectivas) / 2) : limites.chnlpe.max;
+  const esCincuentaPorcientoPE = limites.chnlpe.max === -1;
 
   // Máximos para cada actividad (desde reglamento)
   const maxHorasPreparacion = chnlpeMaxReal;
@@ -333,7 +521,7 @@ export default function FormularioCargaNoLectiva({
   const maxHorasAsesoria = limites.chnlcRubros['asesoria']?.max ?? 100;
   const maxHorasGobierno = limites.chnla.max ?? 100;
   const maxHorasAaai = limites.chnla.max ?? 100;
-  const maxHorasComites = 100;
+  const maxHorasComites = 10;
   const maxHorasAaep = limites.chnlcRubros['acreditacion']?.max ?? 100;
 
   const tieneNoLectiva = maxHorasPreparacion > 0 || maxHorasTutoria > 0 || maxHorasInvestigacion > 0 || maxHorasResponsabilidadSocial > 0 || maxHorasAsesoria > 0 || maxHorasCapacitacion > 0 || maxHorasAaep > 0 || maxHorasGobierno > 0;
@@ -356,21 +544,47 @@ export default function FormularioCargaNoLectiva({
   const totalHorasNoLectivasEnteras = Math.round(totalHorasNoLectivas);
   const horasLectivasEnteras = Math.round(horasLectivas);
   const horasAdicionalesEnteras = Math.round(horasAdicionales);
-  const totalGeneralEntero = horasLectivasEnteras + totalHorasNoLectivasEnteras + horasAdicionalesEnteras;
+  const totalBaseEntero = horasLectivasEnteras + totalHorasNoLectivasEnteras;
+  const totalGeneralEntero = totalBaseEntero + horasAdicionalesEnteras;
 
   useEffect(() => {
     if (onHorasNoLectivasChange) {
       onHorasNoLectivasChange(totalHorasNoLectivasEnteras);
     }
   }, [totalHorasNoLectivasEnteras, onHorasNoLectivasChange]);
-  
+
+  // Persistir horas no lectivas en sessionStorage para la ventana flotante
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('no-lectiva-total', String(totalHorasNoLectivasEnteras));
+    }
+  }, [totalHorasNoLectivasEnteras]);
+
+  // Persistir grid horarios no lectivos en sessionStorage (solo si hay datos) para validación de cruces en carga filial
+  useEffect(() => {
+    if (typeof window !== 'undefined' && docenteId && cicloId && noLectivaHorarios.length > 0) {
+      try {
+        const key = `carga-no-lectiva-grid-${docenteId}-${cicloId}`;
+        sessionStorage.setItem(key, JSON.stringify(noLectivaHorarios));
+      } catch {}
+    }
+  }, [noLectivaHorarios, docenteId, cicloId]);
+
   // Botón habilitado si totalGeneralEntero >= totalJornada (o si es exento)
   const puedeEnviar = esExento || totalGeneralEntero >= totalJornada;
 
-  // El docente solo puede editar si el estado es 'borrador'
-  // Si es finalizado, se bloquea todo permanentemente
+  // Para el paso filial: la carga base (lectiva + no lectiva) no debe exceder la jornada
+  const cargaBaseValida = esExento || totalBaseEntero <= totalJornada;
+
+  useEffect(() => {
+    if (onValidationChange) {
+      onValidationChange(cargaBaseValida);
+    }
+  }, [cargaBaseValida, onValidationChange]);
+
+  // Sólo se puede editar si es 'borrador' (rechazado) o 'sin_carga' (nuevo)
   const isFinalizado = data.estado === 'finalizado';
-  const isLocked = !readOnly && (data.estado !== 'borrador' && data.estado !== undefined);
+  const isLocked = !readOnly && (data.estado !== 'borrador' && data.estado !== 'sin_carga' && data.estado !== undefined);
   const isFullyLocked = !readOnly && (isLocked || isFinalizado);
 
   const handleSaveFirma = async () => {
@@ -527,11 +741,11 @@ export default function FormularioCargaNoLectiva({
     if (saving) return;
 
     // Validación de horas totales vs dedicación
-    if (totalGeneralEntero > totalJornada) {
+    if (totalBaseEntero > totalJornada) {
       await MySwal.fire({
         icon: 'error',
         title: 'Error de validación',
-        text: `La carga total (${totalGeneralEntero}H) no puede exceder su total de jornada de ${totalJornada}H.`,
+        text: `La carga lectiva + no lectiva (${totalBaseEntero}H) no puede exceder su total de jornada de ${totalJornada}H. Las horas adicionales de filial van aparte.`,
       });
       return;
     }
@@ -560,20 +774,28 @@ export default function FormularioCargaNoLectiva({
     setSaving(true);
     try {
       // Limpiar el objeto de propiedades prohibidas antes de enviar
-      const { id, cargaAcademicaId, cargaNoLectivaId, observaciones, createdAt, updatedAt, docente, ciclo, ...cleanData } = data;
+      const { id, cargaAcademicaId, cargaNoLectivaId, observaciones, createdAt, updatedAt, docente, ciclo, motivoRechazo, ...cleanData } = data;
 
       const payload = {
         ...cleanData,
         docenteId,
         cicloId,
         // Al enviar, siempre pasa a estado PENDIENTE para revisión del coordinador
-        estado: 'pendiente'
+        estado: 'pendiente',
+        horarios: noLectivaHorarios.map(h => ({
+          dia: h.dia,
+          horaInicio: h.horaInicio,
+          horaFin: h.horaFin,
+          actividadNoLectiva: h.actividadNoLectiva,
+          aulaId: h.aulaId,
+        })),
       };
 
       await api.post('/carga-no-lectiva', payload);
       const nuevoEstado = 'pendiente';
       setData((prev: any) => ({ ...prev, estado: nuevoEstado }));
       if (onStatusChange) onStatusChange(nuevoEstado);
+      clearDraft();
 
       await MySwal.fire({
         icon: 'success',
@@ -593,6 +815,51 @@ export default function FormularioCargaNoLectiva({
       setSaving(false);
     }
   };
+
+  const handleSaveSilent = useCallback(async (estadoOverride?: string) => {
+    if (saving) return false;
+    if (totalBaseEntero > totalJornada) {
+      console.warn('Carga base excede jornada');
+      await MySwal.fire({
+        icon: 'error',
+        title: 'Error de validación',
+        text: `La carga lectiva + no lectiva (${totalBaseEntero}H) no puede exceder su total de jornada de ${totalJornada}H. Las horas adicionales de filial van aparte.`,
+      });
+      return false;
+    }
+    setSaving(true);
+    try {
+      const { id, cargaAcademicaId, cargaNoLectivaId, observaciones, createdAt, updatedAt, docente, ciclo, motivoRechazo, ...cleanData } = data;
+      const payload = {
+        ...cleanData,
+        docenteId,
+        cicloId,
+        estado: estadoOverride || 'pendiente',
+        horarios: noLectivaHorarios.map(h => ({
+          dia: h.dia,
+          horaInicio: h.horaInicio,
+          horaFin: h.horaFin,
+          actividadNoLectiva: h.actividadNoLectiva,
+          aulaId: h.aulaId,
+        })),
+      };
+      await api.post('/carga-no-lectiva', payload);
+      const nuevoEstado = estadoOverride || 'pendiente';
+      setData((prev: any) => ({ ...prev, estado: nuevoEstado }));
+      if (onStatusChange) onStatusChange(nuevoEstado);
+      clearDraft();
+      return true;
+    } catch (error: any) {
+      console.error('Error en guardado silencioso:', error);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [saving, totalGeneralEntero, totalJornada, data, docenteId, cicloId, noLectivaHorarios, onStatusChange]);
+
+  useEffect(() => {
+    if (onRegisterSave) onRegisterSave(handleSaveSilent);
+  }, [onRegisterSave, handleSaveSilent]);
 
   const handleDeclaracionSubmit = async () => {
     if (!selectedOpcionDeclaracion) return;
@@ -671,6 +938,15 @@ export default function FormularioCargaNoLectiva({
 
   if (loading) return <CircularProgress size={24} sx={{ m: 2 }} />;
 
+  const labelPE: React.ReactNode = maxHorasPreparacion > 0
+    ? esCincuentaPorcientoPE
+      ? <>Preparación y Evaluación (PE) <Box component="span" sx={{ fontWeight: 900, color: '#003366', fontSize: '0.95rem' }}>(Max 50% de Trabajo Lectivo)</Box></>
+      : <>Preparación y Evaluación (PE) <Box component="span" sx={{ fontWeight: 900, color: '#003366', fontSize: '0.95rem' }}>(Máx. {maxHorasPreparacion}H)</Box></>
+    : 'Preparación y Evaluación (PE)';
+
+  const makeLabel = (name: string, max: number): React.ReactNode =>
+    max > 0 ? <>{name} <Box component="span" sx={{ fontWeight: 900, color: '#003366', fontSize: '0.95rem' }}>(Máx. {max}H)</Box></> : name;
+
   return (
     <Box>
       {/* Título interno para No Lectiva */}
@@ -698,20 +974,20 @@ export default function FormularioCargaNoLectiva({
         </Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {[
-            { num: 1, id: 'PE', label: 'Preparación y Evaluación (PE) (Max 50% de Trabajo Lectivo)', h: 'horasPreparacion', d: 'detallePreparacion', max: maxHorasPreparacion },
-            { num: 2, id: 'TC', label: 'Tutoría y Consejería (TC)', h: 'horasTutoria', d: 'detalleTutoria', max: maxHorasTutoria },
-            { num: 3, id: 'INV', label: 'Investigación (INV)', h: 'horasInvestigacion', d: 'detalleInvestigacion', max: maxHorasInvestigacion },
-            { num: 4, id: 'AAEP', label: 'Autoevaluación y/o Acreditación de la Escuela Profesional (AAEP)', h: 'horasAaep', d: 'detalleAaep', max: maxHorasAaep },
-            { num: 5, id: 'FAC', label: 'Formación Académica y Capacitación (FAC) (Max 5 H)', h: 'horasCapacitacion', d: 'detalleCapacitacion', max: maxHorasCapacitacion },
-            { num: 6, id: 'RSU', label: 'Responsabilidad Social Universitaria (RSU) (Max 2 H)', h: 'horasResponsabilidadSocial', d: 'detalleResponsabilidadSocial', max: maxHorasResponsabilidadSocial },
-            { num: 7, id: 'ATEP', label: 'Asesoría de Tesis y Exámenes Profesionales (ATEP)', h: 'horasAsesoria', d: 'detalleAsesoria', max: maxHorasAsesoria },
+            { num: 1, id: 'PE', label: labelPE, h: 'horasPreparacion', d: 'detallePreparacion', max: maxHorasPreparacion },
+            { num: 2, id: 'TC', label: makeLabel('Tutoría y Consejería (TC)', maxHorasTutoria), h: 'horasTutoria', d: 'detalleTutoria', max: maxHorasTutoria },
+            { num: 3, id: 'INV', label: makeLabel('Investigación (INV)', maxHorasInvestigacion), h: 'horasInvestigacion', d: 'detalleInvestigacion', max: maxHorasInvestigacion },
+            { num: 4, id: 'AAEP', label: makeLabel('Autoevaluación y/o Acreditación de la Escuela Profesional (AAEP)', maxHorasAaep), h: 'horasAaep', d: 'detalleAaep', max: maxHorasAaep },
+            { num: 5, id: 'FAC', label: makeLabel('Formación Académica y Capacitación (FAC)', maxHorasCapacitacion), h: 'horasCapacitacion', d: 'detalleCapacitacion', max: maxHorasCapacitacion },
+            { num: 6, id: 'RSU', label: makeLabel('Responsabilidad Social Universitaria (RSU)', maxHorasResponsabilidadSocial), h: 'horasResponsabilidadSocial', d: 'detalleResponsabilidadSocial', max: maxHorasResponsabilidadSocial },
+            { num: 7, id: 'ATEP', label: makeLabel('Asesoría de Tesis y Exámenes Profesionales (ATEP)', maxHorasAsesoria), h: 'horasAsesoria', d: 'detalleAsesoria', max: maxHorasAsesoria },
           ].map((row) => (
             <ChlcRow
               key={row.id}
               row={row}
               value={data[row.d] || ''}
               hoursValue={data[row.h]}
-              disabled={readOnly || isLocked}
+              disabled={readOnly || isLocked || formDisabled}
               onDetailChange={handleInputChange}
             />
           ))}
@@ -727,9 +1003,9 @@ export default function FormularioCargaNoLectiva({
         </Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {[
-            { num: 8, id: 'CC', label: 'Comités y Comisiones Especiales (CC)', h: 'horasComites', d: 'detalleComites', max: maxHorasComites },
-            { num: 9, id: 'AGA', label: 'Actividades de Gobierno o de Autoridad (AGA)', h: 'horasGobierno', d: 'detalleGobierno', max: maxHorasGobierno },
-            { num: 10, id: 'AAAI', label: 'Actividades de Gestión Institucional (AAAI)', h: 'horasAaai', d: 'detalleAaai', max: maxHorasAaai },
+            { num: 8, id: 'CC', label: makeLabel('Comités y Comisiones Especiales (CC)', maxHorasComites), h: 'horasComites', d: 'detalleComites', max: maxHorasComites },
+            { num: 9, id: 'AGA', label: makeLabel('Actividades de Gobierno o de Autoridad (AGA)', maxHorasGobierno), h: 'horasGobierno', d: 'detalleGobierno', max: maxHorasGobierno },
+            { num: 10, id: 'AAAI', label: makeLabel('Actividades de Gestión Institucional (AAAI)', maxHorasAaai), h: 'horasAaai', d: 'detalleAaai', max: maxHorasAaai },
           ].map((row) => {
           if (row.id === 'AGA') {
             return (
@@ -738,7 +1014,7 @@ export default function FormularioCargaNoLectiva({
                 row={row}
                 value={docenteData?.cargoGobierno || 'Ninguno'}
                 hoursValue={data[row.h]}
-                disabled={readOnly || isLocked}
+                disabled={readOnly || isLocked || formDisabled}
                 onDetailChange={handleInputChange}
                 singleLine
               />
@@ -751,7 +1027,7 @@ export default function FormularioCargaNoLectiva({
                 row={row}
                 value={docenteData?.cargoGestionInstitucional || 'Ninguno'}
                 hoursValue={data[row.h]}
-                disabled={readOnly || isLocked}
+                disabled={readOnly || isLocked || formDisabled}
                 onDetailChange={handleInputChange}
                 singleLine
               />
@@ -763,7 +1039,7 @@ export default function FormularioCargaNoLectiva({
               row={row}
               value={data[row.d] || ''}
               hoursValue={data[row.h]}
-              disabled={readOnly || isLocked}
+              disabled={readOnly || isLocked || formDisabled}
               onDetailChange={handleInputChange}
             />
           );
@@ -843,7 +1119,7 @@ export default function FormularioCargaNoLectiva({
               <Box sx={{ 
                 width: '100%', 
                 height: 16, 
-                bgcolor: '#e2e8f0', 
+                bgcolor: 'rgba(217, 119, 6, 0.1)', 
                 borderRadius: 8, 
                 overflow: 'hidden',
                 boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)'
@@ -910,38 +1186,51 @@ export default function FormularioCargaNoLectiva({
           </>
         ) : (
           !isFinalizado && (!isLocked || data.estado === 'validado') && (
-            <Box sx={{ display: 'flex', gap: 2 }}>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <Button
+                variant="outlined"
+                startIcon={<CalendarMonthIcon />}
+                onClick={() => setCalendarioOpen(true)}
+                disabled={formDisabled || !puedeEnviar}
+                sx={{ ...buttonStyle, borderColor: '#6b21a8', color: '#6b21a8', fontSize: '0.75rem' }}
+              >
+                Asignar Horarios
+              </Button>
+
+              <Box sx={{ flex: 1 }} />
+
               {data.estado === 'validado' && (
-                 <Button
-                   variant="outlined"
-                   startIcon={data.firma ? <ValidatedIcon /> : <DrawIcon />}
-                   onClick={() => setOpenReviewSignature(true)}
-                   color={data.firma ? "success" : "primary"}
-                   sx={buttonStyle}
-                 >
-                   {data.firma ? "Actualizar Firma" : "Firmar Declaración"}
-                 </Button>
-               )}
-                {!hideEnviarButton && data.estado !== 'validado' && (
-                  <Button
-                    variant="contained"
-                    startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-                    onClick={() => handleSave()}
-                    disabled={saving || isLocked || !puedeEnviar}
-                    sx={{ 
-                      ...buttonStyle,
-                      bgcolor: '#003366', 
-                      color: '#fff',
-                      fontSize: '0.8rem',
-                      lineHeight: 1.2,
-                      boxShadow: '0 4px 12px rgba(0,51,102,0.2)',
-                      '&:hover': { bgcolor: '#002244', boxShadow: '0 6px 16px rgba(0,51,102,0.3)' },
-                      '&.Mui-disabled': { bgcolor: '#e2e8f0', color: '#94a3b8' }
-                    }}
-                  >
-                    {saving ? 'Enviando...' : 'Enviar Declaración'}
-                  </Button>
-                )}
+                <Button
+                  variant="outlined"
+                  startIcon={data.firma ? <ValidatedIcon /> : <DrawIcon />}
+                  onClick={() => setOpenReviewSignature(true)}
+                  color={data.firma ? "success" : "primary"}
+                  sx={buttonStyle}
+                >
+                  {data.firma ? "Actualizar Firma" : "Firmar Declaración"}
+                </Button>
+              )}
+
+              {!hideEnviarButton && (
+                <Button
+                  variant="contained"
+                  startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+                  onClick={() => handleSave()}
+                  disabled={saving || isLocked || !puedeEnviar || formDisabled}
+                  sx={{ 
+                    ...buttonStyle,
+                    bgcolor: '#003366', 
+                    color: '#fff',
+                    fontSize: '0.8rem',
+                    lineHeight: 1.2,
+                    boxShadow: '0 4px 12px rgba(0,51,102,0.2)',
+                    '&:hover': { bgcolor: '#002244', boxShadow: '0 6px 16px rgba(0,51,102,0.3)' },
+                    '&.Mui-disabled': { bgcolor: '#e2e8f0', color: '#94a3b8' }
+                  }}
+                >
+                  {saving ? 'Enviando...' : 'Enviar Declaración'}
+                </Button>
+              )}
             </Box>
           )
         )}
@@ -1084,7 +1373,8 @@ export default function FormularioCargaNoLectiva({
                   }
                   sx={{ alignItems: 'flex-start', mb: 2, '& .MuiFormControlLabel-label': { width: '100%' } }}
                 />
-              ))}
+          ))}
+
             </RadioGroup>
           </FormControl>
         </DialogContent>
@@ -1102,6 +1392,43 @@ export default function FormularioCargaNoLectiva({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <CalendarioCargaNoLectiva
+        open={calendarioOpen}
+        onClose={() => setCalendarioOpen(false)}
+        onSave={handleCalendarioSave}
+        docenteId={docenteId}
+        readOnly={isLocked || formDisabled || readOnly}
+        cicloId={cicloId}
+        actividades={[
+          { field: 'horasPreparacion', label: 'Preparación y Evaluación (PE)', horasDeclaradas: Number(data.horasPreparacion || 0) },
+          { field: 'horasTutoria', label: 'Tutoría y Consejería (TC)', horasDeclaradas: Number(data.horasTutoria || 0) },
+          { field: 'horasInvestigacion', label: 'Investigación (INV)', horasDeclaradas: Number(data.horasInvestigacion || 0) },
+          { field: 'horasCapacitacion', label: 'Formación Académica y Capacitación (FAC)', horasDeclaradas: Number(data.horasCapacitacion || 0) },
+          { field: 'horasResponsabilidadSocial', label: 'Responsabilidad Social Universitaria (RSU)', horasDeclaradas: Number(data.horasResponsabilidadSocial || 0) },
+          { field: 'horasAsesoria', label: 'Asesoría de Tesis y Exámenes Profesionales (ATEP)', horasDeclaradas: Number(data.horasAsesoria || 0) },
+          ...(docenteData?.cargoGobierno && docenteData?.cargoGobierno.toUpperCase() !== 'NINGUNO'
+            ? [{ field: 'horasGobierno', label: 'Actividades de Gobierno o de Autoridad (AGA)', horasDeclaradas: maxHorasGobierno }]
+            : []),
+          { field: 'horasComites', label: 'Comités y Comisiones Especiales (CC)', horasDeclaradas: Number(data.horasComites || 0) },
+          ...(docenteData?.cargoGestionInstitucional && docenteData?.cargoGestionInstitucional.toUpperCase() !== 'NINGUNO'
+            ? [{ field: 'horasAaai', label: 'Actividades de Gestión Institucional (AAAI)', horasDeclaradas: maxHorasAaai }]
+            : []),
+          { field: 'horasAaep', label: 'Autoevaluación/Acreditación Esc. Profesional (AAEP)', horasDeclaradas: Number(data.horasAaep || 0) },
+        ]}
+        horariosActuales={noLectivaHorarios}
+        detallesMap={{
+          horasPreparacion: data.detallePreparacion || '',
+          horasTutoria: data.detalleTutoria || '',
+          horasInvestigacion: data.detalleInvestigacion || '',
+          horasCapacitacion: data.detalleCapacitacion || '',
+          horasGobierno: data.detalleGobierno || '',
+          horasAdministracion: data.detalleAdministracion || '',
+          horasAsesoria: data.detalleAsesoria || '',
+          horasResponsabilidadSocial: data.detalleResponsabilidadSocial || '',
+          horasComites: data.detalleComites || '',
+        }}
+      />
     </Box>
   );
 }

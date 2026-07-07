@@ -141,6 +141,12 @@ export default function VentanasPage() {
     fetchData();
   }, []);
 
+  // Polling silencioso cada 10s para reflejar cambios de estado del cron
+  useEffect(() => {
+    const interval = setInterval(() => fetchData(true), 10000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     if (openDialog) {
       updateDocenteCount(formData.categoriaDocente);
@@ -163,6 +169,24 @@ export default function VentanasPage() {
 
     return () => clearInterval(intervalId);
   }, [selectedVentana?.id]);
+
+  // Auto-seleccionar la ventana activa (en_curso/pausada) sin necesidad de click
+  useEffect(() => {
+    const activa = ventanas.find(v => v.estado === 'en_curso' || v.estado === 'pausada');
+    if (activa && (!selectedVentana || selectedVentana.id !== activa.id)) {
+      setSelectedVentana(activa);
+      fetchCola(activa);
+    }
+    if (!activa && selectedVentana) {
+      const sigueExistiendo = ventanas.find(v => v.id === selectedVentana.id);
+      if (!sigueExistiendo) {
+        setSelectedVentana(null);
+        setCola([]);
+        setDocenteEnAtencion(null);
+        setDocenteVisible(null);
+      }
+    }
+  }, [ventanas]);
 
   useEffect(() => {
     const siguienteId = docenteEnAtencion?.id ?? null;
@@ -357,6 +381,23 @@ export default function VentanasPage() {
     }
 
     try {
+      const incompleteRes = await api.get(`/ventanas/count-docentes-incompletos?cicloId=${Number(formData.cicloId)}`);
+      const incompleteCount = incompleteRes.data?.count ?? 0;
+
+      if (incompleteCount > 0) {
+        const result = await Swal.fire({
+          icon: 'warning',
+          title: 'Docentes sin carga completa',
+          text: `Faltan ${incompleteCount} docentes sin carga lectiva y horarios. ¿Desea continuar?`,
+          showCancelButton: true,
+          confirmButtonColor: '#003366',
+          cancelButtonColor: '#d33',
+          confirmButtonText: 'Sí, continuar',
+          cancelButtonText: 'Cancelar',
+        });
+        if (!result.isConfirmed) return;
+      }
+
       const payload = {
         cicloId: Number(formData.cicloId),
         fechaHoraInicio: formData.fechaHoraInicio,
@@ -549,6 +590,7 @@ export default function VentanasPage() {
       }
         
         Swal.fire('Detenida', 'La ventana ha sido finalizada forzosamente.', 'success');
+        fetchData(true);
       } catch (error: any) {
         Swal.fire('Error', error.response?.data?.message || 'No se pudo detener la ventana', 'error');
       }
@@ -577,6 +619,7 @@ export default function VentanasPage() {
           fetchCola(updatedVentana);
         }
       }
+      fetchData(true);
     } catch (error: any) {
       Swal.fire('Error', error.response?.data?.message || 'No se pudo cambiar el estado de pausa', 'error');
     }
@@ -840,7 +883,8 @@ export default function VentanasPage() {
                     <TableRow>
                       <TableCell sx={{ fontWeight: 800, color: '#fff', py: 2.5 }}>N°</TableCell>
                       <TableCell sx={{ fontWeight: 800, color: '#fff', py: 2.5 }}>CICLO</TableCell>
-                      <TableCell sx={{ fontWeight: 800, color: '#fff', py: 2.5 }}>CATEGORÍA</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 800, color: '#fff', py: 2.5 }}>CATEGORÍA</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 800, color: '#fff', py: 2.5 }}>DOCENTES</TableCell>
                       <TableCell sx={{ fontWeight: 800, color: '#fff', py: 2.5 }}>HORARIO</TableCell>
                       <TableCell sx={{ fontWeight: 800, color: '#fff', py: 2.5 }}>ESTADO</TableCell>
                       <TableCell align="center" sx={{ fontWeight: 800, color: '#fff', py: 2.5 }}>ACCIONES</TableCell>
@@ -875,8 +919,8 @@ export default function VentanasPage() {
                                 <Typography sx={{ fontWeight: 800, color: '#333' }}>{v.ciclo?.nombre}</Typography>
                               </Box>
                             </TableCell>
-                            <TableCell>
-                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'center', textAlign: 'center' }}>
+                            <TableCell align="center">
+                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'center' }}>
                                 <Chip
                                   label={v.tipoContrato?.toUpperCase() || 'GLOBAL'}
                                   size="small"
@@ -905,6 +949,22 @@ export default function VentanasPage() {
                                 </Typography>
                               </Box>
                             </TableCell>
+                            <TableCell align="center">
+                              <Chip
+                                label={`${v.docentesCount ?? 0} docente${(v.docentesCount ?? 0) !== 1 ? 's' : ''}`}
+                                size="small"
+                                icon={<PersonIcon sx={{ fontSize: 14 }} />}
+                                sx={{
+                                  fontWeight: 800,
+                                  fontSize: '0.75rem',
+                                  bgcolor: '#e3f2fd',
+                                  color: '#003366',
+                                  borderRadius: 2,
+                                  height: 28,
+                                  px: 1
+                                }}
+                              />
+                            </TableCell>
                             <TableCell>
                               <Box>
                                 <Typography variant="body2" sx={{ fontWeight: 800, color: '#003366' }}>
@@ -918,7 +978,7 @@ export default function VentanasPage() {
                             <TableCell>{getEstadoChip(v.estado)}</TableCell>
                             <TableCell align="center">
                               <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
-                                {(v.estado === 'programada' || v.estado === 'finalizada' || v.estado === 'vencida') && isGestionAllowed && (
+                                {(v.estado === 'programada' || v.estado === 'vencida') && isGestionAllowed && (
                                   <IconButton
                                     size="small"
                                     color="primary"
@@ -928,7 +988,7 @@ export default function VentanasPage() {
                                     <EditIcon fontSize="small" />
                                   </IconButton>
                                 )}
-                                {isGestionAllowed && v.estado !== 'en_curso' && v.estado !== 'pausada' && (
+                                {isGestionAllowed && v.estado !== 'en_curso' && v.estado !== 'pausada' && v.estado !== 'finalizada' && (
                                   <IconButton
                                     size="small"
                                     color="error"
@@ -939,7 +999,7 @@ export default function VentanasPage() {
                                   </IconButton>
                                 )}
                                 { (v.estado === 'en_curso' || v.estado === 'pausada') && isGestionAllowed && (
-                                  <Box sx={{ display: 'flex', gap: 1 }}>
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
                                     {v.estado === 'en_curso' && (
                                       <Button
                                         size="small"
@@ -996,7 +1056,7 @@ export default function VentanasPage() {
                         ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={6} align="center" sx={{ py: 12 }}>
+                        <TableCell colSpan={7} align="center" sx={{ py: 12 }}>
                           <AccessTimeIcon sx={{ fontSize: 64, color: '#e0e4e8', mb: 2 }} />
                           <Typography variant="h6" sx={{ fontWeight: 800, color: '#999' }}>No hay ventanas programadas</Typography>
                           <Typography variant="body2" sx={{ color: '#bbb' }}>Usa el botón superior para programar la primera.</Typography>

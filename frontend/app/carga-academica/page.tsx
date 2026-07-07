@@ -61,6 +61,7 @@ import {
   ChevronRight as ChevronRightIcon,
   Assignment as AssignmentIcon,
   VerifiedUser as VerifiedUserIcon,
+  CalendarMonth as CalendarMonthIcon,
 } from '@mui/icons-material';
 import api from '@/lib/api';
 import { getLimitesReglamento } from '@/lib/reglamento-utils';
@@ -70,6 +71,7 @@ import withReactContent from 'sweetalert2-react-content';
 import { useAuth } from '@/components/providers/AuthProvider';
 import CargaAcademicaDocente from '@/components/CargaAcademicaDocente';
 import ValidacionCargaNoLectiva from '@/components/ValidacionCargaNoLectiva';
+import CalendarioCargaDocente from './components/CalendarioCargaDocente';
 
 const MySwal = withReactContent(Swal);
 
@@ -126,6 +128,9 @@ export default function CargaAcademicaPage() {
   const [soloIncompletosDocentes, setSoloIncompletosDocentes] = useState(false);
   const [docenteCursosEdit, setDocenteCursosEdit] = useState<any[]>([]);
   const [showCursoAutocomplete, setShowCursoAutocomplete] = useState(false);
+
+  const [showScheduleGrid, setShowScheduleGrid] = useState(false);
+  const [horariosStats, setHorariosStats] = useState({ totalRequerido: 0, totalProgramado: 0, completo: false });
 
   const pendingCursoId = useRef<number | null>(null);
   const pendingDocenteId = useRef<number | null>(null);
@@ -379,7 +384,7 @@ export default function CargaAcademicaPage() {
             return {
               tipoClase: tipo,
               horasSemanales: a.grupos?.length ? Math.round(a.horasSemanales / a.grupos.length) : maxHoras,
-              grupos: a.grupos.map((g: any) => g.numeroGrupo),
+              grupos: a.grupos.map((g: any) => ({ id: g.id, numeroGrupo: g.numeroGrupo })),
               maxGrupos: maxGrupos || 1,
               maxHoras: maxHoras || 1,
             };
@@ -404,7 +409,7 @@ export default function CargaAcademicaPage() {
           horasSemanales: asig.grupos?.length
             ? Math.round(asig.horasSemanales / asig.grupos.length)
             : asig.horasSemanales,
-          grupos: asig.grupos.map((g: any) => ({ numeroGrupo: g.numeroGrupo }))
+          grupos: asig.grupos.map((g: any) => ({ id: g.id, numeroGrupo: g.numeroGrupo }))
         }));
 
         const cursoConAsig = { 
@@ -784,7 +789,7 @@ export default function CargaAcademicaPage() {
           docenteId: selectedDocente.id,
           tipoClase: a.tipoClase,
           horasSemanales: Number(a.horasSemanales),
-          grupos: a.grupos,
+          grupos: a.grupos.map((g: any) => g.numeroGrupo ?? g),
         }));
         
         const payload = {
@@ -1417,7 +1422,7 @@ export default function CargaAcademicaPage() {
                         </Typography>
                       </Box>
                     </Box>
-                    <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+                      <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
                       <Box sx={{ display: 'flex', bgcolor: '#f0f4f8', borderRadius: 2, p: 0.5, mr: 1 }}>
                         <Tooltip title="Docente Anterior">
                           <IconButton size="small" onClick={() => {
@@ -1441,11 +1446,27 @@ export default function CargaAcademicaPage() {
                           </IconButton>
                         </Tooltip>
                       </Box>
+                      <Tooltip title={showScheduleGrid ? "Ver lista de cursos" : "Asignar horarios en grilla"}>
+                        <IconButton
+                          onClick={() => setShowScheduleGrid(!showScheduleGrid)}
+                          sx={{ 
+                            borderRadius: 2, 
+                            color: showScheduleGrid ? 'white' : '#003366', 
+                            bgcolor: showScheduleGrid ? '#003366' : 'transparent',
+                            border: '1px solid rgba(0, 51, 102, 0.5)',
+                            width: 40,
+                            height: 40,
+                            '&:hover': { bgcolor: showScheduleGrid ? '#002244' : 'rgba(0, 51, 102, 0.04)' }
+                          }}
+                        >
+                          <CalendarMonthIcon />
+                        </IconButton>
+                      </Tooltip>
                       <Button
                         variant="contained"
                         startIcon={<SaveIcon />}
                         onClick={handleSaveDocenteAsignaciones}
-                        disabled={saving || docenteCursosEdit.length === 0}
+                        disabled={saving || (showScheduleGrid && !horariosStats.completo) || docenteCursosEdit.length === 0}
                         sx={{ 
                           bgcolor: '#003366', 
                           borderRadius: 2, 
@@ -1461,7 +1482,18 @@ export default function CargaAcademicaPage() {
                     </Box>
                   </Box>
 
-                  <Box sx={{ flexGrow: 1, overflowY: 'auto', p: 3 }}>
+                  {showScheduleGrid ? (
+                    <Box sx={{ flexGrow: 1, overflowY: 'auto', p: 3 }}>
+                      <CalendarioCargaDocente
+                        docente={selectedDocente}
+                        cursosAsignados={docenteCursosEdit}
+                        cicloId={filtros.cicloId}
+                        usuario={usuario}
+                        onHorariosChange={setHorariosStats}
+                      />
+                    </Box>
+                  ) : (
+                    <Box sx={{ flexGrow: 1, overflowY: 'auto', p: 3 }}>
                     {/* Resumen de Créditos */}
                     <Card variant="outlined" sx={{ mb: 4, bgcolor: '#f8fafc', borderStyle: 'dashed' }}>
                       <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
@@ -1557,7 +1589,7 @@ export default function CargaAcademicaPage() {
                                                 <Select
                                                   labelId={`docente-grupos-${cursoIdx}-${actualIdx}`}
                                                   multiple
-                                                  value={asig.grupos}
+                                                  value={asig.grupos.map((g: any) => g.numeroGrupo ?? g)}
                                                   onChange={(e) => handleDocenteGruposChange(cursoIdx, actualIdx, e.target.value as number[])}
                                                   input={<OutlinedInput label="Grupo" />}
                                                   renderValue={(selected) => (selected as number[]).sort((a: number, b: number) => a - b).map((v: number) => numberToLetter(v)).join(', ')}
@@ -1677,6 +1709,7 @@ export default function CargaAcademicaPage() {
                       </Box>
                     )}
                   </Box>
+                  )}
                 </Paper>
               ) : (
                 <Paper elevation={0} sx={{ height: 'calc(100vh - 300px)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', borderRadius: 4, border: '1px solid #eef2f6', bgcolor: '#f8fafc' }}>

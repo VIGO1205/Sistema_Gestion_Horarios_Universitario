@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -80,6 +80,12 @@ export default function HorusChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isSidebar = variant === 'sidebar';
   
+  const [audioLevel, setAudioLevel] = useState(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const animationFrameRef = useRef<number>(0);
+  
   const theme = useTheme();
   const isLargeScreen = useMediaQuery(theme.breakpoints.up('md'));
 
@@ -103,6 +109,7 @@ export default function HorusChatPanel({
 
         recognition.onend = () => {
           setIsListening(false);
+          stopAudioAnalysis();
           if (silenceTimerRef.current) {
             clearTimeout(silenceTimerRef.current);
           }
@@ -192,6 +199,7 @@ export default function HorusChatPanel({
         };
         recognition.onerror = (event: any) => {
           console.error('Speech recognition error:', event.error);
+          stopAudioAnalysis();
           setIsListening(false);
         };
 
@@ -200,14 +208,60 @@ export default function HorusChatPanel({
     }
 
     return () => {
+      stopAudioAnalysis();
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
       }
     };
   }, [isCancellingListening]);
 
+  const stopAudioAnalysis = useCallback(() => {
+    cancelAnimationFrame(animationFrameRef.current);
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(t => t.stop());
+      mediaStreamRef.current = null;
+    }
+    analyserRef.current = null;
+    setAudioLevel(0);
+  }, []);
+
+  const startAudioAnalysis = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      analyserRef.current = analyser;
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const updateLevel = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteTimeDomainData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const value = (dataArray[i] - 128) / 128;
+          sum += value * value;
+        }
+        const rms = Math.min(1, Math.sqrt(sum / dataArray.length) * 3);
+        setAudioLevel(rms);
+        animationFrameRef.current = requestAnimationFrame(updateLevel);
+      };
+      updateLevel();
+    } catch {
+      setAudioLevel(0);
+    }
+  }, []);
+
   const toggleListening = () => {
     if (isListening) {
+      stopAudioAnalysis();
       // Cancelar manualmente: no queremos agregar texto al input
       setIsCancellingListening(true);
       if (silenceTimerRef.current) {
@@ -221,6 +275,7 @@ export default function HorusChatPanel({
       setVoiceTranscript('');
       recognitionRef.current?.stop();
     } else {
+      startAudioAnalysis();
       recognitionRef.current?.start();
     }
   };
@@ -349,7 +404,7 @@ export default function HorusChatPanel({
               justifyContent: 'center',
             }}
           >
-            {/* Capas de ondas */}
+            {/* Capas de ondas con reactividad de audio */}
             {[1, 2, 3].map((i) => (
               <Box
                 key={i}
@@ -359,13 +414,9 @@ export default function HorusChatPanel({
                   height: '100%',
                   borderRadius: '50%',
                   border: '2px solid #3b82f6',
-                  opacity: 0,
-                  animation: `ripple ${2 + i * 0.5}s infinite`,
-                  '@keyframes ripple': {
-                    '0%': { transform: 'scale(0.8)', opacity: 0 },
-                    '50%': { opacity: 0.5 },
-                    '100%': { transform: 'scale(1.5)', opacity: 0 },
-                  },
+                  transform: `scale(${0.6 + audioLevel * (0.8 + i * 0.2)})`,
+                  opacity: Math.max(0.1, audioLevel * (0.5 + i * 0.15)),
+                  transition: 'none',
                 }}
               />
             ))}

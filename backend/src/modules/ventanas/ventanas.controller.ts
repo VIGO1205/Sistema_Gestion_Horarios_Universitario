@@ -125,6 +125,12 @@ export class VentanasController {
     return this.ventanasService.countDocentesPorCategoria(categoria, cicloId ? +cicloId : undefined);
   }
 
+  @Get('count-docentes-incompletos')
+  @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
+  countDocentesIncompletos(@Query('cicloId') cicloId: string) {
+    return this.ventanasService.countDocentesSinCargaCompleta(+cicloId);
+  }
+
   @Get('stats')
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR)
   getStats() {

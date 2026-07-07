@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_USER: universidad_admin
       POSTGRES_PASSWORD: S3cur3P@ssw0rd!
-      POSTGRES_DB: horarios_unt 
+      POSTGRES_DB: horarios_unt
     ports:
       - "5433:5432"
     volumes:  
@@ -28,8 +28,8 @@ services:
     env_file:
       - .env
     environment:
-      NODE_ENV: development
-      PORT: 3001  
+      NODE_ENV: development 
+      PORT: 3001
       API_URL: http://backend:3001
       DATABASE_URL: postgresql://universidad_admin:S3cur3P@ssw0rd!@db:5432/horarios_unt
       DB_HOST: db
@@ -37,6 +37,7 @@ services:
       DB_USER: universidad_admin
       DB_PASSWORD: S3cur3P@ssw0rd!
       DB_NAME: horarios_unt
+      DB_SSL: 'false'
     ports:
       - "3001:3001"
     healthcheck:

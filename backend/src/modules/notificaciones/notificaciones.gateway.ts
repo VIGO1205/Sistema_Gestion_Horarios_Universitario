@@ -53,4 +53,11 @@ export class NotificacionesGateway implements OnGatewayInit, OnGatewayConnection
       ...data
     });
   }
+
+  broadcastCargaUpdate(cicloId: number, data: { docenteId: number; estado: string }) {
+    this.server.emit('carga:update', {
+      ...data,
+      cicloId,
+    });
+  }
 }

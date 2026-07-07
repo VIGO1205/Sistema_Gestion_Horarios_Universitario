@@ -104,6 +104,39 @@ export const useDisponibilidad = ({
     return 'transparent';
   };
 
+  const getColorByCurso = (horario: any) => {
+    // Genera un color único por curso (lectiva), actividad (no lectiva) o filial
+    const key = horario.tipoClase === 'no_lectiva'
+      ? `nl_${horario.docenteId}_${horario.actividadNoLectiva || ''}`
+      : horario.tipoClase === 'filial'
+        ? `f_${horario.cursoId || ''}`
+        : `c_${horario.cursoId || ''}`;
+    
+    const colors = [
+      'rgba(37, 99, 235, 0.15)',   // Azul intenso
+      'rgba(22, 163, 74, 0.15)',   // Verde bosque
+      'rgba(217, 70, 239, 0.15)',  // Fucsia
+      'rgba(249, 115, 22, 0.15)',  // Naranja
+      'rgba(14, 165, 233, 0.15)',  // Sky Blue
+      'rgba(168, 85, 247, 0.15)',  // Violeta
+      'rgba(244, 63, 94, 0.15)',   // Rosa/Rojo
+      'rgba(20, 184, 166, 0.15)',  // Teal
+      'rgba(234, 179, 8, 0.15)',   // Dorado/Amarillo
+      'rgba(71, 85, 105, 0.15)',   // Slate/Gris azulado
+      'rgba(190, 18, 60, 0.15)',   // Carmesí
+      'rgba(3, 105, 161, 0.15)',   // Azul cobalto
+    ];
+
+    let hash = 0;
+    for (let i = 0; i < key.length; i++) {
+      const char = key.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash |= 0;
+    }
+    const index = Math.abs(hash) % colors.length;
+    return colors[index];
+  };
+
   const getColorByDocente = (docenteId: number | string) => {
     const id = Number(docenteId);
     
@@ -139,6 +172,9 @@ export const useDisponibilidad = ({
     getEventForSlot,
     getDisponibilidadSlot,
     getColorByDisponibilidad,
-    getColorByDocente
+    getColorByDocente,
+    getColorByCurso
   };
 };
+
+export type UseDisponibilidadReturn = ReturnType<typeof useDisponibilidad>;

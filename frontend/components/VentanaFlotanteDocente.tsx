@@ -38,6 +38,10 @@ export default function VentanaFlotanteDocente() {
   const [cargaValidada, setCargaValidada] = useState(false);
   const [progreso, setProgreso] = useState<any>(null);
   const [modalMostrado, setModalMostrado] = useState(false);
+  const [esFilial, setEsFilial] = useState(false);
+  const [horasAdicionalesLocal, setHorasAdicionalesLocal] = useState(0);
+  const [horasNoLectivasLocal, setHorasNoLectivasLocal] = useState(0);
+  const [finalizando, setFinalizando] = useState(false);
 
   // Estados para Draggability
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -128,30 +132,56 @@ export default function VentanaFlotanteDocente() {
   useEffect(() => {
     if (estadoSeleccion?.estado === 'en_atencion' && !estadoSeleccion?.ventanaEstado?.includes('pausada')) {
       const fin = new Date(estadoSeleccion.finAtencion).getTime();
-      if (nowMs >= fin) {
-        // El tiempo se agotó en el cliente
-        Swal.fire({
-          title: '¡Tiempo agotado!',
-          text: 'Tu ventana de registro ha finalizado. Hemos generado tus reportes con la información registrada.',
-          icon: 'warning',
-          confirmButtonText: 'Ver mis reportes',
-          allowOutsideClick: false,
-        }).then(() => {
-          router.push('/reportes');
-        });
-        setEstadoSeleccion(null); // Ocultar ventana
+      if (nowMs >= fin && !finalizando) {
+        setFinalizando(true);
+        // Intentar guardar datos antes de que expire
+        window.dispatchEvent(new CustomEvent('ventana:finalizar-registro', {
+          detail: { docenteId, cicloId: estadoSeleccion.cicloId }
+        }));
+        // Dar tiempo para que se guarde
+        setTimeout(() => {
+          Swal.fire({
+            title: 'Tiempo agotado',
+            text: 'Tu tiempo ha terminado. Se ha enviado tu registro para validación.',
+            icon: 'info',
+            confirmButtonText: 'Ir a Carga Académica',
+            allowOutsideClick: false,
+          }).then(() => {
+            router.push('/carga-academica');
+          });
+          setEstadoSeleccion(null);
+          setFinalizando(false);
+        }, 3000);
       }
     }
-  }, [nowMs, estadoSeleccion, router]);
+  }, [nowMs, estadoSeleccion, router, docenteId, finalizando]);
 
   useEffect(() => {
     const verificarCargaCompleta = async () => {
       if (!docenteId || estadoSeleccion?.estado !== 'en_atencion') return;
       try {
-        const res = await api.get(`/docentes/${docenteId}/validar-carga`);
+        const res = await api.get(`/docentes/${docenteId}/validar-carga`, { params: { cicloId: estadoSeleccion?.cicloId } });
         const { completa, progreso: p } = res.data;
-        setCargaValidada(completa);
         setProgreso(p);
+
+        // Leer valores en tiempo real desde sessionStorage
+        let horasAdicLocal = 0;
+        let horasNoLectLocal = 0;
+        if (typeof window !== 'undefined') {
+          horasAdicLocal = Number(sessionStorage.getItem('filial-horas-adicionales') || '0');
+          horasNoLectLocal = Number(sessionStorage.getItem('no-lectiva-total') || '0');
+          setHorasAdicionalesLocal(horasAdicLocal);
+          setHorasNoLectivasLocal(horasNoLectLocal);
+        }
+
+        // Calcular progreso local como lo hace FormularioCargaNoLectiva
+        const lectivaH = p.lectiva?.requeridas || 0;
+        const noLectivaH = Math.max(horasNoLectLocal, p.noLectiva?.requeridas || 0);
+        const adicH = Math.max(horasAdicLocal, p.adicionales?.asignadas || 0);
+        const totalLocal = lectivaH + noLectivaH + adicH;
+        const requeridas = p.combinado?.requeridas || 1;
+        const completada = totalLocal >= requeridas;
+        setCargaValidada(completada);
 
         // Si se completó el 100% y no hemos mostrado el modal
         if (completa && !modalMostrado) {
@@ -167,8 +197,6 @@ export default function VentanaFlotanteDocente() {
             confirmButtonColor: '#166534',
             timer: 5000
           });
-        } else if (!completa) {
-          setModalMostrado(false);
         }
       } catch (error) {
         console.error('Error validando carga:', error);
@@ -179,6 +207,16 @@ export default function VentanaFlotanteDocente() {
     verificarCargaCompleta();
     return () => clearInterval(interval);
   }, [docenteId, estadoSeleccion?.estado, modalMostrado]);
+
+  // Determinar si el docente es filial para mostrar barra adicional
+  useEffect(() => {
+    if (!docenteId || estadoSeleccion?.estado !== 'en_atencion') return;
+    const FILIALES = ['Filial Valle Jequetepeque', 'Filial Huamachuco', 'Filial Santiago de Chuco'];
+    api.get(`/docentes/${docenteId}`).then(res => {
+      const deps = res.data.dependencias || [];
+      setEsFilial(deps.some((d: string) => FILIALES.includes(d)));
+    }).catch(() => setEsFilial(false));
+  }, [docenteId, estadoSeleccion?.estado]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -227,13 +265,13 @@ export default function VentanaFlotanteDocente() {
             setEstadoSeleccion(null);
             if (payload.motivo === 'tiempo_expirado') {
               Swal.fire({
-                title: '¡Tiempo agotado!',
-                text: 'Tu turno ha finalizado. Tus reportes han sido generados automáticamente.',
-                icon: 'warning',
-                confirmButtonText: 'Ver mis reportes',
+                title: 'Tiempo agotado',
+                text: 'Tu tiempo ha terminado. Se ha enviado tu registro para validación.',
+                icon: 'info',
+                confirmButtonText: 'Ir a Carga Académica',
                 allowOutsideClick: false
               }).then(() => {
-                router.push('/reportes');
+                router.push('/carga-academica');
               });
             }
             return;
@@ -295,20 +333,36 @@ export default function VentanaFlotanteDocente() {
     });
 
     if (result.isConfirmed) {
+      setFinalizando(true);
       try {
+        // 1. Disparar evento para guardar datos (carga no lectiva + filial)
+        window.dispatchEvent(new CustomEvent('ventana:finalizar-registro', {
+          detail: { docenteId, cicloId: estadoSeleccion?.cicloId }
+        }));
+
+        // 2. Esperar que los formularios guarden (máx 5s)
+        await new Promise<void>((resolve) => {
+          const completado = () => { resolve(); };
+          window.addEventListener('ventana:finalizar-registro-completado', completado, { once: true });
+          setTimeout(resolve, 5000); // fallback por si no llega el evento
+        });
+
+        // 3. Llamar al backend
         await api.patch(`/ventanas/finalizar-turno/${docenteId}`);
         Swal.fire({
-          title: '¡Registro Completado!',
-          text: 'Tus reportes han sido generados correctamente. Ahora serás redirigido para revisarlos.',
+          title: 'Carga Enviada',
+          text: 'Tu carga ha sido enviada para validación.',
           icon: 'success',
-          confirmButtonText: 'Ir a Reportes',
+          confirmButtonText: 'Ir a Carga Académica',
           allowOutsideClick: false
         }).then(() => {
-          router.push('/reportes');
+          router.push('/carga-academica');
         });
         setEstadoSeleccion(null);
       } catch (error: any) {
         Swal.fire('Error', error.response?.data?.message || 'No se pudo finalizar el turno', 'error');
+      } finally {
+        setFinalizando(false);
       }
     }
   };
@@ -497,20 +551,28 @@ export default function VentanaFlotanteDocente() {
             </Box>
 
             {/* Barras de Progreso */}
-            {estadoSeleccion?.estado === 'en_atencion' && progreso && (
+            {estadoSeleccion?.estado === 'en_atencion' && progreso && (() => {
+              const lectivaH = progreso.lectiva?.requeridas || 0;
+              const noLectivaH = Math.max(horasNoLectivasLocal, progreso.noLectiva?.requeridas || 0);
+              const adicH = Math.max(horasAdicionalesLocal, progreso.adicionales?.asignadas || 0);
+              const total = lectivaH + noLectivaH + adicH;
+              const requeridas = progreso.combinado?.requeridas || 1;
+              const pct = Math.min(100, Math.round((total / requeridas) * 100));
+
+              return (
               <Box sx={{ mb: 2.5, px: 0.5 }}>
                 <Box sx={{ mb: 1.5 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
                     <Typography variant="caption" sx={{ fontWeight: 800, color: '#003366', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <SchoolIcon sx={{ fontSize: 14 }} /> CARGA LECTIVA
+                        <SchoolIcon sx={{ fontSize: 14 }} /> CARGA ACADÉMICA
                     </Typography>
                     <Typography variant="caption" sx={{ fontWeight: 900, color: '#003366' }}>
-                      {progreso.lectiva.asignadas}/{progreso.lectiva.requeridas}H ({progreso.lectiva.porcentaje}%)
+                      {total}/{requeridas}H ({pct}%)
                     </Typography>
                   </Box>
                   <LinearProgress 
                     variant="determinate" 
-                    value={progreso.lectiva.porcentaje} 
+                    value={pct} 
                     sx={{ 
                       height: 8, 
                       borderRadius: 4, 
@@ -520,28 +582,31 @@ export default function VentanaFlotanteDocente() {
                   />
                 </Box>
 
-                <Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 800, color: '#7c3aed', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <AssignmentIcon sx={{ fontSize: 14 }} /> CARGA NO LECTIVA
-                    </Typography>
-                    <Typography variant="caption" sx={{ fontWeight: 900, color: '#7c3aed' }}>
-                      {progreso.noLectiva.asignadas}/{progreso.noLectiva.requeridas}H ({progreso.noLectiva.porcentaje}%)
-                    </Typography>
+                {(progreso.adicionales || esFilial) && (
+                  <Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 800, color: '#d97706', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <AssignmentIcon sx={{ fontSize: 14 }} /> CARGA ADICIONAL
+                      </Typography>
+                      <Typography variant="caption" sx={{ fontWeight: 900, color: '#d97706' }}>
+                        {Math.max(horasAdicionalesLocal, progreso.adicionales?.asignadas || 0)}/10H ({Math.min(100, Math.round((Math.max(horasAdicionalesLocal, progreso.adicionales?.asignadas || 0) / 10) * 100))}%)
+                      </Typography>
+                    </Box>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={Math.min(100, Math.round((Math.max(horasAdicionalesLocal, progreso.adicionales?.asignadas || 0) / 10) * 100))} 
+                      sx={{ 
+                        height: 8, 
+                        borderRadius: 4, 
+                        bgcolor: 'rgba(217, 119, 6, 0.1)',
+                        '& .MuiLinearProgress-bar': { bgcolor: '#d97706', borderRadius: 4 }
+                      }} 
+                    />
                   </Box>
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={progreso.noLectiva.porcentaje} 
-                    sx={{ 
-                      height: 8, 
-                      borderRadius: 4, 
-                      bgcolor: 'rgba(124, 58, 237, 0.1)',
-                      '& .MuiLinearProgress-bar': { bgcolor: '#7c3aed', borderRadius: 4 }
-                    }} 
-                  />
-                </Box>
+                )}
               </Box>
-            )}
+              );
+            })()}
 
             {estadoSeleccion?.estado === 'en_atencion' && (
               <Box>
@@ -550,7 +615,7 @@ export default function VentanaFlotanteDocente() {
                   variant="contained"
                   startIcon={<CheckCircleIcon />}
                   onClick={handleFinalizarTurno}
-                  disabled={estadoSeleccion?.ventanaEstado === 'pausada'}
+                  disabled={estadoSeleccion?.ventanaEstado === 'pausada' || finalizando}
                   sx={{
                     borderRadius: 4,
                     fontWeight: 900,
@@ -571,7 +636,7 @@ export default function VentanaFlotanteDocente() {
                     transition: 'all 0.3s ease'
                   }}
                 >
-                  {cargaValidada ? '¡LISTO! FINALIZAR REGISTRO' : 'FINALIZAR REGISTRO'}
+                  {finalizando ? 'ENVIANDO...' : cargaValidada ? '¡LISTO! FINALIZAR REGISTRO' : 'FINALIZAR REGISTRO'}
                 </Button>
                 {!cargaValidada && (
                   <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 1, color: '#64748b', fontWeight: 600 }}>

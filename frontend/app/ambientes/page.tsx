@@ -168,15 +168,9 @@ export default function AmbientesPage() {
     try {
       // Limpiar el payload para enviar solo lo que el DTO espera
       const { id, createdAt, updatedAt, lugar, ...payload } = data;
-      
-      // Asegurarse que lugarId sea número o null
       if (payload.lugarId === '' || payload.lugarId === null) {
         payload.lugarId = null;
-      } else if (payload.lugarId !== undefined) {
-        payload.lugarId = Number(payload.lugarId);
       }
-      
-      console.log('Payload enviado:', payload);
 
       if (selectedAmbiente) {
         await api.patch(`/aulas/${selectedAmbiente.id}`, payload);
@@ -543,16 +537,7 @@ export default function AmbientesPage() {
                   render={({ field }) => (
                     <FormControl fullWidth>
                       <InputLabel>Lugar</InputLabel>
-                      <Select 
-                        {...field} 
-                        label="Lugar" 
-                        value={field.value ?? ''}
-                        onChange={(e) => {
-                          // Convertir a número o null
-                          const value = e.target.value;
-                          field.onChange(value === '' ? null : Number(value));
-                        }}
-                      >
+                      <Select {...field} label="Lugar" value={field.value ?? ''}>
                         <MenuItem value="">
                           <em>Sin lugar</em>
                         </MenuItem>

@@ -22,15 +22,17 @@ export const HORAS = [
 ];
 
 export const ACTIVIDADES_NO_LECTIVAS_LABELS: Record<string, string> = {
-  horasPreparacion: 'PREPARACIÓN Y EVALUACIÓN',
-  horasTutoria: 'TUTORÍA Y ORIENTACIÓN',
-  horasInvestigacion: 'INVESTIGACIÓN',
-  horasCapacitacion: 'CAPACITACIÓN',
-  horasGobierno: 'GOBIERNO UNIVERSITARIO',
+  horasPreparacion: 'Preparación y Evaluación (PE)',
+  horasTutoria: 'Tutoría y Consejería (TC)',
+  horasInvestigacion: 'Investigación (INV)',
+  horasCapacitacion: 'Formación Académica y Capacitación (FAC)',
+  horasGobierno: 'Actividades de Gobierno o de Autoridad (AGA)',
   horasAdministracion: 'ADMINISTRACIÓN ACADÉMICA',
-  horasAsesoria: 'ASESORÍA A ESTUDIANTES',
-  horasResponsabilidadSocial: 'RESPONSABILIDAD SOCIAL',
-  horasComites: 'COMITÉS TÉCNICOS',
+  horasAsesoria: 'Asesoría de Tesis y Exámenes Profesionales (ATEP)',
+  horasResponsabilidadSocial: 'Responsabilidad Social Universitaria (RSU)',
+  horasComites: 'Comités y Comisiones Especiales (CC)',
+  horasAaai: 'Actividades de Gestión Institucional (AAAI)',
+  horasAaep: 'Autoevaluación/Acreditación Esc. Profesional (AAEP)',
 };
 
 export const HORA_INICIO_TABLA = 7;

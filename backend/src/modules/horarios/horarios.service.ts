@@ -9,6 +9,8 @@ import { AsignacionDocenteCurso } from '../../entities/asignacion-docente-curso.
 import { GrupoDocenteAsignacion } from '../../database/entities/grupo-docente-asignacion.entity';
 import { CargaNoLectiva } from '../../database/entities/carga-no-lectiva.entity';
 import { TipoClase } from '../../entities/asignacion-docente-curso.entity';
+import { AsignacionFilial } from '../../database/entities/asignacion-filial.entity';
+import { CursoFilial } from '../../database/entities/curso-filial.entity';
 import { ValidacionCrucesService } from './services/validacion-cruces.service';
 import { CiclosService } from '../ciclos/ciclos.service';
 import { VentanasService } from '../ventanas/ventanas.service';
@@ -33,6 +35,10 @@ export class HorariosService {
     private grupoRepo: Repository<GrupoDocenteAsignacion>,
     @InjectRepository(CargaNoLectiva)
     private cargaNoLectivaRepo: Repository<CargaNoLectiva>,
+    @InjectRepository(AsignacionFilial)
+    private asignacionFilialRepo: Repository<AsignacionFilial>,
+    @InjectRepository(CursoFilial)
+    private cursoFilialRepo: Repository<CursoFilial>,
     private dataSource: DataSource,
     private validacionService: ValidacionCrucesService,
     private ciclosService: CiclosService,
@@ -526,6 +532,11 @@ export class HorariosService {
       ])
       .getMany();
 
+    const diaMap: Record<string, number> = {
+      'Lunes': 1, 'Martes': 2, 'Miércoles': 3, 'Jueves': 4,
+      'Viernes': 5, 'Sábado': 6, 'Domingo': 7,
+    };
+
     // Estructura optimizada para el frontend:
     // { "dia_hora": [ { id, carreraId, cicloAcademico, docenteId, aulaId }, ... ] }
     const mapa = {};
@@ -546,6 +557,36 @@ export class HorariosService {
         });
       }
     });
+
+    // Incluir eventos filiales (carga adicional) en el mapa de ocupación
+    const filiales = await this.asignacionFilialRepo.find({
+      where: { cicloId },
+      relations: ['cursos'],
+    });
+
+    for (const filial of filiales) {
+      if (!filial.cursos) continue;
+      for (const curso of filial.cursos) {
+        if (!curso.horarioSemanal) continue;
+        for (const slot of curso.horarioSemanal) {
+          const diaNum = diaMap[slot.dia];
+          if (!diaNum) continue;
+          const hInicio = parseInt(slot.horaInicio.split(':')[0]);
+          const hFin = parseInt(slot.horaFin.split(':')[0]);
+          for (let hora = hInicio; hora < hFin; hora++) {
+            const key = `${diaNum}_${hora}`;
+            if (!mapa[key]) mapa[key] = [];
+            mapa[key].push({
+              id: `filial_${curso.id}`,
+              carreraId: null,
+              cicloAcademico: null,
+              docenteId: filial.docenteId,
+              aulaId: null,
+            });
+          }
+        }
+      }
+    }
 
     return mapa;
   }

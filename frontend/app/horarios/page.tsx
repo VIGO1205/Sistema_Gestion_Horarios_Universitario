@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Box, Snackbar, Alert } from '@mui/material';
+import { Box, Snackbar, Alert, Typography } from '@mui/material';
+import { AccessTime as AccessTimeIcon } from '@mui/icons-material';
 import api from '@/lib/api';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import Swal from 'sweetalert2';
@@ -55,12 +56,12 @@ export default function HorariosPage() {
 
   const [filtros, setFiltros] = useState({
     ciclo: '',
-    cicloEstudio: '1',
+    cicloEstudio: esDocente ? 'todos' : '1',
     carrera: null as any,
     docente: null as any,
     aula: 'todos',
     tipoAula: 'todos',
-    tipoCarga: 'LECTIVA'
+    tipoCarga: 'TODAS'
   });
 
   // 1. Hook de datos principales
@@ -127,7 +128,8 @@ export default function HorariosPage() {
     getEventForSlot,
     getDisponibilidadSlot,
     getColorByDisponibilidad,
-    getColorByDocente
+    getColorByDocente,
+    getColorByCurso
   } = useDisponibilidad({
     horarios,
     mapaOcupacion,
@@ -215,19 +217,17 @@ export default function HorariosPage() {
       if (sistemas) setFiltros(prev => ({ ...prev, carrera: sistemas }));
     };
     init();
-  }, [cargarCiclos, cargarCarreras]);
+  }, [cargarCiclos, cargarCarreras, esDocente]);
 
   // Sockets para actualizaciones en tiempo real
   useEffect(() => {
     let socket: any = null;
     const initSocket = async () => {
       socket = await getHorariosSocket();
-      if (filtros.ciclo) {
-        socket.emit('horarios:subscribe', { cicloId: filtros.ciclo });
-      }
+      socket.emit('horarios:subscribe', { cicloId: filtros.ciclo });
       
       const handleHorariosUpdate = (data: any) => {
-        if (Number(data.cicloId) === Number(filtros.ciclo)) {
+        if (!filtros.ciclo || Number(data.cicloId) === Number(filtros.ciclo)) {
           fetchData(false);
         }
       };
@@ -351,7 +351,57 @@ export default function HorariosPage() {
     }
   };
 
+  const cicloActual = ciclos?.find((c: any) => c.esActual);
+  const cicloEsActual = cicloActual && filtros.ciclo === cicloActual.id;
+
   if (loading) return <LoadingSpinner />;
+
+  const obtenerMensajeHorario = () => {
+    if (!cicloEsActual) return null;
+    if (!estadoSeleccion || !esDocente) return null;
+    if (estadoSeleccion.estado === 'en_atencion' || estadoSeleccion.estado === 'finalizado') return null;
+    if (estadoSeleccion.estado === 'en_espera') return {
+      icon: <AccessTimeIcon sx={{ fontSize: 48, color: '#f59e0b', mb: 1.5 }} />,
+      title: 'Fuera de Turno — Esperando en cola',
+      body: (
+        <>
+          <Typography variant="body2" sx={{ color: '#78350f', mb: 1, fontWeight: 600 }}>
+            Posición en cola: {estadoSeleccion.posicion} de {estadoSeleccion.totalEnEspera}
+            {estadoSeleccion.minutosHastaTurno ? ` — Tiempo estimado: ${estadoSeleccion.minutosHastaTurno} min` : ''}
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#92400e', fontWeight: 500 }}>
+            Podrá gestionar sus horarios cuando sea su turno.
+          </Typography>
+        </>
+      ),
+    };
+    if (estadoSeleccion.estado === 'sin_ventana') return {
+      icon: <AccessTimeIcon sx={{ fontSize: 48, color: '#94a3b8', mb: 1.5 }} />,
+      title: 'Ventanas de atención no disponibles',
+      body: (
+        <Typography variant="body2" sx={{ color: '#64748b' }}>
+          Las ventanas de atención aún no han sido programadas por el administrador.
+        </Typography>
+      ),
+    };
+    if (estadoSeleccion.estado === 'no_programado') return {
+      icon: <AccessTimeIcon sx={{ fontSize: 48, color: '#94a3b8', mb: 1.5 }} />,
+      title: 'Sin ventana de atención asignada',
+      body: (
+        <>
+          <Typography variant="body2" sx={{ color: '#64748b', mb: 0.5 }}>
+            Usted aún no ha sido asignado a una ventana de atención.
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#64748b', fontWeight: 500 }}>
+            Asegúrese de tener su carga lectiva y horarios completos.
+          </Typography>
+        </>
+      ),
+    };
+    return null;
+  };
+
+  const mensajeHorario = obtenerMensajeHorario();
 
   return (
     <Box sx={{ flexGrow: 1 }}>
@@ -372,8 +422,7 @@ export default function HorariosPage() {
         esDocente={esDocente}
         showAdvancedFilters={showAdvancedFilters}
         setShowAdvancedFilters={setShowAdvancedFilters}
-        onLimpiar={() => setFiltros({ ...filtros, cicloEstudio: '1', docente: null, aula: 'todos', tipoAula: 'todos', tipoCarga: 'LECTIVA' })}
-        tiposCarga={['LECTIVA', 'NO_LECTIVA']}
+        onLimpiar={() => setFiltros(prev => ({ ...prev, ciclo: '', cicloEstudio: esDocente ? 'todos' : '1', docente: null, aula: 'todos', tipoAula: 'todos', tipoCarga: 'TODAS' }))}
         tiposAula={[{ id: 'teoría', nombre: 'Teoría' }, { id: 'práctica', nombre: 'Práctica' }, { id: 'laboratorio', nombre: 'Laboratorio' }]}
       />
 
@@ -382,12 +431,25 @@ export default function HorariosPage() {
         setTipoCarga={(tipo) => setFiltros({ ...filtros, tipoCarga: tipo })}
       />
 
+      {mensajeHorario ? (
+        <Box sx={{
+          textAlign: 'center', py: 12, px: 4,
+          bgcolor: '#fff8f0', borderRadius: 4,
+          border: '2px dashed #f59e0b', my: 2
+        }}>
+          {mensajeHorario.icon}
+          <Typography variant="h6" sx={{ fontWeight: 800, color: '#92400e', mb: 1 }}>
+            {mensajeHorario.title}
+          </Typography>
+          {mensajeHorario.body}
+        </Box>
+      ) : (
       <GrillaHorario 
         horarios={horarios}
         fetching={fetching}
         configGrilla={configGrilla}
         onCellClick={(dia, hora) => {
-          if (esDocente && !docentePuedeGestionar) return;
+          if (esDocente && cicloEsActual && !docentePuedeGestionar) return;
           const hFin = slotIndexToEndTime(timeToSlotIndex(hora, configGrilla.horaInicio), configGrilla.horaInicio);
           openForCreate(dia, hora, hFin);
         }}
@@ -401,6 +463,8 @@ export default function HorariosPage() {
         getColorByDisponibilidad={getColorByDisponibilidad}
         getColorByDocente={getColorByDocente}
         getColorBorderByDocente={(id) => getColorByDocente(id).replace('0.15', '1').replace('0.1', '1')}
+        getColorByCurso={getColorByCurso}
+        getColorBorderByCurso={(h) => getColorByCurso(h).replace('0.15', '1').replace('0.1', '1')}
         isStartTime={(start, grid) => start?.substring(0, 5) === grid}
         dragSelection={dragSelection}
         selectionInfo={getSelectionValidation(dragSelection)}
@@ -416,6 +480,7 @@ export default function HorariosPage() {
         tableContainerRef={tableContainerRef}
         docenteHasHoursAvailable={docenteHasHoursAvailable}
       />
+      )}
 
       <ModalHorario 
         open={openHorarioModal}

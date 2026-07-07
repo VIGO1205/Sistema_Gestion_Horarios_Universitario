@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -23,6 +23,8 @@ import {
   CircularProgress,
   Chip,
   Button,
+  Alert,
+  Tooltip,
 } from '@mui/material';
 import {
   Book as BookIcon,
@@ -30,9 +32,11 @@ import {
   AccessTime as AccessTimeIcon,
   Assignment as AssignmentIcon,
   ArrowForward as ArrowForwardIcon,
+  WarningAmber as WarningAmberIcon,
 } from '@mui/icons-material';
 import api from '@/lib/api';
 import { getNotificacionesSocket } from '@/lib/socket';
+import { useVentanaAtencion } from '@/app/horarios/hooks/useVentanaAtencion';
 import FormularioCargaNoLectiva from './FormularioCargaNoLectiva';
 import FormularioAsignacionFilial from './FormularioAsignacionFilial';
 import Swal from 'sweetalert2';
@@ -64,12 +68,44 @@ export default function CargaAcademicaDocente({
   const [cargaLectiva, setCargaLectiva] = useState<any[]>([]);
   const [loadingCarga, setLoadingCarga] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<any>(null);
+  const [motivoRechazo, setMotivoRechazo] = useState<string | null>(null);
 
   const FILIALES = ['Filial Valle Jequetepeque', 'Filial Huamachuco', 'Filial Santiago de Chuco'];
   const esFilial = (docente?.dependencias || docenteProp?.dependencias || [])?.some((d: string) => FILIALES.includes(d));
-  const [step, setStep] = useState<'carga' | 'filial'>('carga');
+  const [step, setStep] = useState<'carga' | 'filial'>(() => {
+    if (typeof window !== 'undefined') {
+      return (sessionStorage.getItem('cargaStep') as 'carga' | 'filial') || 'carga';
+    }
+    return 'carga';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('cargaStep', step);
+  }, [step]);
   const [horasAdicionales, setHorasAdicionales] = useState(0);
   const [horasNoLectivas, setHorasNoLectivas] = useState(0);
+  const [isCargaValid, setIsCargaValid] = useState(true);
+
+  const saveCargaNoLectivaRef = useRef<((estado?: string) => Promise<boolean>) | null>(null);
+  const saveFilialRef = useRef<(() => Promise<boolean>) | null>(null);
+
+  const handleVentanaFinalizarRegistro = useCallback(async (e: CustomEvent) => {
+    // 1. Guardar carga no lectiva
+    if (saveCargaNoLectivaRef.current) {
+      await saveCargaNoLectivaRef.current('pendiente');
+    }
+    // 2. Guardar filial si aplica
+    if (esFilial && saveFilialRef.current) {
+      await saveFilialRef.current();
+    }
+    // 3. Disparar evento de completado
+    window.dispatchEvent(new CustomEvent('ventana:finalizar-registro-completado'));
+  }, [esFilial]);
+
+  useEffect(() => {
+    window.addEventListener('ventana:finalizar-registro', handleVentanaFinalizarRegistro as unknown as EventListener);
+    return () => window.removeEventListener('ventana:finalizar-registro', handleVentanaFinalizarRegistro as unknown as EventListener);
+  }, [handleVentanaFinalizarRegistro]);
 
   const getStatusConfig = (estado: string) => {
     switch (estado?.toLowerCase()) {
@@ -85,7 +121,7 @@ export default function CargaAcademicaDocente({
   };
 
   const statusDisplay = useMemo(() => {
-    if (!currentStatus) return null;
+    if (!currentStatus || currentStatus === 'sin_carga') return null;
     const config = getStatusConfig(currentStatus);
     return (
       <Box sx={{ 
@@ -127,7 +163,17 @@ export default function CargaAcademicaDocente({
       // Limpiar datos anteriores antes de cargar los nuevos
       setCargaLectiva([]);
       setCurrentStatus(null);
+      setMotivoRechazo(null);
+      setHorasAdicionales(0);
       fetchCargaLectiva(id);
+      // Cargar horas adicionales existentes desde la BD
+      api.get('/asignacion-filial', {
+        params: { docenteId: id, cicloId: Number(selectedCiclo) }
+      }).then(res => {
+        if (res.data?.totalHorasSemanales) {
+          setHorasAdicionales(Math.round(res.data.totalHorasSemanales));
+        }
+      }).catch(() => {});
     }
   }, [selectedCiclo, docente?.id, docenteProp?.id]);
 
@@ -184,22 +230,28 @@ export default function CargaAcademicaDocente({
     }
   };
 
-  const handleFinalSubmit = async () => {
+  const handleFinalSubmit = async (): Promise<boolean> => {
     try {
-      const res = await api.get('/carga-no-lectiva', {
-        params: { docenteId: docente?.id || docenteProp?.docenteId || docenteProp?.id, cicloId: selectedCiclo },
-      });
-      if (res.data?.id) {
-        await api.patch(`/carga-no-lectiva/${res.data.id}/estado`, { estado: 'pendiente' });
+      // 1. Guardar carga no lectiva (horas + detalles + horarios del grid)
+      if (saveCargaNoLectivaRef.current) {
+        const saved = await saveCargaNoLectivaRef.current('pendiente');
+        if (!saved) return false;
         setCurrentStatus('pendiente');
       }
-    } catch (error: any) {
-      console.error('Error submitting carga no lectiva:', error);
-      MySwal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.response?.data?.message || 'Error al enviar la declaración',
-      });
+      // 2. Guardar carga filial (solo para filiales)
+      if (esFilial && saveFilialRef.current) {
+        const saved = await saveFilialRef.current();
+        if (!saved) return false;
+      }
+      // 3. Finalizar turno del docente (backend llama al siguiente o termina la ventana)
+      const docId = docente?.id || docenteProp?.docenteId || docenteProp?.id;
+      if (docId) {
+        await api.patch(`/ventanas/finalizar-turno/${docId}`);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error al enviar:', error);
+      return false;
     }
   };
 
@@ -207,12 +259,7 @@ export default function CargaAcademicaDocente({
   const contratoMostrar = docente?.condicion || '---';
   const categoriaMostrar = docente?.categoria || '---';
 
-  const totalHorasLectivas = cargaLectiva.reduce((sum, item) => {
-    return sum + Number(item.horasSemanales || 0);
-  }, 0);
-  
   const dedicacionTotalHoras = parseInt((docente?.dedicacion || docenteProp?.dedicacion || '40').match(/\d+/)?.[0] || '40');
-  const porcentajeLectiva = Math.min(100, (totalHorasLectivas / dedicacionTotalHoras) * 100);
   const facultadMostrar = (docente?.facultad || docenteProp?.facultad || 'Ingeniería').toUpperCase();
   const departamentoMostrar = (docente?.departamentoAcademico || docenteProp?.departamentoAcademico || 'Dpto. de Ingeniería de Sistemas').toUpperCase();
   const condicionMostrar = (docente?.condicion || docenteProp?.condicion || 'NOMBRADO').toUpperCase();
@@ -278,6 +325,79 @@ export default function CargaAcademicaDocente({
   }, [cargaLectiva]);
 
   const totalHorasNoLectivas = horasNoLectivas;
+
+  const { estadoSeleccion, docentePuedeGestionar } = useVentanaAtencion(docenteProp, true);
+
+  const cicloActual = ciclos.find(c => c.esActual);
+  const cicloEsActual = cicloActual && Number(selectedCiclo) === cicloActual.id;
+  const puedeGestionar = cicloEsActual ? docentePuedeGestionar : true;
+
+  const mostrarContenidoCarga = !cicloEsActual || (estadoSeleccion && (
+    estadoSeleccion.estado === 'en_atencion' || estadoSeleccion.estado === 'finalizado'
+  ));
+
+  const totalHorasLectivas = mostrarContenidoCarga
+    ? cargaLectiva.reduce((sum, item) => {
+        return sum + Number(item.horasSemanales || 0);
+      }, 0)
+    : 0;
+
+  const getMensajeBloqueo = () => {
+    if (!cicloEsActual) return null;
+    if (!estadoSeleccion) return null;
+    if (estadoSeleccion.estado === 'en_espera') return (
+      <TableRow>
+        <TableCell colSpan={8} align="center" sx={{ py: 8 }}>
+          <AccessTimeIcon sx={{ fontSize: 40, color: '#f59e0b', mb: 1 }} />
+          <Typography variant="body1" sx={{ fontWeight: 700, color: '#92400e', mb: 0.5 }}>
+            Fuera de Turno — Esperando en cola
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#78350f', mb: 0.5 }}>
+            Posición en cola: {estadoSeleccion.posicion} de {estadoSeleccion.totalEnEspera}
+            {estadoSeleccion.minutosHastaTurno ? ` — Tiempo estimado: ${estadoSeleccion.minutosHastaTurno} min` : ''}
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#92400e', fontWeight: 500 }}>
+            Podrá gestionar su carga académica cuando sea su turno.
+          </Typography>
+        </TableCell>
+      </TableRow>
+    );
+    if (estadoSeleccion.estado === 'sin_ventana') return (
+      <TableRow>
+        <TableCell colSpan={8} align="center" sx={{ py: 8 }}>
+          <AccessTimeIcon sx={{ fontSize: 40, color: '#94a3b8', mb: 1 }} />
+          <Typography variant="body1" sx={{ fontWeight: 700, color: '#475569', mb: 0.5 }}>
+            Ventanas de atención no disponibles
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#64748b' }}>
+            Las ventanas de atención aún no han sido programadas por el administrador.
+          </Typography>
+        </TableCell>
+      </TableRow>
+    );
+    if (estadoSeleccion.estado === 'no_programado') return (
+      <TableRow>
+        <TableCell colSpan={8} align="center" sx={{ py: 8 }}>
+          <AccessTimeIcon sx={{ fontSize: 40, color: '#94a3b8', mb: 1 }} />
+          <Typography variant="body1" sx={{ fontWeight: 700, color: '#475569', mb: 0.5 }}>
+            Sin ventana de atención asignada
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#64748b', mb: 0.5 }}>
+            Usted aún no ha sido asignado a una ventana de atención.
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#64748b', fontWeight: 500 }}>
+            Asegúrese de tener su carga lectiva y horarios completos.
+          </Typography>
+        </TableCell>
+      </TableRow>
+    );
+    return null;
+  };
+
+  const mensajeBloqueo = getMensajeBloqueo();
+  const mostrarTablaCarga = mostrarContenidoCarga || (estadoSeleccion && ![ 'en_espera', 'sin_ventana', 'no_programado' ].includes(estadoSeleccion.estado));
+  const esRechazada = currentStatus === 'borrador';
+  const formDisabled = !puedeGestionar && !esRechazada;
 
   return (
     <Box sx={{ maxWidth: 1400, mx: 'auto', p: { xs: 2, md: 4 } }}>
@@ -432,6 +552,15 @@ export default function CargaAcademicaDocente({
                 </Box>
               </Box>
 
+              {motivoRechazo && (
+                <Alert severity="warning" icon={<WarningAmberIcon />} sx={{ mx: 4, mb: 2, mt: 1, borderRadius: 2 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                    Observación del coordinador — Su carga académica fue devuelta para corrección:
+                  </Typography>
+                  <Typography variant="body2">{motivoRechazo}</Typography>
+                </Alert>
+              )}
+
               <Box sx={{ p: 4 }}>
                 {/* 1. TRABAJO LECTIVO */}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, pb: 1, borderBottom: '2px solid #f1f5f9' }}>
@@ -456,7 +585,7 @@ export default function CargaAcademicaDocente({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {loadingCarga ? (
+                      {mensajeBloqueo ? mensajeBloqueo : loadingCarga ? (
                         <TableRow>
                           <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
                             <CircularProgress size={24} />
@@ -547,31 +676,40 @@ export default function CargaAcademicaDocente({
                   horasAdicionales={horasAdicionales}
                   onHorasNoLectivasChange={setHorasNoLectivas}
                   esFilial={esFilial}
+                  formDisabled={formDisabled}
+                  onMotivoRechazoChange={setMotivoRechazo}
+                  onRegisterSave={(fn) => { saveCargaNoLectivaRef.current = fn; }}
+                  onValidationChange={setIsCargaValid}
                 />
                 )}
 
                 {/* Botón Siguiente para docentes filiales */}
                 {esFilial && (
                   <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 4, pt: 3, borderTop: '1px solid #e2e8f0' }}>
-                    <Button
-                      variant="contained"
-                      endIcon={<ArrowForwardIcon />}
-                      onClick={() => setStep('filial')}
-                      sx={{
-                        borderRadius: 2,
-                        fontWeight: 700,
-                        fontSize: '0.85rem',
-                        textTransform: 'none',
-                        px: 4,
-                        py: 1.5,
-                        bgcolor: '#003366',
-                        color: '#fff',
-                        boxShadow: '0 4px 12px rgba(0,51,102,0.2)',
-                        '&:hover': { bgcolor: '#002244', boxShadow: '0 6px 16px rgba(0,51,102,0.3)' },
-                      }}
-                    >
-                      Siguiente
-                    </Button>
+                    <Tooltip title={!isCargaValid ? 'La carga lectiva + no lectiva excede la jornada. Revisa tus horas antes de continuar.' : ''}>
+                      <span>
+                        <Button
+                          variant="contained"
+                          endIcon={<ArrowForwardIcon />}
+                          onClick={() => setStep('filial')}
+                          disabled={!isCargaValid}
+                          sx={{
+                            borderRadius: 2,
+                            fontWeight: 700,
+                            fontSize: '0.85rem',
+                            textTransform: 'none',
+                            px: 4,
+                            py: 1.5,
+                            bgcolor: !isCargaValid ? '#94a3b8' : '#003366',
+                            color: '#fff',
+                            boxShadow: '0 4px 12px rgba(0,51,102,0.2)',
+                            '&:hover': !isCargaValid ? {} : { bgcolor: '#002244', boxShadow: '0 6px 16px rgba(0,51,102,0.3)' },
+                          }}
+                        >
+                          Siguiente
+                        </Button>
+                      </span>
+                    </Tooltip>
                   </Box>
                 )}
               </Box>
@@ -592,6 +730,8 @@ export default function CargaAcademicaDocente({
               externalEstado={currentStatus}
               onStatusChange={(status) => setCurrentStatus(status)}
               onFinalSubmit={handleFinalSubmit}
+              formDisabled={formDisabled}
+              onRegisterSaveFilial={(fn) => { saveFilialRef.current = fn; }}
             />
           )}
         </Grid>

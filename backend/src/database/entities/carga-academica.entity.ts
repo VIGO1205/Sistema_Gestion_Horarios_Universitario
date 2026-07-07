@@ -4,6 +4,7 @@ import { CicloAcademico } from './ciclo-academico.entity';
 import { CargaNoLectiva } from './carga-no-lectiva.entity';
 
 export enum EstadoCargaAcademica {
+  SIN_CARGA = 'sin_carga',
   BORRADOR = 'borrador',
   PENDIENTE = 'pendiente',
   VALIDADO = 'validado',
@@ -24,7 +25,7 @@ export class CargaAcademica {
   @Column({
     type: 'enum',
     enum: EstadoCargaAcademica,
-    default: EstadoCargaAcademica.BORRADOR,
+    default: EstadoCargaAcademica.SIN_CARGA,
   })
   estado: EstadoCargaAcademica;
 
@@ -36,6 +37,9 @@ export class CargaAcademica {
 
   @Column({ type: 'text', nullable: true })
   observaciones: string;
+
+  @Column({ type: 'text', nullable: true, name: 'motivo_rechazo' })
+  motivoRechazo: string | null;
 
   @Column({ type: 'smallint', nullable: true, name: 'declaracion_opcion' })
   declaracionOpcion: number | null;

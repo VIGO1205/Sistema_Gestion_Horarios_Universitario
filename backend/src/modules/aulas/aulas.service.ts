@@ -40,18 +40,9 @@ export class AulasService {
   }
 
   async update(id: number, updateAulaDto: UpdateAulaDto): Promise<Aula> {
-    const aula = await this.aulasRepository.preload({
-      id,
-      ...updateAulaDto,
-    } as any);
-
-    if (!aula) {
-      throw new NotFoundException(`Aula con id ${id} no encontrada`);
-    }
-
-    const aulaGuardada = await this.aulasRepository.save(aula);
-    
-    return await this.findOne(aulaGuardada.id);
+    const aula = await this.findOne(id);
+    Object.assign(aula, updateAulaDto);
+    return await this.aulasRepository.save(aula);
   }
 
   async remove(id: number): Promise<void> {

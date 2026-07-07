@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, Min, IsEnum } from 'class-validator';
+import { IsNumber, IsOptional, IsString, Min, IsEnum, IsArray } from 'class-validator';
 import { EstadoCargaAcademica } from '../../../entities/carga-academica.entity';
 
 export class CreateCargaNoLectivaDto {
@@ -121,4 +121,14 @@ export class CreateCargaNoLectivaDto {
   @IsString()
   @IsOptional()
   observaciones?: string;
+
+  @IsArray()
+  @IsOptional()
+  horarios?: Array<{
+    dia: string;
+    horaInicio: string;
+    horaFin: string;
+    actividadNoLectiva: string;
+    aulaId?: number;
+  }>;
 }

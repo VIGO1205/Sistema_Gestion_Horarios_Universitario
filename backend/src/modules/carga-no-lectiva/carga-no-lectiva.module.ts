@@ -7,12 +7,14 @@ import { CargaNoLectivaService } from './carga-no-lectiva.service';
 import { CargaNoLectivaController } from './carga-no-lectiva.controller';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { DocentesModule } from '../docentes/docentes.module';
+import { ReportesModule } from '../reportes/reportes.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([CargaNoLectiva, CargaAcademica, Docente]),
     NotificacionesModule,
     DocentesModule,
+    ReportesModule,
   ],
   providers: [CargaNoLectivaService],
   controllers: [CargaNoLectivaController],
