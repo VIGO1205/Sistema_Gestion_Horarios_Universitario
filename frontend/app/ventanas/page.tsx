@@ -121,7 +121,12 @@ export default function VentanasPage() {
   };
 
   const getDuracionTotalFormateada = () => {
-    const totalMinutos = (docentesCount || 0) * formData.duracionMinutos;
+    let totalMinutos: number;
+    if (editingVentana && ventanaDuracionMs > 0) {
+      totalMinutos = Math.round(ventanaDuracionMs / 60000);
+    } else {
+      totalMinutos = (docentesCount || 0) * formData.duracionMinutos;
+    }
     const horas = Math.floor(totalMinutos / 60);
     const minutos = totalMinutos % 60;
     return `${horas}h:${minutos < 10 ? '0' : ''}${minutos}min`;
@@ -136,6 +141,7 @@ export default function VentanasPage() {
   });
 
   const [editingVentana, setEditingVentana] = useState<any>(null);
+  const [ventanaDuracionMs, setVentanaDuracionMs] = useState<number>(0);
 
   useEffect(() => {
     fetchData();
@@ -157,7 +163,7 @@ export default function VentanasPage() {
     if (formData.fechaHoraInicio && formData.duracionMinutos) {
       calcularFinAutomatico();
     }
-  }, [docentesCount, formData.fechaHoraInicio, formData.duracionMinutos]);
+  }, [docentesCount, formData.fechaHoraInicio, formData.duracionMinutos, editingVentana, ventanaDuracionMs]);
 
   useEffect(() => {
     if (!selectedVentana) return;
@@ -262,9 +268,14 @@ export default function VentanasPage() {
       const inicio = new Date(formData.fechaHoraInicio);
       if (isNaN(inicio.getTime())) return;
 
-      const totalMinutos = (docentesCount || 0) * formData.duracionMinutos;
-      const fin = new Date(inicio.getTime() + totalMinutos * 60000);
+      let totalMs: number;
+      if (editingVentana && ventanaDuracionMs > 0) {
+        totalMs = ventanaDuracionMs;
+      } else {
+        totalMs = (docentesCount || 0) * formData.duracionMinutos * 60000;
+      }
 
+      const fin = new Date(inicio.getTime() + totalMs);
       const formattedFin = format(fin, "yyyy-MM-dd'T'HH:mm");
       if (formattedFin !== formData.fechaHoraFin) {
         setFormData(prev => ({
@@ -423,11 +434,14 @@ export default function VentanasPage() {
 
   const openEditDialog = (ventana: any) => {
     setEditingVentana(ventana);
+    const fechaInicioOrig = new Date(ventana.fechaHoraInicio);
+    const fechaFinOrig = new Date(ventana.fechaHoraFin);
+    setVentanaDuracionMs(fechaFinOrig.getTime() - fechaInicioOrig.getTime());
     setFormData({
       cicloId: ventana.ciclo?.id || ventana.cicloId || '',
       categoriaDocente: ventana.categoriaDocente || 'todos',
-      fechaHoraInicio: format(new Date(ventana.fechaHoraInicio), "yyyy-MM-dd'T'HH:mm"),
-      fechaHoraFin: format(new Date(ventana.fechaHoraFin), "yyyy-MM-dd'T'HH:mm"),
+      fechaHoraInicio: format(fechaInicioOrig, "yyyy-MM-dd'T'HH:mm"),
+      fechaHoraFin: format(fechaFinOrig, "yyyy-MM-dd'T'HH:mm"),
       duracionMinutos: ventana.duracionMinutos || 15,
     });
     setOpenDialog(true);
@@ -462,8 +476,11 @@ export default function VentanasPage() {
     }
 
     try {
+      const nuevoFin = new Date(fechaInicio.getTime() + ventanaDuracionMs);
       const payload: any = {
         fechaHoraInicio: formData.fechaHoraInicio,
+        fechaHoraFin: format(nuevoFin, "yyyy-MM-dd'T'HH:mm"),
+        duracionMinutos: formData.duracionMinutos,
       };
       const res = await api.patch(`/ventanas/${editingVentana.id}`, payload);
       setOpenDialog(false);
@@ -1322,55 +1339,51 @@ export default function VentanasPage() {
                   />
                 </Grid>
 
-                {!editingVentana && (
-                  <>
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        label="Duración por Docente (minutos)"
-                        type="number"
-                        value={formData.duracionMinutos}
-                        onChange={(e) => setFormData((prev: any) => ({ ...prev, duracionMinutos: Number(e.target.value) }))}
-                        variant="outlined"
-                        size="small"
-                        InputProps={{
-                          sx: { borderRadius: 2, fontWeight: 700 },
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <TimerIcon sx={{ color: '#003366' }} />
-                            </InputAdornment>
-                          ),
-                        }}
-                      />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        label="Fecha Fin Estimada"
-                        value={formData.fechaHoraFin ? format(new Date(formData.fechaHoraFin), "dd/MM/yyyy HH:mm") : ''}
-                        variant="outlined"
-                        size="small"
-                        InputLabelProps={{ shrink: true }}
-                        InputProps={{
-                          readOnly: true,
-                          sx: { borderRadius: 2, fontWeight: 700, bgcolor: '#f8f9fa' },
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <AccessTimeIcon sx={{ color: '#003366' }} />
-                            </InputAdornment>
-                          ),
-                          endAdornment: (
-                            <InputAdornment position="end">
-                              <Typography sx={{ color: '#d32f2f', fontWeight: 800, fontSize: '0.85rem' }}>
-                                ({getDuracionTotalFormateada()})
-                              </Typography>
-                            </InputAdornment>
-                          )
-                        }}
-                      />
-                    </Grid>
-                  </>
-                )}
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Duración por Docente (minutos)"
+                    type="number"
+                    value={formData.duracionMinutos}
+                    onChange={(e) => setFormData((prev: any) => ({ ...prev, duracionMinutos: Number(e.target.value) }))}
+                    variant="outlined"
+                    size="small"
+                    InputProps={{
+                      sx: { borderRadius: 2, fontWeight: 700 },
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <TimerIcon sx={{ color: '#003366' }} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Fecha Fin Estimada"
+                    value={formData.fechaHoraFin ? format(new Date(formData.fechaHoraFin), "dd/MM/yyyy HH:mm") : ''}
+                    variant="outlined"
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                    InputProps={{
+                      readOnly: true,
+                      sx: { borderRadius: 2, fontWeight: 700, bgcolor: '#f8f9fa' },
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <AccessTimeIcon sx={{ color: '#003366' }} />
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Typography sx={{ color: '#d32f2f', fontWeight: 800, fontSize: '0.85rem' }}>
+                            ({getDuracionTotalFormateada()})
+                          </Typography>
+                        </InputAdornment>
+                      )
+                    }}
+                  />
+                </Grid>
 
                 {!editingVentana && (
                   <Grid item xs={12}>
