@@ -87,8 +87,11 @@ export class HorariosController {
 
   @Get('mapa-ocupacion')
   @Roles(RolUsuario.ADMIN, RolUsuario.COORDINADOR, RolUsuario.DOCENTE)
-  async getMapaOcupacion(@Query('cicloId') cicloId: string) {
-    return this.horariosService.getMapaOcupacion(+cicloId);
+  async getMapaOcupacion(
+    @Query('cicloId') cicloId: string,
+    @Query('aulaId') aulaId?: string,
+  ) {
+    return this.horariosService.getMapaOcupacion(+cicloId, aulaId ? +aulaId : undefined);
   }
 
   @Post('validar-cruces')

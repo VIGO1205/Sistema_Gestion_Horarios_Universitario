@@ -515,8 +515,8 @@ export class HorariosService {
     };
   }
 
-  async getMapaOcupacion(cicloId: number): Promise<any> {
-    const horarios = await this.horarioRepo
+  async getMapaOcupacion(cicloId: number, aulaId?: number): Promise<any> {
+    const query = this.horarioRepo
       .createQueryBuilder('h')
       .leftJoinAndSelect('h.curso', 'curso')
       .where('h.cicloId = :cicloId', { cicloId })
@@ -529,8 +529,13 @@ export class HorariosService {
         'h.aulaId',
         'curso.carreraId',
         'curso.cicloAcademico'
-      ])
-      .getMany();
+      ]);
+
+    if (aulaId) {
+      query.andWhere('h.aulaId = :aulaId', { aulaId });
+    }
+
+    const horarios = await query.getMany();
 
     const diaMap: Record<string, number> = {
       'Lunes': 1, 'Martes': 2, 'Miércoles': 3, 'Jueves': 4,
