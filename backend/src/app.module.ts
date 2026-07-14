@@ -60,10 +60,10 @@ import { CursoFilial } from './entities/curso-filial.entity';
         console.log(`Iniciando App en modo: ${nodeEnv}`);
         
         const entities = [
-          Usuario, Docente, Curso, Aula, CicloAcademico, Horario, 
-          AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion, 
-          Carrera, DocenteCarrera, VentanaAtencion, Notificacion, 
-          CargaNoLectiva, CargaAcademica, Reporte, ConfiguracionGrilla, Curricula, Lugar,
+          Usuario, Docente, Carrera, Curricula, Curso, Aula, CicloAcademico, Horario,
+          AsignacionDocenteCurso, ProgramacionCursoCiclo, GrupoDocenteAsignacion,
+          DocenteCarrera, VentanaAtencion, Notificacion,
+          CargaNoLectiva, CargaAcademica, Reporte, ConfiguracionGrilla, Lugar,
           AsignacionFilial, CursoFilial
         ];
         

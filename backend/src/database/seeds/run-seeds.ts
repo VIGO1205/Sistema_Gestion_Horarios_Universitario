@@ -1,6 +1,6 @@
 import * as dotenv from 'dotenv';
 import * as bcrypt from 'bcryptjs';
-import { dataSource } from '../data-source';
+import { dataSource } from './data-source';
 
 // Cargar variables de entorno
 dotenv.config();

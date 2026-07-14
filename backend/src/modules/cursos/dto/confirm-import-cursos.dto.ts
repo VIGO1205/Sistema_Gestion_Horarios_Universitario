@@ -32,6 +32,10 @@ export class ImportedCursoDto {
   @IsOptional()
   @IsIn(['ES', 'EL', 'OB', 'OP'])
   tipoCurso?: string;
+
+  @IsOptional()
+  @IsString()
+  departamento?: string;
 }
 
 export class ConfirmImportCursosDto {
