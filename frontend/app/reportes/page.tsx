@@ -32,6 +32,10 @@ import {
   TableHead,
   TableRow,
   TablePagination,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Description as DescriptionIcon,
@@ -135,6 +139,7 @@ export default function ReportesPage() {
   const [reportesRowsPerPage, setReportesRowsPerPage] = useState(10);
   const [loadingReportes, setLoadingReportes] = useState(false);
   const [mostrarFiltrosSecundarios, setMostrarFiltrosSecundarios] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ url: string; blob: Blob; fileName: string } | null>(null);
   const [filtrosCRUD, setFiltrosCRUD] = useState({
     sede: 'Todas las Sedes',
     estado: 'Todos los Estados',
@@ -188,16 +193,12 @@ export default function ReportesPage() {
 
   const handleDescargarReporteOficial = async (id: number, nombre: string) => {
     try {
-      const res = await api.get(`/reportes/descargar/${id}`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', nombre);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      const res = await api.get(`/reportes/descargar/${id}`, { responseType: 'arraybuffer' });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      setPdfPreview({ url, blob, fileName: nombre });
     } catch (error) {
-      Swal.fire('Error', 'No se pudo descargar el archivo', 'error');
+      Swal.fire('Error', 'No se pudo obtener el PDF', 'error');
     }
   };
 
@@ -458,7 +459,9 @@ export default function ReportesPage() {
           doc.setDrawColor(226, 232, 240);
           doc.line(margin * 4, headerHeight + 65, pageWidth - margin * 4, headerHeight + 65);
           
-          doc.save(`${reporteId}_${cicloNombre}.pdf`);
+          const blob0 = doc.output('blob');
+          const url0 = URL.createObjectURL(blob0);
+          setPdfPreview({ url: url0, blob: blob0, fileName: `${reporteId}_${cicloNombre}.pdf` });
           setLoading(false);
           return;
         }
@@ -866,7 +869,9 @@ export default function ReportesPage() {
           doc.text(`Página ${i} de ${pageCount} - Generado automáticamente por el Sistema de Horarios UNT`, pageWidth / 2, pageHeight - 5, { align: 'center' });
         }
 
-        doc.save(`${reporteId}_${cicloNombre}.pdf`);
+        const blob1 = doc.output('blob');
+        const url1 = URL.createObjectURL(blob1);
+        setPdfPreview({ url: url1, blob: blob1, fileName: `${reporteId}_${cicloNombre}.pdf` });
         setLoading(false);
         return;
       } else if (reporteId === 'horario_docente_no_lectiva') {
@@ -892,7 +897,9 @@ export default function ReportesPage() {
           doc.setDrawColor(226, 232, 240);
           doc.line(margin * 4, headerHeight + 65, pageWidth - margin * 4, headerHeight + 65);
           
-          doc.save(`${reporteId}_${cicloNombre}.pdf`);
+          const blob2 = doc.output('blob');
+          const url2 = URL.createObjectURL(blob2);
+          setPdfPreview({ url: url2, blob: blob2, fileName: `${reporteId}_${cicloNombre}.pdf` });
           setLoading(false);
           return;
         }
@@ -1104,7 +1111,9 @@ export default function ReportesPage() {
           doc.text(`Página ${i} de ${pageCount} - Generado por el Sistema de Horarios UNT`, pageWidth / 2, pageHeight - 5, { align: 'center' });
         }
 
-        doc.save(`${reporteId}_${cicloNombre}.pdf`);
+        const blob3 = doc.output('blob');
+        const url3 = URL.createObjectURL(blob3);
+        setPdfPreview({ url: url3, blob: blob3, fileName: `${reporteId}_${cicloNombre}.pdf` });
         setLoading(false);
         return;
       }
@@ -1223,7 +1232,9 @@ export default function ReportesPage() {
         doc.text(`Página ${i} de ${pageCount} - Generado automáticamente por el Sistema de Horarios UNT`, 105, 285, { align: 'center' });
       }
 
-      doc.save(`${reporteId}_${cicloNombre}.pdf`);
+      const blob4 = doc.output('blob');
+      const url4 = URL.createObjectURL(blob4);
+      setPdfPreview({ url: url4, blob: blob4, fileName: `${reporteId}_${cicloNombre}.pdf` });
     } catch (err) {
       console.error('Error generando PDF:', err);
     } finally {
@@ -2456,11 +2467,58 @@ export default function ReportesPage() {
             labelRowsPerPage="Filas por página"
           />
         </Paper>
+
+        {/* Modal de previsualización PDF (docente) */}
+        <Dialog
+          open={!!pdfPreview}
+          fullWidth
+          maxWidth="lg"
+          onClose={() => {
+            if (pdfPreview) URL.revokeObjectURL(pdfPreview.url);
+            setPdfPreview(null);
+          }}
+        >
+          <DialogTitle sx={{ fontWeight: 800, color: '#003366' }}>
+            Vista Previa del Reporte
+          </DialogTitle>
+          <DialogContent sx={{ p: 0, height: '75vh', display: 'flex', flexDirection: 'column' }}>
+            {pdfPreview && (
+              <embed
+                src={pdfPreview.url}
+                type="application/pdf"
+                style={{ width: '100%', height: '100%', flex: 1 }}
+              />
+            )}
+          </DialogContent>
+          <DialogActions sx={{ p: 2, gap: 1 }}>
+            <Button
+              variant="outlined"
+              onClick={() => {
+                if (pdfPreview) URL.revokeObjectURL(pdfPreview.url);
+                setPdfPreview(null);
+              }}
+            >
+              Cerrar
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<DownloadIcon />}
+              onClick={() => {
+                if (pdfPreview) {
+                  saveAs(pdfPreview.blob, pdfPreview.fileName);
+                }
+              }}
+              sx={{ bgcolor: '#003366', fontWeight: 700, textTransform: 'none' }}
+            >
+              Descargar PDF
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     );
   }
 
-
+  
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, bgcolor: '#f8fafc', minHeight: '100vh' }}>
       <Box sx={{ mb: 5 }}>
@@ -2791,6 +2849,53 @@ export default function ReportesPage() {
           </Alert>
         </Box>
       )}
+
+      {/* Modal de previsualización PDF */}
+      <Dialog
+        open={!!pdfPreview}
+        fullWidth
+        maxWidth="lg"
+        onClose={() => {
+          if (pdfPreview) URL.revokeObjectURL(pdfPreview.url);
+          setPdfPreview(null);
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, color: '#003366' }}>
+          Vista Previa del Reporte
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, height: '75vh', display: 'flex', flexDirection: 'column' }}>
+          {pdfPreview && (
+            <embed
+              src={pdfPreview.url}
+              type="application/pdf"
+              style={{ width: '100%', height: '100%', flex: 1 }}
+            />
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              if (pdfPreview) URL.revokeObjectURL(pdfPreview.url);
+              setPdfPreview(null);
+            }}
+          >
+            Cerrar
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<DownloadIcon />}
+            onClick={() => {
+              if (pdfPreview) {
+                saveAs(pdfPreview.blob, pdfPreview.fileName);
+              }
+            }}
+            sx={{ bgcolor: '#003366', fontWeight: 700, textTransform: 'none' }}
+          >
+            Descargar PDF
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
